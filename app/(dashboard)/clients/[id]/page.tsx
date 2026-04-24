@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { ClientContacts } from '@/components/clients/client-contacts'
 import { ClientDeals } from '@/components/clients/client-deals'
 import { ClientTasks } from '@/components/clients/client-tasks'
+import { AiAnalyzeButton } from '@/components/clients/ai-analyze-button'
 
 const segmentColors: Record<string, string> = {
   maly: 'bg-slate-500',
@@ -70,12 +71,15 @@ export default async function ClientDetailPage({
           { label: client.title },
         ]}
         actions={
-          <Button asChild>
-            <Link href={`/clients/${id}/edit`}>
-              <PencilIcon className="mr-2 size-4" />
-              Edytuj
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <AiAnalyzeButton clientId={id} />
+            <Button asChild>
+              <Link href={`/clients/${id}/edit`}>
+                <PencilIcon className="mr-2 size-4" />
+                Edytuj
+              </Link>
+            </Button>
+          </div>
         }
       />
       <div className="flex flex-1 flex-col gap-6 p-6">
