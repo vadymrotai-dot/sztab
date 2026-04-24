@@ -132,7 +132,7 @@ export async function POST(req: Request) {
       systemPrompt: SYSTEM_PROMPT,
       userPrompt,
       useGoogleSearch: true,
-      model: "gemini-2.5-pro",
+      model: "gemini-2.5-flash",
       maxTokens: 2000,
       temperature: 0.3,
     })
