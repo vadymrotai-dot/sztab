@@ -55,10 +55,12 @@ export async function callAI(params: AIParams): Promise<AIResult> {
 //   gemini-2.5-flash-lite — fastest/cheapest, 1000 RPD free
 
 async function callGemini(params: AIParams): Promise<AIResult> {
-  // Default model depends on whether grounding is requested
+  // Default model depends on whether grounding is requested.
+  // gemini-2.5-flash supports Google Search grounding and is available on free tier
+  // (250 RPD + 500 grounding RPD). Pro is not accessible on free tier in most regions.
   const model =
     params.model ||
-    (params.useGoogleSearch ? "gemini-2.5-pro" : "gemini-2.5-flash-lite")
+    (params.useGoogleSearch ? "gemini-2.5-flash" : "gemini-2.5-flash-lite")
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(params.apiKey)}`
 
