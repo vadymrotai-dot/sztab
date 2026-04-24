@@ -99,17 +99,29 @@ async function callGemini(params: AIParams): Promise<AIResult> {
     body.tools = [{ google_search: {} }]
   }
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  })
+  // Retry on 503 (overloaded) and 429 (rate limit) up to 3 times with exponential backoff
+  let res: Response | null = null
+  let lastErr = ""
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      // Wait 1s, then 3s between retries
+      await new Promise((r) => setTimeout(r, attempt * 2000 + 1000))
+    }
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) break
+    if (res.status !== 503 && res.status !== 429) break // non-retryable
+    lastErr = await res.text()
+  }
 
-  if (!res.ok) {
-    const errText = await res.text()
+  if (!res || !res.ok) {
+    const errText = lastErr || (res ? await res.text() : "No response")
     return {
       text: "",
-      error: `Gemini API ${res.status}: ${errText.slice(0, 500)}`,
+      error: `Gemini API ${res?.status || "ERR"}: ${errText.slice(0, 500)}`,
     }
   }
 
