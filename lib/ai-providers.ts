@@ -1,6 +1,6 @@
 // lib/ai-providers.ts
-// Universal AI provider interface. Currently supports Gemini.
-// To add Anthropic/OpenRouter later — just add a new case in callAI() and a function below.
+// Universal AI provider interface with Gemini support.
+// Supports: text gen, structured JSON, Google Search grounding, grounding sources.
 
 export type AIProvider = "gemini" | "anthropic" | "openrouter"
 
@@ -12,12 +12,22 @@ export interface AIParams {
   responseFormat?: "text" | "json"
   maxTokens?: number
   temperature?: number
+  /** Use Gemini Pro with Google Search tool enabled */
+  useGoogleSearch?: boolean
+  /** Preferred model id. If not provided, a sensible default is used. */
+  model?: string
+}
+
+export interface GroundingSource {
+  title?: string
+  uri?: string
 }
 
 export interface AIResult {
   text: string
   tokensUsed?: number
   model?: string
+  groundingSources?: GroundingSource[]
   error?: string
 }
 
@@ -39,11 +49,17 @@ export async function callAI(params: AIParams): Promise<AIResult> {
 }
 
 // ========== Gemini ==========
-// Docs: https://ai.google.dev/gemini-api/docs/text-generation
-// Free tier model: gemini-2.5-flash-lite (15 RPM, 1000 RPD)
+// Models:
+//   gemini-2.5-pro        — best quality, supports grounding, 100 RPD free
+//   gemini-2.5-flash      — balanced, 250 RPD free
+//   gemini-2.5-flash-lite — fastest/cheapest, 1000 RPD free
 
 async function callGemini(params: AIParams): Promise<AIResult> {
-  const model = "gemini-2.5-flash-lite"
+  // Default model depends on whether grounding is requested
+  const model =
+    params.model ||
+    (params.useGoogleSearch ? "gemini-2.5-pro" : "gemini-2.5-flash-lite")
+
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(params.apiKey)}`
 
   const contents: any[] = []
@@ -70,8 +86,15 @@ async function callGemini(params: AIParams): Promise<AIResult> {
     },
   }
 
-  if (params.responseFormat === "json") {
+  // Structured JSON output
+  // NOTE: responseMimeType is NOT compatible with tools like google_search
+  if (params.responseFormat === "json" && !params.useGoogleSearch) {
     body.generationConfig.responseMimeType = "application/json"
+  }
+
+  // Google Search grounding (only on Pro / 2.5+ models)
+  if (params.useGoogleSearch) {
+    body.tools = [{ google_search: {} }]
   }
 
   const res = await fetch(url, {
@@ -82,20 +105,47 @@ async function callGemini(params: AIParams): Promise<AIResult> {
 
   if (!res.ok) {
     const errText = await res.text()
-    return { text: "", error: `Gemini API ${res.status}: ${errText.slice(0, 500)}` }
+    return {
+      text: "",
+      error: `Gemini API ${res.status}: ${errText.slice(0, 500)}`,
+    }
   }
 
   const data = await res.json()
+  const candidate = data?.candidates?.[0]
   const text =
-    data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("") || ""
+    candidate?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") ||
+    ""
   const tokens = data?.usageMetadata?.totalTokenCount
+
+  // Collect grounding sources (web chunks from Google Search)
+  const groundingSources: GroundingSource[] = []
+  const chunks = candidate?.groundingMetadata?.groundingChunks
+  if (Array.isArray(chunks)) {
+    for (const ch of chunks) {
+      const web = ch?.web
+      if (web?.uri) {
+        groundingSources.push({
+          uri: web.uri,
+          title: web.title || "",
+        })
+      }
+    }
+  }
 
   if (!text) {
     return {
       text: "",
-      error: `Gemini returned empty response. Finish reason: ${data?.candidates?.[0]?.finishReason || "unknown"}`,
+      error: `Gemini returned empty response. Finish reason: ${
+        candidate?.finishReason || "unknown"
+      }`,
     }
   }
 
-  return { text, tokensUsed: tokens, model }
+  return {
+    text,
+    tokensUsed: tokens,
+    model,
+    groundingSources: groundingSources.length ? groundingSources : undefined,
+  }
 }
