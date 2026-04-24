@@ -49,6 +49,70 @@ export function ClientForm({ client }: ClientFormProps) {
     status: client?.status || 'nowy',
   })
 
+  // === NIP lookup state ===
+  const [nipLoading, setNipLoading] = useState(false)
+  const [nipStatus, setNipStatus] = useState<
+    | { kind: 'idle' }
+    | { kind: 'ok'; message: string }
+    | { kind: 'err'; message: string }
+  >({ kind: 'idle' })
+
+  const handleNipLookup = async () => {
+    const nip = (formData.nip || '').replace(/\D/g, '')
+    if (nip.length !== 10) {
+      setNipStatus({ kind: 'err', message: 'NIP musi mieć 10 cyfr' })
+      return
+    }
+    setNipLoading(true)
+    setNipStatus({ kind: 'idle' })
+    try {
+      const res = await fetch('/api/nip-lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nip }),
+      })
+      const json = await res.json()
+      if (!json?.ok) {
+        setNipStatus({
+          kind: 'err',
+          message: json?.error || 'Nie znaleziono firmy',
+        })
+        setNipLoading(false)
+        return
+      }
+      const d = json.data || {}
+      // Auto-fill form fields from MF API response
+      setFormData((prev) => ({
+        ...prev,
+        title: d.name || prev.title,
+        nip: d.nip || prev.nip,
+        address: d.address || prev.address,
+        city: d.city || prev.city,
+        notes:
+          prev.notes ||
+          [
+            d.regon ? `REGON: ${d.regon}` : null,
+            d.krs ? `KRS: ${d.krs}` : null,
+            d.statusVat ? `Status VAT: ${d.statusVat}` : null,
+            d.registrationDate ? `Data rejestracji: ${d.registrationDate}` : null,
+          ]
+            .filter(Boolean)
+            .join('\n'),
+      }))
+      setNipStatus({
+        kind: 'ok',
+        message: `Znaleziono: ${d.name?.slice(0, 60) || 'bez nazwy'}`,
+      })
+    } catch (e: any) {
+      setNipStatus({
+        kind: 'err',
+        message: e?.message || 'Błąd sieci podczas zapytania',
+      })
+    } finally {
+      setNipLoading(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -111,12 +175,33 @@ export function ClientForm({ client }: ClientFormProps) {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="nip">NIP</FieldLabel>
-                <Input
-                  id="nip"
-                  value={formData.nip}
-                  onChange={(e) => setFormData({ ...formData, nip: e.target.value })}
-                  placeholder="0000000000"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    id="nip"
+                    value={formData.nip}
+                    onChange={(e) => {
+                      setFormData({ ...formData, nip: e.target.value })
+                      if (nipStatus.kind !== 'idle') setNipStatus({ kind: 'idle' })
+                    }}
+                    placeholder="0000000000"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleNipLookup}
+                    disabled={nipLoading}
+                    className="shrink-0"
+                  >
+                    {nipLoading ? <Spinner className="mr-2" /> : null}
+                    Wyszukaj
+                  </Button>
+                </div>
+                {nipStatus.kind === 'ok' && (
+                  <p className="mt-1 text-xs text-green-600">✓ {nipStatus.message}</p>
+                )}
+                {nipStatus.kind === 'err' && (
+                  <p className="mt-1 text-xs text-destructive">✗ {nipStatus.message}</p>
+                )}
               </Field>
               <Field>
                 <FieldLabel htmlFor="industry">Branza</FieldLabel>
