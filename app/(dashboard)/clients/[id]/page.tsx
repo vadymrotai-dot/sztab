@@ -6,17 +6,20 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { PencilIcon, MailIcon, PhoneIcon, MapPinIcon, BuildingIcon } from 'lucide-react'
+import { PencilIcon, MailIcon, PhoneIcon, MapPinIcon, BuildingIcon, GlobeIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ClientContacts } from '@/components/clients/client-contacts'
 import { ClientDeals } from '@/components/clients/client-deals'
 import { ClientTasks } from '@/components/clients/client-tasks'
-import { AiAnalyzeButton } from '@/components/clients/ai-analyze-button'
+import { BusinessDataPanel } from '@/components/clients/business-data-panel'
+import { PotentialAnalysisPanel } from '@/components/clients/potential-analysis-panel'
 
 const segmentColors: Record<string, string> = {
-  maly: 'bg-slate-500',
-  sredni: 'bg-blue-500',
-  duzy: 'bg-green-500',
+  maly_opt: 'bg-slate-500',
+  sredni_opt: 'bg-blue-500',
+  duzy_opt: 'bg-green-500',
+  katalog: 'bg-purple-500',
+  docel: 'bg-indigo-600',
   niesklasyfikowany: 'bg-gray-400',
 }
 
@@ -71,18 +74,16 @@ export default async function ClientDetailPage({
           { label: client.title },
         ]}
         actions={
-          <div className="flex gap-2">
-            <AiAnalyzeButton clientId={id} />
-            <Button asChild>
-              <Link href={`/clients/${id}/edit`}>
-                <PencilIcon className="mr-2 size-4" />
-                Edytuj
-              </Link>
-            </Button>
-          </div>
+          <Button asChild>
+            <Link href={`/clients/${id}/edit`}>
+              <PencilIcon className="mr-2 size-4" />
+              Edytuj
+            </Link>
+          </Button>
         }
       />
       <div className="flex flex-1 flex-col gap-6 p-6">
+        {/* Row 1: podstawowe dane + podsumowanie */}
         <div className="grid gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-2">
             <CardHeader>
@@ -94,7 +95,7 @@ export default async function ClientDetailPage({
                   )}
                 </div>
                 <div className="flex gap-2">
-                  <Badge variant="secondary" className={cn('text-white', segmentColors[client.segment])}>
+                  <Badge variant="secondary" className={cn('text-white', segmentColors[client.segment] || segmentColors.niesklasyfikowany)}>
                     {client.segment}
                   </Badge>
                   <Badge variant="secondary" className={cn('text-white', statusColors[client.status])}>
@@ -135,6 +136,19 @@ export default async function ClientDetailPage({
                     </a>
                   </div>
                 )}
+                {client.website && (
+                  <div className="flex items-center gap-2 sm:col-span-2">
+                    <GlobeIcon className="size-4 text-muted-foreground" />
+                    <a
+                      href={client.website.startsWith('http') ? client.website : `https://${client.website}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm hover:underline"
+                    >
+                      {client.website}
+                    </a>
+                  </div>
+                )}
               </div>
               {client.notes && (
                 <div className="mt-6">
@@ -170,6 +184,17 @@ export default async function ClientDetailPage({
           </Card>
         </div>
 
+        {/* Row 2: AI panele - dane biznesowe + potencjal wspolpracy */}
+        <div className="grid gap-6 lg:grid-cols-2">
+          <BusinessDataPanel clientId={id} initial={client.business_data} />
+          <PotentialAnalysisPanel
+            clientId={id}
+            currentSegment={client.segment}
+            initial={client.potential_analysis}
+          />
+        </div>
+
+        {/* Row 3: zakladki */}
         <Tabs defaultValue="contacts">
           <TabsList>
             <TabsTrigger value="contacts">Kontakty ({contacts?.length || 0})</TabsTrigger>
