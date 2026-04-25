@@ -18,7 +18,7 @@ export default async function DealsPage() {
       <PageHeader
         title="Umowy"
         actions={
-          <Button asChild>
+          <Button size="lg" asChild>
             <Link href="/deals/new">
               <PlusIcon className="mr-2 size-4" />
               Nowa umowa
