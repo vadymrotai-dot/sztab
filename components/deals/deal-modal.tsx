@@ -4,8 +4,18 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { z } from 'zod'
 import { toast } from 'sonner'
-import { CheckIcon, ChevronsUpDownIcon } from 'lucide-react'
+import { CheckIcon, ChevronsUpDownIcon, TrashIcon } from 'lucide-react'
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import {
   Dialog,
   DialogContent,
@@ -344,6 +354,8 @@ export function DealModal({
   )
   const [errors, setErrors] = useState<Partial<Record<keyof DealFormValues, string>>>({})
   const [submitting, setSubmitting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
   const [totalOverridden, setTotalOverridden] = useState<boolean>(() => {
     const init = buildInitialValues(deal, mergedDefaults)
@@ -555,6 +567,30 @@ export function DealModal({
     router.refresh()
     onOpenChange(false)
     setSubmitting(false)
+  }
+
+  const handleDelete = async () => {
+    if (!deal) return
+    setDeleting(true)
+    setDeleteConfirmOpen(false)
+
+    const { error } = await supabase
+      .from('deals')
+      .delete()
+      .eq('id', deal.id)
+
+    if (error) {
+      toast.error(`Nie udało się usunąć: ${error.message}`)
+      setDeleting(false)
+      return
+    }
+
+    await revalidateDealRoutes()
+    toast.success('Umowa usunięta')
+    setDeleting(false)
+    onOpenChange(false)
+    // Leave the now-deleted deal's detail/edit page so we don't 404.
+    router.push('/deals')
   }
 
   const error = (key: keyof DealFormValues) =>
@@ -907,21 +943,61 @@ export function DealModal({
           </section>
 
           <DialogFooter>
+            {deal && (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => setDeleteConfirmOpen(true)}
+                disabled={submitting || deleting}
+                className="mr-auto"
+              >
+                <TrashIcon className="mr-2 size-4" />
+                Usuń umowę
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              disabled={submitting}
+              disabled={submitting || deleting}
             >
               Anuluj
             </Button>
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" disabled={submitting || deleting}>
               {submitting && <Spinner className="mr-2" />}
               {deal ? 'Zapisz zmiany' : 'Dodaj umowę'}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
+      {deal && (
+        <AlertDialog
+          open={deleteConfirmOpen}
+          onOpenChange={setDeleteConfirmOpen}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Usunąć umowę?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Czy na pewno chcesz usunąć tę umowę? Tej akcji nie można
+                cofnąć. Powiązane wpisy w deal_events również zostaną
+                usunięte.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Anuluj</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                disabled={deleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleting && <Spinner className="mr-2" />}
+                Usuń umowę
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </Dialog>
   )
 }
