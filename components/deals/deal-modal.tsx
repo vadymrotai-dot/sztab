@@ -131,6 +131,25 @@ const parseNumOrNull = (v: string): number | null => {
 const formatNum = (v: number | null | undefined): string =>
   v == null || !Number.isFinite(v) ? '' : String(v)
 
+// Reads ?stage=, ?client=, ?product= directly from the browser URL.
+// Bypasses useSearchParams (which has been unreliable for our case)
+// and reads window.location synchronously. SSR-safe via the typeof
+// window guard — on the server we return an empty object and rely
+// on server-passed defaults instead.
+const readUrlDefaults = (): DealModalDefaults => {
+  if (typeof window === 'undefined') return {}
+  const params = new URLSearchParams(window.location.search)
+  const stageRaw = params.get('stage')
+  const validStage = DEAL_STAGES.some((s) => s.value === stageRaw)
+    ? (stageRaw as DealStage)
+    : undefined
+  return {
+    stage: validStage,
+    client_id: params.get('client') ?? undefined,
+    product_id: params.get('product') ?? undefined,
+  }
+}
+
 const buildInitialValues = (
   deal: Deal | undefined,
   defaults: DealModalDefaults | undefined,
@@ -302,14 +321,27 @@ export function DealModal({
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
+  // Merge defaults from three sources, in priority order:
+  //   1. Existing deal (edit mode) — handled inside buildInitialValues
+  //   2. Server-passed defaults prop
+  //   3. URL params read directly from window.location (client only)
+  const mergedDefaults: DealModalDefaults = (() => {
+    const url = readUrlDefaults()
+    return {
+      client_id: defaults?.client_id ?? url.client_id,
+      product_id: defaults?.product_id ?? url.product_id,
+      stage: defaults?.stage ?? url.stage,
+    }
+  })()
+
   const [values, setValues] = useState<DealFormValues>(() =>
-    buildInitialValues(deal, defaults),
+    buildInitialValues(deal, mergedDefaults),
   )
   const [errors, setErrors] = useState<Partial<Record<keyof DealFormValues, string>>>({})
   const [submitting, setSubmitting] = useState(false)
 
   const [totalOverridden, setTotalOverridden] = useState<boolean>(() => {
-    const init = buildInitialValues(deal, defaults)
+    const init = buildInitialValues(deal, mergedDefaults)
     const autoTotal = (init.quantity ?? 0) * (init.unit_price_sell ?? 0)
     return Boolean(
       deal &&
@@ -537,6 +569,20 @@ export function DealModal({
               : 'Wypełnij dane sprzedaży. Etap możesz zmieniać później przeciągając kartę na tablicy.'}
           </DialogDescription>
         </DialogHeader>
+
+        {/* TEMP DEBUG — remove once issue 2 is confirmed fixed */}
+        <div className="rounded border border-red-300 bg-red-50 p-2 text-xs font-mono text-red-800">
+          DEBUG #2 |{' '}
+          defaults.stage={JSON.stringify(defaults?.stage)} |{' '}
+          url.stage=
+          {typeof window !== 'undefined'
+            ? JSON.stringify(
+                new URLSearchParams(window.location.search).get('stage'),
+              )
+            : '(SSR)'}{' '}
+          | merged.stage={JSON.stringify(mergedDefaults.stage)} |{' '}
+          values.stage={JSON.stringify(values.stage)}
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Klient + produkt */}
