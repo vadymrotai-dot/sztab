@@ -10,7 +10,7 @@ import {
   KeyboardSensor,
   MouseSensor,
   TouchSensor,
-  closestCorners,
+  pointerWithin,
   useDroppable,
   useSensor,
   useSensors,
@@ -448,7 +448,15 @@ export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
+      // pointerWithin uses the cursor's current position to pick the
+      // droppable, instead of measuring distances from the dragged
+      // item's corners. closestCorners (the previous setting) was
+      // resolving over.id to a sibling card in the source column —
+      // because the dragged card itself, mid-drag, was still partly
+      // overlapping the source — and that fired our "same-stage drop"
+      // early return before the move could persist. pointerWithin
+      // means: drop where you're aiming, not where the card body is.
+      collisionDetection={pointerWithin}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
