@@ -304,13 +304,6 @@ function KanbanColumn({
 export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
   const [deals, setDeals] = useState<DealRow[]>(initialDeals)
   const [activeId, setActiveId] = useState<string | null>(null)
-  // TEMP DEBUG counters — remove once drag is confirmed working
-  const [dragStartCount, setDragStartCount] = useState(0)
-  const [dragEndCount, setDragEndCount] = useState(0)
-  const [lastOverId, setLastOverId] = useState<string | null>(null)
-  const [lastEarlyReturn, setLastEarlyReturn] = useState<string | null>(null)
-  const [updateCalls, setUpdateCalls] = useState(0)
-  const [lastError, setLastError] = useState<string | null>(null)
   const router = useRouter()
   const supabase = createClient()
 
@@ -332,29 +325,19 @@ export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
   )
 
   const handleDragStart = (event: DragStartEvent) => {
-    setDragStartCount((c) => c + 1)
     setActiveId(event.active.id as string)
   }
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
-    setDragEndCount((c) => c + 1)
     setActiveId(null)
-    setLastOverId(over ? String(over.id) : '(null)')
-
-    if (!over) {
-      setLastEarlyReturn('over is null (drop outside droppable)')
-      return
-    }
+    if (!over) return
 
     const activeIdStr = active.id as string
     const overIdStr = over.id as string
 
     const deal = deals.find((d) => d.id === activeIdStr)
-    if (!deal) {
-      setLastEarlyReturn(`deal not found for active.id=${activeIdStr}`)
-      return
-    }
+    if (!deal) return
 
     let newStage: DealStage
     const stageMatch = DEAL_STAGES.find((s) => s.value === overIdStr)
@@ -362,29 +345,17 @@ export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
       newStage = stageMatch.value
     } else {
       const targetDeal = deals.find((d) => d.id === overIdStr)
-      if (!targetDeal) {
-        setLastEarlyReturn(
-          `over.id=${overIdStr} is neither a stage nor a known deal id`,
-        )
-        return
-      }
+      if (!targetDeal) return
       newStage = targetDeal.stage
     }
 
-    if (deal.stage === newStage) {
-      setLastEarlyReturn(
-        `same-stage drop (${deal.stage} → ${newStage}); no update`,
-      )
-      return
-    }
+    if (deal.stage === newStage) return
 
-    setLastEarlyReturn(null)
     await updateDealStage(deal, newStage)
   }
 
   const updateDealStage = async (deal: DealRow, newStage: DealStage) => {
     const fromStage = deal.stage
-    setUpdateCalls((c) => c + 1)
 
     setDeals((prev) =>
       prev.map((d) => (d.id === deal.id ? { ...d, stage: newStage } : d))
@@ -394,7 +365,6 @@ export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) {
-      setLastError('auth: no user (session expired)')
       toast.error('Sesja wygasła. Zaloguj się ponownie.')
       setDeals((prev) =>
         prev.map((d) => (d.id === deal.id ? { ...d, stage: fromStage } : d))
@@ -408,7 +378,6 @@ export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
       .eq('id', deal.id)
 
     if (updateError) {
-      setLastError(`supabase update: ${updateError.message}`)
       toast.error(`Nie udało się zmienić etapu: ${updateError.message}`)
       setDeals((prev) =>
         prev.map((d) => (d.id === deal.id ? { ...d, stage: fromStage } : d))
@@ -416,7 +385,6 @@ export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
       return
     }
 
-    setLastError(null)
 
     const { error: eventError } = await supabase.from('deal_events').insert({
       deal_id: deal.id,
@@ -450,28 +418,22 @@ export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
       sensors={sensors}
       // pointerWithin uses the cursor's current position to pick the
       // droppable, instead of measuring distances from the dragged
-      // item's corners. closestCorners (the previous setting) was
-      // resolving over.id to a sibling card in the source column —
-      // because the dragged card itself, mid-drag, was still partly
-      // overlapping the source — and that fired our "same-stage drop"
-      // early return before the move could persist. pointerWithin
-      // means: drop where you're aiming, not where the card body is.
+      // item's corners. closestCorners was resolving over.id to a
+      // sibling card in the source column (the dragged card body was
+      // still partly overlapping its origin), firing the same-stage
+      // guard before the move could persist.
       collisionDetection={pointerWithin}
+      // dnd-kit's autoScroll picks the closest scrollable ancestor and
+      // pans it when the cursor approaches an edge. In our layout that
+      // ancestor is sometimes the dashboard's <main> rather than the
+      // kanban container, which leaves the whole page scrolled
+      // sideways after a drop and pushes columns under the sidebar.
+      // Disable it — with 7 fixed-width columns the user can scroll
+      // horizontally manually before initiating a drag.
+      autoScroll={false}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      {/* TEMP DEBUG — remove once drag is confirmed working */}
-      <div className="mx-6 mt-4 space-y-1 rounded border border-red-300 bg-red-50 p-2 text-xs font-mono text-red-800">
-        <div>
-          DEBUG drag | dragStart={dragStartCount} | dragEnd={dragEndCount}{' '}
-          | activeId={JSON.stringify(activeId)}
-        </div>
-        <div>
-          lastOverId={JSON.stringify(lastOverId)} | updateCalls={updateCalls}
-        </div>
-        <div>earlyReturn={JSON.stringify(lastEarlyReturn)}</div>
-        <div>lastError={JSON.stringify(lastError)}</div>
-      </div>
       <div className="flex-1 overflow-x-auto p-6">
         <div className="flex gap-4">
           {DEAL_STAGES.map((stage) => (

@@ -570,20 +570,6 @@ export function DealModal({
           </DialogDescription>
         </DialogHeader>
 
-        {/* TEMP DEBUG — remove once issue 2 is confirmed fixed */}
-        <div className="rounded border border-red-300 bg-red-50 p-2 text-xs font-mono text-red-800">
-          DEBUG #2 |{' '}
-          defaults.stage={JSON.stringify(defaults?.stage)} |{' '}
-          url.stage=
-          {typeof window !== 'undefined'
-            ? JSON.stringify(
-                new URLSearchParams(window.location.search).get('stage'),
-              )
-            : '(SSR)'}{' '}
-          | merged.stage={JSON.stringify(mergedDefaults.stage)} |{' '}
-          values.stage={JSON.stringify(values.stage)}
-        </div>
-
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Klient + produkt */}
           <section className="space-y-4">
