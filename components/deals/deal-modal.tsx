@@ -302,24 +302,21 @@ export function DealModal({
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
-  const initial = useMemo(
-    () => buildInitialValues(deal, defaults),
-    [deal, defaults],
+  const [values, setValues] = useState<DealFormValues>(() =>
+    buildInitialValues(deal, defaults),
   )
-
-  const [values, setValues] = useState<DealFormValues>(initial)
   const [errors, setErrors] = useState<Partial<Record<keyof DealFormValues, string>>>({})
   const [submitting, setSubmitting] = useState(false)
 
-  const initialAutoTotal =
-    (initial.quantity ?? 0) * (initial.unit_price_sell ?? 0)
-  const [totalOverridden, setTotalOverridden] = useState<boolean>(
-    Boolean(
+  const [totalOverridden, setTotalOverridden] = useState<boolean>(() => {
+    const init = buildInitialValues(deal, defaults)
+    const autoTotal = (init.quantity ?? 0) * (init.unit_price_sell ?? 0)
+    return Boolean(
       deal &&
-        initial.total_value != null &&
-        Math.abs(initialAutoTotal - initial.total_value) > 0.005,
-    ),
-  )
+        init.total_value != null &&
+        Math.abs(autoTotal - init.total_value) > 0.005,
+    )
+  })
 
   const clientOptions: ComboOption[] = useMemo(
     () => clients.map((c) => ({ id: c.id, label: c.title })),
