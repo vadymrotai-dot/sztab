@@ -307,6 +307,10 @@ export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
   // TEMP DEBUG counters — remove once drag is confirmed working
   const [dragStartCount, setDragStartCount] = useState(0)
   const [dragEndCount, setDragEndCount] = useState(0)
+  const [lastOverId, setLastOverId] = useState<string | null>(null)
+  const [lastEarlyReturn, setLastEarlyReturn] = useState<string | null>(null)
+  const [updateCalls, setUpdateCalls] = useState(0)
+  const [lastError, setLastError] = useState<string | null>(null)
   const router = useRouter()
   const supabase = createClient()
 
@@ -336,13 +340,21 @@ export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
     const { active, over } = event
     setDragEndCount((c) => c + 1)
     setActiveId(null)
-    if (!over) return
+    setLastOverId(over ? String(over.id) : '(null)')
+
+    if (!over) {
+      setLastEarlyReturn('over is null (drop outside droppable)')
+      return
+    }
 
     const activeIdStr = active.id as string
     const overIdStr = over.id as string
 
     const deal = deals.find((d) => d.id === activeIdStr)
-    if (!deal) return
+    if (!deal) {
+      setLastEarlyReturn(`deal not found for active.id=${activeIdStr}`)
+      return
+    }
 
     let newStage: DealStage
     const stageMatch = DEAL_STAGES.find((s) => s.value === overIdStr)
@@ -350,17 +362,29 @@ export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
       newStage = stageMatch.value
     } else {
       const targetDeal = deals.find((d) => d.id === overIdStr)
-      if (!targetDeal) return
+      if (!targetDeal) {
+        setLastEarlyReturn(
+          `over.id=${overIdStr} is neither a stage nor a known deal id`,
+        )
+        return
+      }
       newStage = targetDeal.stage
     }
 
-    if (deal.stage === newStage) return
+    if (deal.stage === newStage) {
+      setLastEarlyReturn(
+        `same-stage drop (${deal.stage} → ${newStage}); no update`,
+      )
+      return
+    }
 
+    setLastEarlyReturn(null)
     await updateDealStage(deal, newStage)
   }
 
   const updateDealStage = async (deal: DealRow, newStage: DealStage) => {
     const fromStage = deal.stage
+    setUpdateCalls((c) => c + 1)
 
     setDeals((prev) =>
       prev.map((d) => (d.id === deal.id ? { ...d, stage: newStage } : d))
@@ -370,6 +394,7 @@ export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) {
+      setLastError('auth: no user (session expired)')
       toast.error('Sesja wygasła. Zaloguj się ponownie.')
       setDeals((prev) =>
         prev.map((d) => (d.id === deal.id ? { ...d, stage: fromStage } : d))
@@ -383,12 +408,15 @@ export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
       .eq('id', deal.id)
 
     if (updateError) {
+      setLastError(`supabase update: ${updateError.message}`)
       toast.error(`Nie udało się zmienić etapu: ${updateError.message}`)
       setDeals((prev) =>
         prev.map((d) => (d.id === deal.id ? { ...d, stage: fromStage } : d))
       )
       return
     }
+
+    setLastError(null)
 
     const { error: eventError } = await supabase.from('deal_events').insert({
       deal_id: deal.id,
@@ -425,9 +453,16 @@ export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
       onDragEnd={handleDragEnd}
     >
       {/* TEMP DEBUG — remove once drag is confirmed working */}
-      <div className="mx-6 mt-4 rounded border border-red-300 bg-red-50 p-2 text-xs font-mono text-red-800">
-        DEBUG drag | dragStart fires={dragStartCount} | dragEnd
-        fires={dragEndCount} | activeId={JSON.stringify(activeId)}
+      <div className="mx-6 mt-4 space-y-1 rounded border border-red-300 bg-red-50 p-2 text-xs font-mono text-red-800">
+        <div>
+          DEBUG drag | dragStart={dragStartCount} | dragEnd={dragEndCount}{' '}
+          | activeId={JSON.stringify(activeId)}
+        </div>
+        <div>
+          lastOverId={JSON.stringify(lastOverId)} | updateCalls={updateCalls}
+        </div>
+        <div>earlyReturn={JSON.stringify(lastEarlyReturn)}</div>
+        <div>lastError={JSON.stringify(lastError)}</div>
       </div>
       <div className="flex-1 overflow-x-auto p-6">
         <div className="flex gap-4">
