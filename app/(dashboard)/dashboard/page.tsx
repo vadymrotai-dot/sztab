@@ -1,81 +1,103 @@
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/page-header'
 import { DashboardContent } from '@/components/dashboard/dashboard-content'
+import { CLOSED_DEAL_STAGES } from '@/lib/types'
+
+const closedFilter = `("${CLOSED_DEAL_STAGES.join('","')}")`
+
+const dealSelect =
+  '*, client:clients(id, title), product:products(id, name)'
+
+const isoDate = (d: Date) => d.toISOString().slice(0, 10)
 
 export default async function DashboardPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
   if (!user) return null
 
-  // Fetch today's tasks
-  const today = new Date().toISOString().split('T')[0]
-  const { data: todayTasks } = await supabase
-    .from('tasks')
-    .select('*, client:clients(id, title)')
-    .eq('due', today)
-    .eq('done', false)
-    .order('priority', { ascending: false })
+  const now = new Date()
+  const today = isoDate(now)
+  const sevenDaysFromNow = isoDate(new Date(Date.now() + 7 * 86_400_000))
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 86_400_000).toISOString()
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000).toISOString()
+  const startOfMonth = isoDate(new Date(now.getFullYear(), now.getMonth(), 1))
 
-  // Fetch overdue tasks
-  const { data: overdueTasks } = await supabase
-    .from('tasks')
-    .select('*, client:clients(id, title)')
-    .lt('due', today)
-    .eq('done', false)
-    .order('due', { ascending: true })
-
-  // Fetch recent deals
-  const { data: recentDeals } = await supabase
-    .from('deals')
-    .select('*, client:clients(id, title)')
-    .not('stage', 'in', '("wygrana","przegrana")')
-    .order('updated_at', { ascending: false })
-    .limit(5)
-
-  // Fetch habits with today's log
-  const { data: habits } = await supabase
-    .from('habits')
-    .select('*')
-    .order('created_at', { ascending: true })
-
-  // Fetch stats
-  const { count: totalClients } = await supabase
-    .from('clients')
-    .select('*', { count: 'exact', head: true })
-
-  const { count: activeDeals } = await supabase
-    .from('deals')
-    .select('*', { count: 'exact', head: true })
-    .not('stage', 'in', '("wygrana","przegrana")')
-
-  const { data: wonDealsData } = await supabase
-    .from('deals')
-    .select('amount')
-    .eq('stage', 'wygrana')
-
-  const wonDealsValue = wonDealsData?.reduce((sum, d) => sum + (d.amount || 0), 0) || 0
-
-  const { count: completedTasksThisMonth } = await supabase
-    .from('tasks')
-    .select('*', { count: 'exact', head: true })
-    .eq('done', true)
-    .gte('completed_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0])
+  const [
+    callToday,
+    openDeals,
+    wonThisMonth,
+    lostThisMonth,
+    noNextAction,
+    stale,
+    stuckNegotiation,
+    closingSoon,
+  ] = await Promise.all([
+    supabase
+      .from('deals')
+      .select(dealSelect)
+      .lte('next_action_date', today)
+      .not('next_action_date', 'is', null)
+      .not('stage', 'in', closedFilter)
+      .order('next_action_date', { ascending: true }),
+    supabase
+      .from('deals')
+      .select('id, total_value, amount, margin_amount')
+      .not('stage', 'in', closedFilter),
+    supabase
+      .from('deals')
+      .select('id, total_value, amount, margin_amount')
+      .eq('stage', 'wygrana')
+      .gte('updated_at', startOfMonth),
+    supabase
+      .from('deals')
+      .select('id, total_value, amount')
+      .eq('stage', 'przegrana')
+      .gte('updated_at', startOfMonth),
+    supabase
+      .from('deals')
+      .select(dealSelect)
+      .is('next_action_date', null)
+      .not('stage', 'in', closedFilter)
+      .order('updated_at', { ascending: false })
+      .limit(20),
+    supabase
+      .from('deals')
+      .select(dealSelect)
+      .lt('updated_at', fourteenDaysAgo)
+      .not('next_action_date', 'is', null)
+      .not('stage', 'in', closedFilter)
+      .order('updated_at', { ascending: true })
+      .limit(20),
+    supabase
+      .from('deals')
+      .select(dealSelect)
+      .eq('stage', 'negocjacje')
+      .lt('updated_at', thirtyDaysAgo)
+      .order('updated_at', { ascending: true }),
+    supabase
+      .from('deals')
+      .select(dealSelect)
+      .gte('expected_close_date', today)
+      .lte('expected_close_date', sevenDaysFromNow)
+      .not('stage', 'in', closedFilter)
+      .order('expected_close_date', { ascending: true }),
+  ])
 
   return (
     <div className="flex flex-col">
       <PageHeader title="Dzis" />
       <DashboardContent
-        todayTasks={todayTasks || []}
-        overdueTasks={overdueTasks || []}
-        recentDeals={recentDeals || []}
-        habits={habits || []}
-        stats={{
-          totalClients: totalClients || 0,
-          activeDeals: activeDeals || 0,
-          wonDealsValue,
-          completedTasksThisMonth: completedTasksThisMonth || 0,
-        }}
+        today={today}
+        callToday={callToday.data || []}
+        openDeals={openDeals.data || []}
+        wonThisMonth={wonThisMonth.data || []}
+        lostThisMonth={lostThisMonth.data || []}
+        noNextAction={noNextAction.data || []}
+        stale={stale.data || []}
+        stuckNegotiation={stuckNegotiation.data || []}
+        closingSoon={closingSoon.data || []}
       />
     </div>
   )
