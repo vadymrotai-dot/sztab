@@ -25,41 +25,26 @@ export function ProductForm({ product, params }: ProductFormProps) {
   const overhead = params?.overhead || 1.15
 
   const [formData, setFormData] = useState({
-    lp: product?.lp?.toString() || '',
-    category: product?.category || '',
-    name: product?.name || '',
-    weight: product?.weight || '',
-    ean: product?.ean || '',
-    koszt_eur: product?.koszt_eur?.toString() || '0',
-    koszt_pln: product?.koszt_pln?.toString() || '0',
-    price_maly: product?.price_maly?.toString() || '0',
-    price_sredni: product?.price_sredni?.toString() || '0',
-    price_duzy: product?.price_duzy?.toString() || '0',
-    price_katalog: product?.price_katalog?.toString() || '0',
-    price_docel: product?.price_docel?.toString() || '0',
-    zysk_maly: product?.zysk_maly?.toString() || '0',
-    zysk_duzy: product?.zysk_duzy?.toString() || '0',
+    lp: product?.lp?.toString() ?? '',
+    category: product?.category ?? '',
+    name: product?.name ?? '',
+    gramatura: product?.gramatura ?? '',
+    ean: product?.ean ?? '',
+    cost_eur: product?.cost_eur?.toString() ?? '0',
+    cost_pln: product?.cost_pln?.toString() ?? '0',
+    price_maly_opt: product?.price_maly_opt?.toString() ?? '0',
+    price_sredni: product?.price_sredni?.toString() ?? '0',
+    price_duzy: product?.price_duzy?.toString() ?? '0',
+    price_duzi_gracze: product?.price_duzi_gracze?.toString() ?? '0',
+    price_min: product?.price_min?.toString() ?? '0',
   })
 
-  // Recalculate koszt_pln when koszt_eur changes
+  // Recalculate cost_pln when cost_eur changes
   useEffect(() => {
-    const kosztEur = parseFloat(formData.koszt_eur) || 0
-    const kosztPln = kosztEur * kursEur * overhead
-    setFormData((prev) => ({ ...prev, koszt_pln: kosztPln.toFixed(2) }))
-  }, [formData.koszt_eur, kursEur, overhead])
-
-  // Recalculate profits when prices change
-  useEffect(() => {
-    const kosztPln = parseFloat(formData.koszt_pln) || 0
-    const priceMaly = parseFloat(formData.price_maly) || 0
-    const priceDuzy = parseFloat(formData.price_duzy) || 0
-
-    setFormData((prev) => ({
-      ...prev,
-      zysk_maly: (priceMaly - kosztPln).toFixed(2),
-      zysk_duzy: (priceDuzy - kosztPln).toFixed(2),
-    }))
-  }, [formData.koszt_pln, formData.price_maly, formData.price_duzy])
+    const eur = parseFloat(formData.cost_eur) || 0
+    const pln = eur * kursEur * overhead
+    setFormData((prev) => ({ ...prev, cost_pln: pln.toFixed(2) }))
+  }, [formData.cost_eur, kursEur, overhead])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -77,17 +62,15 @@ export function ProductForm({ product, params }: ProductFormProps) {
       lp: formData.lp ? parseInt(formData.lp) : null,
       category: formData.category || null,
       name: formData.name,
-      weight: formData.weight || null,
+      gramatura: formData.gramatura || null,
       ean: formData.ean || null,
-      koszt_eur: parseFloat(formData.koszt_eur) || 0,
-      koszt_pln: parseFloat(formData.koszt_pln) || 0,
-      price_maly: parseFloat(formData.price_maly) || 0,
+      cost_eur: parseFloat(formData.cost_eur) || 0,
+      cost_pln: parseFloat(formData.cost_pln) || 0,
+      price_maly_opt: parseFloat(formData.price_maly_opt) || 0,
       price_sredni: parseFloat(formData.price_sredni) || 0,
       price_duzy: parseFloat(formData.price_duzy) || 0,
-      price_katalog: parseFloat(formData.price_katalog) || 0,
-      price_docel: parseFloat(formData.price_docel) || 0,
-      zysk_maly: parseFloat(formData.zysk_maly) || 0,
-      zysk_duzy: parseFloat(formData.zysk_duzy) || 0,
+      price_duzi_gracze: parseFloat(formData.price_duzi_gracze) || 0,
+      price_min: parseFloat(formData.price_min) || 0,
     }
 
     if (product) {
@@ -156,11 +139,12 @@ export function ProductForm({ product, params }: ProductFormProps) {
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="weight">Waga</FieldLabel>
+                <FieldLabel htmlFor="gramatura">Gramatura</FieldLabel>
                 <Input
-                  id="weight"
-                  value={formData.weight}
-                  onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                  id="gramatura"
+                  placeholder="np. 3000 g / 900 g / 5000g~3000g"
+                  value={formData.gramatura}
+                  onChange={(e) => setFormData({ ...formData, gramatura: e.target.value })}
                 />
               </Field>
               <Field>
@@ -177,22 +161,22 @@ export function ProductForm({ product, params }: ProductFormProps) {
               <h4 className="text-sm font-medium mb-4">Koszty</h4>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field>
-                  <FieldLabel htmlFor="koszt_eur">Koszt EUR</FieldLabel>
+                  <FieldLabel htmlFor="cost_eur">Koszt EUR</FieldLabel>
                   <Input
-                    id="koszt_eur"
+                    id="cost_eur"
                     type="number"
                     step="0.01"
-                    value={formData.koszt_eur}
-                    onChange={(e) => setFormData({ ...formData, koszt_eur: e.target.value })}
+                    value={formData.cost_eur}
+                    onChange={(e) => setFormData({ ...formData, cost_eur: e.target.value })}
                   />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="koszt_pln">Koszt PLN (obliczony)</FieldLabel>
+                  <FieldLabel htmlFor="cost_pln">Koszt PLN (obliczony)</FieldLabel>
                   <Input
-                    id="koszt_pln"
+                    id="cost_pln"
                     type="number"
                     step="0.01"
-                    value={formData.koszt_pln}
+                    value={formData.cost_pln}
                     readOnly
                     className="bg-muted"
                   />
@@ -204,13 +188,13 @@ export function ProductForm({ product, params }: ProductFormProps) {
               <h4 className="text-sm font-medium mb-4">Ceny sprzedazy</h4>
               <div className="grid gap-4 sm:grid-cols-3">
                 <Field>
-                  <FieldLabel htmlFor="price_maly">Cena Maly</FieldLabel>
+                  <FieldLabel htmlFor="price_maly_opt">Cena Mały opt</FieldLabel>
                   <Input
-                    id="price_maly"
+                    id="price_maly_opt"
                     type="number"
                     step="0.01"
-                    value={formData.price_maly}
-                    onChange={(e) => setFormData({ ...formData, price_maly: e.target.value })}
+                    value={formData.price_maly_opt}
+                    onChange={(e) => setFormData({ ...formData, price_maly_opt: e.target.value })}
                   />
                 </Field>
                 <Field>
@@ -236,55 +220,28 @@ export function ProductForm({ product, params }: ProductFormProps) {
               </div>
               <div className="grid gap-4 sm:grid-cols-2 mt-4">
                 <Field>
-                  <FieldLabel htmlFor="price_katalog">Cena Katalogowa</FieldLabel>
+                  <FieldLabel htmlFor="price_duzi_gracze">Cena Duzi gracze (katalog)</FieldLabel>
                   <Input
-                    id="price_katalog"
+                    id="price_duzi_gracze"
                     type="number"
                     step="0.01"
-                    value={formData.price_katalog}
-                    onChange={(e) => setFormData({ ...formData, price_katalog: e.target.value })}
+                    value={formData.price_duzi_gracze}
+                    onChange={(e) => setFormData({ ...formData, price_duzi_gracze: e.target.value })}
                   />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="price_docel">Cena Docelowa</FieldLabel>
+                  <FieldLabel htmlFor="price_min">Cena minimalna (Docel)</FieldLabel>
                   <Input
-                    id="price_docel"
+                    id="price_min"
                     type="number"
                     step="0.01"
-                    value={formData.price_docel}
-                    onChange={(e) => setFormData({ ...formData, price_docel: e.target.value })}
+                    value={formData.price_min}
+                    onChange={(e) => setFormData({ ...formData, price_min: e.target.value })}
                   />
                 </Field>
               </div>
             </div>
 
-            <div className="border-t pt-4 mt-2">
-              <h4 className="text-sm font-medium mb-4">Zyski (obliczone)</h4>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field>
-                  <FieldLabel htmlFor="zysk_maly">Zysk Maly</FieldLabel>
-                  <Input
-                    id="zysk_maly"
-                    type="number"
-                    step="0.01"
-                    value={formData.zysk_maly}
-                    readOnly
-                    className="bg-muted"
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="zysk_duzy">Zysk Duzy</FieldLabel>
-                  <Input
-                    id="zysk_duzy"
-                    type="number"
-                    step="0.01"
-                    value={formData.zysk_duzy}
-                    readOnly
-                    className="bg-muted"
-                  />
-                </Field>
-              </div>
-            </div>
           </FieldGroup>
           {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
           <div className="mt-6 flex gap-3">

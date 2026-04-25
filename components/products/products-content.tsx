@@ -111,9 +111,9 @@ export function ProductsContent({ products: initialProducts, params }: ProductsC
                   </TableCell>
                   <TableCell>{product.category || '-'}</TableCell>
                   <TableCell className="font-mono text-sm">{product.ean || '-'}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(product.koszt_eur)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(product.koszt_pln)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(product.price_maly)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(product.cost_eur ?? 0)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(product.cost_pln ?? 0)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(product.price_maly_opt ?? 0)}</TableCell>
                   <TableCell className="text-right">{formatCurrency(product.price_sredni)}</TableCell>
                   <TableCell className="text-right">{formatCurrency(product.price_duzy)}</TableCell>
                   <TableCell>

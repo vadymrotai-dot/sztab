@@ -53,7 +53,7 @@ export function KPGeneratorContent({ clients, products }: KPGeneratorContentProp
     if (!product) return
 
     const qty = parseFloat(quantity) || 1
-    const unitPrice = product.price_katalog || 0
+    const unitPrice = product.price_duzi_gracze ?? product.price_maly_opt ?? 0
 
     setLineItems([
       ...lineItems,
@@ -204,7 +204,7 @@ export function KPGeneratorContent({ clients, products }: KPGeneratorContentProp
                   <SelectContent>
                     {products.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
-                        {p.name} - {formatCurrency(p.price_katalog)}
+                        {p.name} - {formatCurrency(p.price_duzi_gracze ?? p.price_maly_opt ?? 0)}
                       </SelectItem>
                     ))}
                   </SelectContent>

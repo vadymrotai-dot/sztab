@@ -113,25 +113,26 @@ export interface DealEvent {
 
 export interface Product {
   id: string
-  lp?: number
-  category?: string
+  lp: number | null
   name: string
-  weight?: string
   ean?: string
-  koszt_eur: number
-  koszt_pln: number
-  price_maly: number
+  category: string | null
+  gramatura: string | null
+  unit: string | null
+  cost_eur: number | null
+  cost_pln: number | null
+  price_maly_opt: number | null
   price_sredni: number
   price_duzy: number
-  price_katalog: number
-  price_docel: number
-  zysk_maly: number
-  zysk_duzy: number
-  supplier_id?: string
-  push_tier?: string
-  vertical?: string
-  is_hero?: boolean
-  seasonality_status?: string
+  price_duzi_gracze: number | null
+  price_min: number | null
+  vat_rate: number
+  push_tier: 1 | 2 | 3 | null
+  vertical: string | null
+  is_hero: boolean | null
+  seasonality_status: string | null
+  shelf_life_days: number | null
+  supplier_id: string | null
   created_at: string
   owner_id: string
 }
