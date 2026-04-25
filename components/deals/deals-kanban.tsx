@@ -7,9 +7,10 @@ import { toast } from 'sonner'
 import {
   DndContext,
   DragOverlay,
-  closestCorners,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
+  closestCorners,
   useDroppable,
   useSensor,
   useSensors,
@@ -303,24 +304,37 @@ function KanbanColumn({
 export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
   const [deals, setDeals] = useState<DealRow[]>(initialDeals)
   const [activeId, setActiveId] = useState<string | null>(null)
+  // TEMP DEBUG counters — remove once drag is confirmed working
+  const [dragStartCount, setDragStartCount] = useState(0)
+  const [dragEndCount, setDragEndCount] = useState(0)
   const router = useRouter()
   const supabase = createClient()
 
+  // Switch from PointerSensor (which has had React 19 compat issues in
+  // some @dnd-kit/core releases) to the classic MouseSensor + TouchSensor
+  // pair from the official kanban example. distance: 5 matches dnd-kit's
+  // recommended starting threshold so a small mouse jitter doesn't fire
+  // a click instead of a drag.
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 5 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   )
 
   const handleDragStart = (event: DragStartEvent) => {
+    setDragStartCount((c) => c + 1)
     setActiveId(event.active.id as string)
   }
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
+    setDragEndCount((c) => c + 1)
     setActiveId(null)
     if (!over) return
 
@@ -410,6 +424,11 @@ export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
+      {/* TEMP DEBUG — remove once drag is confirmed working */}
+      <div className="mx-6 mt-4 rounded border border-red-300 bg-red-50 p-2 text-xs font-mono text-red-800">
+        DEBUG drag | dragStart fires={dragStartCount} | dragEnd
+        fires={dragEndCount} | activeId={JSON.stringify(activeId)}
+      </div>
       <div className="flex-1 overflow-x-auto p-6">
         <div className="flex gap-4">
           {DEAL_STAGES.map((stage) => (
