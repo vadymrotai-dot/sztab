@@ -13,6 +13,7 @@ import { ClientDeals } from '@/components/clients/client-deals'
 import { ClientTasks } from '@/components/clients/client-tasks'
 import { BusinessDataPanel } from '@/components/clients/business-data-panel'
 import { PotentialAnalysisPanel } from '@/components/clients/potential-analysis-panel'
+import { NewDealButton } from '@/components/clients/new-deal-button'
 
 const segmentColors: Record<string, string> = {
   maly_opt: 'bg-slate-500',
@@ -37,33 +38,44 @@ export default async function ClientDetailPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const { data: client } = await supabase
-    .from('clients')
-    .select('*')
-    .eq('id', id)
-    .single()
+  const [
+    { data: client },
+    { data: contacts },
+    { data: deals },
+    { data: tasks },
+    { data: clients },
+    { data: products },
+    { data: people },
+    { data: suppliers },
+  ] = await Promise.all([
+    supabase.from('clients').select('*').eq('id', id).single(),
+    supabase
+      .from('contacts')
+      .select('*')
+      .eq('client_id', id)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('deals')
+      .select('*')
+      .eq('client_id', id)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('tasks')
+      .select('*')
+      .eq('client_id', id)
+      .order('due', { ascending: true }),
+    supabase.from('clients').select('id, title').order('title', { ascending: true }),
+    supabase.from('products').select('id, name').order('name', { ascending: true }),
+    supabase
+      .from('people')
+      .select('id, name, client_id')
+      .order('name', { ascending: true }),
+    supabase.from('suppliers').select('id, name').order('name', { ascending: true }),
+  ])
 
   if (!client) {
     notFound()
   }
-
-  const { data: contacts } = await supabase
-    .from('contacts')
-    .select('*')
-    .eq('client_id', id)
-    .order('created_at', { ascending: false })
-
-  const { data: deals } = await supabase
-    .from('deals')
-    .select('*')
-    .eq('client_id', id)
-    .order('created_at', { ascending: false })
-
-  const { data: tasks } = await supabase
-    .from('tasks')
-    .select('*')
-    .eq('client_id', id)
-    .order('due', { ascending: true })
 
   return (
     <div className="flex flex-col">
@@ -74,12 +86,21 @@ export default async function ClientDetailPage({
           { label: client.title },
         ]}
         actions={
-          <Button asChild>
-            <Link href={`/clients/${id}/edit`}>
-              <PencilIcon className="mr-2 size-4" />
-              Edytuj
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" asChild>
+              <Link href={`/clients/${id}/edit`}>
+                <PencilIcon className="mr-2 size-4" />
+                Edytuj
+              </Link>
+            </Button>
+            <NewDealButton
+              clientId={id}
+              clients={clients || []}
+              products={products || []}
+              people={people || []}
+              suppliers={suppliers || []}
+            />
+          </div>
         }
       />
       <div className="flex flex-1 flex-col gap-6 p-6">
