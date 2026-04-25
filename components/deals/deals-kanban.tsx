@@ -130,14 +130,12 @@ function DealCard({
     <Card
       ref={setNodeRef}
       style={style}
-      className="cursor-grab active:cursor-grabbing"
+      className="cursor-grab active:cursor-grabbing touch-none"
+      {...attributes}
+      {...listeners}
     >
       <CardContent className="p-3 space-y-2">
-        <div
-          className="flex items-start justify-between gap-2"
-          {...attributes}
-          {...listeners}
-        >
+        <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <p className="font-medium text-sm line-clamp-1">
               {productName || deal.title || 'Bez nazwy'}
