@@ -8,11 +8,8 @@ import {
   AlertCircleIcon,
   CalendarCheckIcon,
   CalendarIcon,
-  CheckCircleIcon,
   ClockIcon,
   FlameIcon,
-  ListChecksIcon,
-  PhoneIcon,
   TargetIcon,
   TrendingDownIcon,
   TrendingUpIcon,
@@ -26,27 +23,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Spinner } from '@/components/ui/spinner'
 
 import { createClient } from '@/lib/supabase/client'
 import type { Deal, DealStage, Habit, Task, TaskPriority } from '@/lib/types'
@@ -85,23 +62,30 @@ interface DashboardContentProps {
   habits: Habit[]
 }
 
-const priorityRank: Record<TaskPriority, number> = {
-  high: 3,
-  normal: 2,
-  low: 1,
+// Combined to-do queue. Deals carry priority=3 (treated as "high")
+// because every active deal has a known client and is warmer than a
+// generic task; tasks carry their own priority rank.
+type TodoDealItem = {
+  kind: 'deal'
+  key: string
+  deal: DealRow
+  date: string
+  urgency: -1 | 0 | 1
+  priority: number
+  typeRank: 0
 }
 
-const priorityBadgeClass: Record<TaskPriority, string> = {
-  high: 'bg-red-100 text-red-800 border-transparent',
-  normal: 'bg-slate-100 text-slate-700 border-transparent',
-  low: 'bg-slate-50 text-slate-500 border-transparent',
+type TodoTaskItem = {
+  kind: 'task'
+  key: string
+  task: TaskRow
+  date: string | null
+  urgency: -1 | 0 | 1
+  priority: number
+  typeRank: 1
 }
 
-const priorityLabel: Record<TaskPriority, string> = {
-  high: 'Wysoki',
-  normal: 'Normalny',
-  low: 'Niski',
-}
+type TodoItem = TodoDealItem | TodoTaskItem
 
 const stageBadgeColors: Record<DealStage, string> = {
   lead: 'bg-slate-100 text-slate-800',
@@ -157,10 +141,63 @@ const formatShortDate = (iso: string) =>
 const dealHeading = (deal: DealRow) =>
   deal.product?.name || deal.title || 'Bez nazwy'
 
+const priorityRank: Record<TaskPriority, number> = {
+  high: 3,
+  normal: 2,
+  low: 1,
+}
+
+const priorityBadgeClass: Record<TaskPriority, string> = {
+  high: 'bg-red-50 text-red-700 border-transparent',
+  normal: 'bg-yellow-50 text-yellow-700 border-transparent',
+  low: 'bg-gray-50 text-gray-600 border-transparent',
+}
+
+const priorityLabel: Record<TaskPriority, string> = {
+  high: 'Wysoki',
+  normal: 'Normalny',
+  low: 'Niski',
+}
+
+const urgencyOf = (date: string | null, today: string): -1 | 0 | 1 => {
+  if (!date) return 0
+  const diff = daysBetween(today, date)
+  if (diff < 0) return -1
+  if (diff === 0) return 0
+  return 1
+}
+
 function StageBadge({ stage }: { stage: DealStage }) {
   return (
     <Badge variant="outline" className={cn('border-transparent', stageBadgeColors[stage])}>
       {stageLabels[stage]}
+    </Badge>
+  )
+}
+
+function ItemTypeBadge({ kind }: { kind: 'deal' | 'task' }) {
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        'border-transparent text-xs shrink-0',
+        kind === 'deal'
+          ? 'bg-blue-100 text-blue-700'
+          : 'bg-gray-100 text-gray-700',
+      )}
+    >
+      {kind === 'deal' ? 'Umowa' : 'Zadanie'}
+    </Badge>
+  )
+}
+
+function PriorityBadge({ priority }: { priority: TaskPriority }) {
+  return (
+    <Badge
+      variant="outline"
+      className={cn('shrink-0 text-xs', priorityBadgeClass[priority])}
+    >
+      {priorityLabel[priority]}
     </Badge>
   )
 }
@@ -194,155 +231,110 @@ function StatCard({
   )
 }
 
-interface MarkDoneState {
-  deal: DealRow
-  next_action_date: string
-  stage: DealStage
-  comment: string
+function DealTodoRow({
+  item,
+  today,
+}: {
+  item: TodoDealItem
+  today: string
+}) {
+  const { deal, date } = item
+  const overdue = daysBetween(today, date) < 0
+  return (
+    <li className="py-3 first:pt-0 last:pb-0">
+      <Link
+        href={`/deals/${deal.id}/edit`}
+        className="block group"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <ItemTypeBadge kind="deal" />
+          <span className="text-sm font-medium truncate group-hover:underline">
+            {dealHeading(deal)}
+          </span>
+          {deal.client && (
+            <span className="text-xs text-muted-foreground truncate">
+              · {deal.client.title}
+            </span>
+          )}
+          <StageBadge stage={deal.stage} />
+        </div>
+        <div className="mt-1 flex items-center gap-2 text-xs">
+          <span
+            className={cn(
+              'flex items-center gap-1',
+              overdue
+                ? 'text-destructive font-medium'
+                : 'text-muted-foreground',
+            )}
+          >
+            <CalendarIcon className="size-3" />
+            {formatRelativeDay(date, today)}
+          </span>
+          <span className="text-muted-foreground italic line-clamp-1">
+            {deal.next_action_note || 'Zadzwoń'}
+          </span>
+        </div>
+      </Link>
+    </li>
+  )
 }
 
-function MarkDoneModal({
-  state,
-  onOpenChange,
-  onSaved,
+function TaskTodoRow({
+  item,
+  today,
+  onComplete,
 }: {
-  state: MarkDoneState
-  onOpenChange: (open: boolean) => void
-  onSaved: () => void
+  item: TodoTaskItem
+  today: string
+  onComplete: (id: string, done: boolean) => void
 }) {
-  const [next_action_date, setNextDate] = useState('')
-  const [stage, setStage] = useState<DealStage>(state.deal.stage)
-  const [comment, setComment] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const supabase = useMemo(() => createClient(), [])
-  const router = useRouter()
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSubmitting(true)
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
-      toast.error('Sesja wygasła')
-      setSubmitting(false)
-      return
-    }
-
-    const stageChanged = stage !== state.deal.stage
-
-    const updatePayload: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
-      next_action_date: next_action_date || null,
-      next_action_note: null,
-    }
-    if (stageChanged) updatePayload.stage = stage
-
-    const { error: updateError } = await supabase
-      .from('deals')
-      .update(updatePayload)
-      .eq('id', state.deal.id)
-
-    if (updateError) {
-      toast.error(`Nie zapisano: ${updateError.message}`)
-      setSubmitting(false)
-      return
-    }
-
-    if (stageChanged) {
-      await supabase.from('deal_events').insert({
-        deal_id: state.deal.id,
-        event_type: 'stage_change',
-        from_stage: state.deal.stage,
-        to_stage: stage,
-        comment: comment.trim() || null,
-        owner_id: user.id,
-      })
-    } else if (comment.trim()) {
-      await supabase.from('deal_events').insert({
-        deal_id: state.deal.id,
-        event_type: 'note',
-        comment: comment.trim(),
-        owner_id: user.id,
-      })
-    }
-
-    toast.success('Zapisano akcję')
-    onSaved()
-    setSubmitting(false)
-    router.refresh()
-  }
-
+  const { task, date } = item
+  const overdue = date != null && daysBetween(today, date) < 0
   return (
-    <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Akcja wykonana</DialogTitle>
-          <DialogDescription>
-            {dealHeading(state.deal)}
-            {state.deal.client && ` — ${state.deal.client.title}`}
-          </DialogDescription>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="next_action_date">Następna akcja — data</Label>
-            <Input
-              id="next_action_date"
-              type="date"
-              value={next_action_date}
-              onChange={(e) => setNextDate(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Zostaw puste, żeby skasować zaplanowaną akcję.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="stage">Etap</Label>
-            <Select value={stage} onValueChange={(v) => setStage(v as DealStage)}>
-              <SelectTrigger id="stage">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {DEAL_STAGES.map((s) => (
-                  <SelectItem key={s.value} value={s.value}>
-                    {s.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="comment">Komentarz</Label>
-            <Textarea
-              id="comment"
-              rows={3}
-              placeholder="Co wynikło z rozmowy / spotkania..."
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-            />
-          </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={submitting}
+    <li className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+      <Checkbox
+        checked={task.done}
+        onCheckedChange={(checked) => onComplete(task.id, !!checked)}
+        className="mt-0.5"
+      />
+      <Link
+        href={`/tasks?focus=${task.id}`}
+        className="flex-1 min-w-0 group"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <ItemTypeBadge kind="task" />
+          <span className="text-sm font-medium truncate group-hover:underline">
+            {task.title}
+          </span>
+          {task.client && (
+            <span className="text-xs text-muted-foreground truncate">
+              · {task.client.title}
+            </span>
+          )}
+          {task.goal && (
+            <span className="text-xs text-muted-foreground italic">
+              cel: {task.goal.title}
+            </span>
+          )}
+        </div>
+        {date && (
+          <div className="mt-1 flex items-center gap-2 text-xs">
+            <span
+              className={cn(
+                'flex items-center gap-1',
+                overdue
+                  ? 'text-destructive font-medium'
+                  : 'text-muted-foreground',
+              )}
             >
-              Anuluj
-            </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting && <Spinner className="mr-2" />}
-              Zapisz
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+              <CalendarIcon className="size-3" />
+              {formatRelativeDay(date, today)}
+            </span>
+          </div>
+        )}
+      </Link>
+      <PriorityBadge priority={task.priority} />
+    </li>
   )
 }
 
@@ -398,25 +390,67 @@ export function DashboardContent({
   tasksToday: initialTasks,
   habits: initialHabits,
 }: DashboardContentProps) {
-  const [markDoneState, setMarkDoneState] = useState<MarkDoneState | null>(null)
   const [tasks, setTasks] = useState<TaskRow[]>(initialTasks)
   const [habits, setHabits] = useState<Habit[]>(initialHabits)
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
-  const sortedTasks = useMemo(() => {
-    return [...tasks].sort((a, b) => {
-      const pa = priorityRank[a.priority] ?? 0
-      const pb = priorityRank[b.priority] ?? 0
-      if (pb !== pa) return pb - pa
-      const ad = a.due ?? ''
-      const bd = b.due ?? ''
-      return ad.localeCompare(bd)
-    })
-  }, [tasks])
+  // Combined deal-actions + tasks queue. Sorted as:
+  //   1) overdue first, then today, then future
+  //   2) within urgency: priority high → normal/low (deals always count
+  //      as priority 3 because they're warmer with a known client)
+  //   3) within urgency+priority: deals before tasks
+  //   4) tie-break by date asc
+  const todoItems = useMemo<TodoItem[]>(() => {
+    const dealItems: TodoDealItem[] = callToday
+      .filter((d) => d.next_action_date)
+      .map((d) => {
+        const date = d.next_action_date as string
+        return {
+          kind: 'deal',
+          key: `deal-${d.id}`,
+          deal: d,
+          date,
+          urgency: urgencyOf(date, today),
+          priority: 3,
+          typeRank: 0,
+        }
+      })
 
-  const visibleTasks = sortedTasks.slice(0, 10)
-  const overflowTasks = Math.max(0, sortedTasks.length - 10)
+    const taskItems: TodoTaskItem[] = tasks
+      .filter((t) => !t.done)
+      .map((t) => ({
+        kind: 'task',
+        key: `task-${t.id}`,
+        task: t,
+        date: t.due ?? null,
+        urgency: urgencyOf(t.due ?? null, today),
+        priority: priorityRank[t.priority] ?? 0,
+        typeRank: 1,
+      }))
+
+    return [...dealItems, ...taskItems].sort((a, b) => {
+      if (a.urgency !== b.urgency) return a.urgency - b.urgency
+      if (a.priority !== b.priority) return b.priority - a.priority
+      if (a.typeRank !== b.typeRank) return a.typeRank - b.typeRank
+      return (a.date ?? '').localeCompare(b.date ?? '')
+    })
+  }, [callToday, tasks, today])
+
+  const visibleTodos = todoItems.slice(0, 15)
+  const overflowTodos = Math.max(0, todoItems.length - 15)
+
+  const openCount = openDeals.length
+  const openSum = openDeals.reduce((s, d) => s + dealValue(d), 0)
+  const wonCount = wonThisMonth.length
+  const wonSum = wonThisMonth.reduce((s, d) => s + dealValue(d), 0)
+  const wonMargin = wonThisMonth.reduce(
+    (s, d) => s + (d.margin_amount ?? 0),
+    0,
+  )
+  const lostCount = lostThisMonth.length
+  const lostSum = lostThisMonth.reduce((s, d) => s + dealValue(d), 0)
+  const avgDealSize = openCount > 0 ? openSum / openCount : 0
 
   const handleTaskComplete = async (taskId: string, done: boolean) => {
     const completed_at = done ? today : null
@@ -433,7 +467,6 @@ export function DashboardContent({
 
     if (error) {
       toast.error(`Nie zapisano: ${error.message}`)
-      // Re-fetch authoritative state
       router.refresh()
       return
     }
@@ -463,209 +496,53 @@ export function DashboardContent({
     }
   }
 
-  const sortedCallToday = useMemo(
-    () =>
-      [...callToday].sort((a, b) => {
-        const aDate = a.next_action_date ?? ''
-        const bDate = b.next_action_date ?? ''
-        return aDate.localeCompare(bDate)
-      }),
-    [callToday],
-  )
-
-  const openCount = openDeals.length
-  const openSum = openDeals.reduce((s, d) => s + dealValue(d), 0)
-  const wonCount = wonThisMonth.length
-  const wonSum = wonThisMonth.reduce((s, d) => s + dealValue(d), 0)
-  const wonMargin = wonThisMonth.reduce(
-    (s, d) => s + (d.margin_amount ?? 0),
-    0,
-  )
-  const lostCount = lostThisMonth.length
-  const lostSum = lostThisMonth.reduce((s, d) => s + dealValue(d), 0)
-  const avgDealSize = openCount > 0 ? openSum / openCount : 0
-
-  const closeMarkDone = () => setMarkDoneState(null)
-
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
-      {/* Section 1: Zadzwoń dziś */}
+      {/* Section 1: Do zrobienia dziś — combined deals + tasks */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <PhoneIcon className="size-5" />
-            Zadzwoń dziś
+            <CalendarIcon className="size-5" />
+            Do zrobienia dziś
           </CardTitle>
           <CardDescription>
-            {sortedCallToday.length === 0
-              ? 'Brak zaplanowanych akcji na dzisiaj.'
-              : `${sortedCallToday.length} ${
-                  sortedCallToday.length === 1 ? 'umowa' : 'umów'
-                } czeka na akcję.`}
+            {todoItems.length === 0
+              ? 'Pusto. Idealny dzień, żeby ruszyć coś nowego.'
+              : `${todoItems.length} ${
+                  todoItems.length === 1 ? 'rzecz' : 'rzeczy'
+                } w kolejce — umowy i zadania razem.`}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {sortedCallToday.length > 0 && (
+          {todoItems.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Nic do zrobienia dziś. 🎉 Korzystaj z dnia.
+            </p>
+          ) : (
             <ul className="divide-y">
-              {sortedCallToday.map((deal) => {
-                const overdue = deal.next_action_date
-                  ? daysBetween(today, deal.next_action_date) < 0
-                  : false
-                return (
-                  <li key={deal.id} className="py-3 first:pt-0 last:pb-0">
-                    <div className="flex items-start justify-between gap-3">
-                      <Link
-                        href={`/deals/${deal.id}`}
-                        className="flex-1 min-w-0 hover:underline"
-                      >
-                        <p className="text-sm font-medium truncate">
-                          {dealHeading(deal)}
-                        </p>
-                        {deal.client && (
-                          <p className="text-xs text-muted-foreground truncate">
-                            {deal.client.title}
-                          </p>
-                        )}
-                      </Link>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <StageBadge stage={deal.stage} />
-                        <span className="text-sm font-medium tabular-nums">
-                          {formatPLN(dealValue(deal))}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 text-xs">
-                        <span
-                          className={cn(
-                            'flex items-center gap-1',
-                            overdue
-                              ? 'text-destructive font-medium'
-                              : 'text-muted-foreground',
-                          )}
-                        >
-                          <CalendarIcon className="size-3" />
-                          {deal.next_action_date &&
-                            formatRelativeDay(deal.next_action_date, today)}
-                        </span>
-                        {deal.next_action_note && (
-                          <span className="text-muted-foreground italic line-clamp-1">
-                            — {deal.next_action_note}
-                          </span>
-                        )}
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          setMarkDoneState({
-                            deal,
-                            next_action_date: '',
-                            stage: deal.stage,
-                            comment: '',
-                          })
-                        }
-                      >
-                        <CheckCircleIcon className="mr-2 size-3.5" />
-                        Wykonano
-                      </Button>
-                    </div>
-                  </li>
-                )
-              })}
+              {visibleTodos.map((item) =>
+                item.kind === 'deal' ? (
+                  <DealTodoRow key={item.key} item={item} today={today} />
+                ) : (
+                  <TaskTodoRow
+                    key={item.key}
+                    item={item}
+                    today={today}
+                    onComplete={handleTaskComplete}
+                  />
+                ),
+              )}
             </ul>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Section 2: Zadania na dziś */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ListChecksIcon className="size-5" />
-            Zadania na dziś
-          </CardTitle>
-          <CardDescription>
-            {sortedTasks.length === 0
-              ? 'Brak otwartych zadań na dzisiaj.'
-              : `${sortedTasks.length} ${
-                  sortedTasks.length === 1 ? 'zadanie' : 'zadań'
-                } do wykonania (overdue + dziś).`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {visibleTasks.length > 0 && (
-            <ul className="divide-y">
-              {visibleTasks.map((task) => {
-                const overdue =
-                  task.due != null && daysBetween(today, task.due) < 0
-                return (
-                  <li
-                    key={task.id}
-                    className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"
-                  >
-                    <Checkbox
-                      checked={task.done}
-                      onCheckedChange={(checked) =>
-                        handleTaskComplete(task.id, !!checked)
-                      }
-                      className="mt-0.5"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{task.title}</p>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                        {task.due && (
-                          <span
-                            className={cn(
-                              'flex items-center gap-1',
-                              overdue && 'text-destructive font-medium',
-                            )}
-                          >
-                            <CalendarIcon className="size-3" />
-                            {formatRelativeDay(task.due, today)}
-                          </span>
-                        )}
-                        {task.client && (
-                          <Link
-                            href={`/clients/${task.client.id}`}
-                            className="hover:underline"
-                          >
-                            {task.client.title}
-                          </Link>
-                        )}
-                        {task.goal && (
-                          <span className="italic">
-                            cel: {task.goal.title}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        'shrink-0 text-xs',
-                        priorityBadgeClass[task.priority],
-                      )}
-                    >
-                      {priorityLabel[task.priority]}
-                    </Badge>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-          {overflowTasks > 0 && (
+          {overflowTodos > 0 && (
             <p className="mt-3 text-xs text-muted-foreground">
-              ...i jeszcze {overflowTasks}.{' '}
-              <Link href="/tasks" className="hover:underline">
-                Otwórz pełną listę →
-              </Link>
+              ...i jeszcze {overflowTodos} do zrobienia.
             </p>
           )}
         </CardContent>
       </Card>
 
-      {/* Section 3: Pipeline overview */}
+      {/* Section 2: Pipeline overview */}
       <div>
         <h2 className="text-lg font-semibold flex items-center gap-2 mb-3">
           <TargetIcon className="size-5" />
@@ -709,7 +586,7 @@ export function DashboardContent({
         </div>
       </div>
 
-      {/* Section 4: Twoje nawyki — hidden if no habits exist */}
+      {/* Section 3: Twoje nawyki — hidden if no habits exist */}
       {habits.length > 0 && (
         <Card>
           <CardHeader>
@@ -787,7 +664,7 @@ export function DashboardContent({
         </Card>
       )}
 
-      {/* Section 5: Wymagają uwagi */}
+      {/* Section 4: Wymagają uwagi */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -817,7 +694,7 @@ export function DashboardContent({
         </CardContent>
       </Card>
 
-      {/* Section 6: Najbliższe 7 dni */}
+      {/* Section 5: Najbliższe 7 dni */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -852,17 +729,6 @@ export function DashboardContent({
           )}
         </CardContent>
       </Card>
-
-      {markDoneState && (
-        <MarkDoneModal
-          key={markDoneState.deal.id}
-          state={markDoneState}
-          onOpenChange={(open) => {
-            if (!open) closeMarkDone()
-          }}
-          onSaved={closeMarkDone}
-        />
-      )}
     </div>
   )
 }
