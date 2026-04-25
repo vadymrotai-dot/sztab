@@ -10,6 +10,12 @@ const dealSelect =
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10)
 
+const startOfWeekMonday = (d: Date) => {
+  const day = d.getDay()
+  const offsetToMonday = day === 0 ? -6 : 1 - day
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + offsetToMonday)
+}
+
 export default async function DashboardPage() {
   const supabase = await createClient()
   const {
@@ -24,6 +30,13 @@ export default async function DashboardPage() {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000).toISOString()
   const startOfMonth = isoDate(new Date(now.getFullYear(), now.getMonth(), 1))
 
+  const weekStart = startOfWeekMonday(now)
+  const weekDays: string[] = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart)
+    d.setDate(weekStart.getDate() + i)
+    return isoDate(d)
+  })
+
   const [
     callToday,
     openDeals,
@@ -33,6 +46,8 @@ export default async function DashboardPage() {
     stale,
     stuckNegotiation,
     closingSoon,
+    tasksToday,
+    habits,
   ] = await Promise.all([
     supabase
       .from('deals')
@@ -83,6 +98,19 @@ export default async function DashboardPage() {
       .lte('expected_close_date', sevenDaysFromNow)
       .not('stage', 'in', closedFilter)
       .order('expected_close_date', { ascending: true }),
+    supabase
+      .from('tasks')
+      .select('*, client:clients(id, title), goal:goals(id, title)')
+      .eq('done', false)
+      .lte('due', today)
+      .not('due', 'is', null)
+      .order('due', { ascending: true })
+      .limit(11),
+    supabase
+      .from('habits')
+      .select('*')
+      .order('created_at', { ascending: true })
+      .limit(5),
   ])
 
   return (
@@ -90,6 +118,7 @@ export default async function DashboardPage() {
       <PageHeader title="Dzis" />
       <DashboardContent
         today={today}
+        weekDays={weekDays}
         callToday={callToday.data || []}
         openDeals={openDeals.data || []}
         wonThisMonth={wonThisMonth.data || []}
@@ -98,6 +127,8 @@ export default async function DashboardPage() {
         stale={stale.data || []}
         stuckNegotiation={stuckNegotiation.data || []}
         closingSoon={closingSoon.data || []}
+        tasksToday={tasksToday.data || []}
+        habits={habits.data || []}
       />
     </div>
   )

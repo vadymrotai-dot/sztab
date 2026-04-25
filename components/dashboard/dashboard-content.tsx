@@ -6,13 +6,16 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import {
   AlertCircleIcon,
+  CalendarCheckIcon,
   CalendarIcon,
   CheckCircleIcon,
+  ClockIcon,
+  FlameIcon,
+  ListChecksIcon,
   PhoneIcon,
   TargetIcon,
   TrendingDownIcon,
   TrendingUpIcon,
-  ClockIcon,
 } from 'lucide-react'
 
 import {
@@ -32,6 +35,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -45,7 +49,7 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 
 import { createClient } from '@/lib/supabase/client'
-import type { Deal, DealStage } from '@/lib/types'
+import type { Deal, DealStage, Habit, Task, TaskPriority } from '@/lib/types'
 import { DEAL_STAGES } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -61,8 +65,14 @@ type AggregateDeal = {
   margin_amount?: number | null
 }
 
+type TaskRow = Task & {
+  client?: { id: string; title: string } | null
+  goal?: { id: string; title: string } | null
+}
+
 interface DashboardContentProps {
   today: string
+  weekDays: string[]
   callToday: DealRow[]
   openDeals: AggregateDeal[]
   wonThisMonth: AggregateDeal[]
@@ -71,6 +81,26 @@ interface DashboardContentProps {
   stale: DealRow[]
   stuckNegotiation: DealRow[]
   closingSoon: DealRow[]
+  tasksToday: TaskRow[]
+  habits: Habit[]
+}
+
+const priorityRank: Record<TaskPriority, number> = {
+  high: 3,
+  normal: 2,
+  low: 1,
+}
+
+const priorityBadgeClass: Record<TaskPriority, string> = {
+  high: 'bg-red-100 text-red-800 border-transparent',
+  normal: 'bg-slate-100 text-slate-700 border-transparent',
+  low: 'bg-slate-50 text-slate-500 border-transparent',
+}
+
+const priorityLabel: Record<TaskPriority, string> = {
+  high: 'Wysoki',
+  normal: 'Normalny',
+  low: 'Niski',
 }
 
 const stageBadgeColors: Record<DealStage, string> = {
@@ -356,6 +386,7 @@ function DealRowItem({
 
 export function DashboardContent({
   today,
+  weekDays,
   callToday,
   openDeals,
   wonThisMonth,
@@ -364,8 +395,73 @@ export function DashboardContent({
   stale,
   stuckNegotiation,
   closingSoon,
+  tasksToday: initialTasks,
+  habits: initialHabits,
 }: DashboardContentProps) {
   const [markDoneState, setMarkDoneState] = useState<MarkDoneState | null>(null)
+  const [tasks, setTasks] = useState<TaskRow[]>(initialTasks)
+  const [habits, setHabits] = useState<Habit[]>(initialHabits)
+  const router = useRouter()
+  const supabase = useMemo(() => createClient(), [])
+
+  const sortedTasks = useMemo(() => {
+    return [...tasks].sort((a, b) => {
+      const pa = priorityRank[a.priority] ?? 0
+      const pb = priorityRank[b.priority] ?? 0
+      if (pb !== pa) return pb - pa
+      const ad = a.due ?? ''
+      const bd = b.due ?? ''
+      return ad.localeCompare(bd)
+    })
+  }, [tasks])
+
+  const visibleTasks = sortedTasks.slice(0, 10)
+  const overflowTasks = Math.max(0, sortedTasks.length - 10)
+
+  const handleTaskComplete = async (taskId: string, done: boolean) => {
+    const completed_at = done ? today : null
+    setTasks((prev) =>
+      prev
+        .map((t) => (t.id === taskId ? { ...t, done, completed_at } : t))
+        .filter((t) => !t.done),
+    )
+
+    const { error } = await supabase
+      .from('tasks')
+      .update({ done, completed_at })
+      .eq('id', taskId)
+
+    if (error) {
+      toast.error(`Nie zapisano: ${error.message}`)
+      // Re-fetch authoritative state
+      router.refresh()
+      return
+    }
+    router.refresh()
+  }
+
+  const handleHabitToggle = async (habitId: string, date: string) => {
+    const habit = habits.find((h) => h.id === habitId)
+    if (!habit) return
+    const log = habit.log ?? {}
+    const newLog = { ...log, [date]: !log[date] }
+
+    setHabits((prev) =>
+      prev.map((h) => (h.id === habitId ? { ...h, log: newLog } : h)),
+    )
+
+    const { error } = await supabase
+      .from('habits')
+      .update({ log: newLog })
+      .eq('id', habitId)
+
+    if (error) {
+      setHabits((prev) =>
+        prev.map((h) => (h.id === habitId ? { ...h, log } : h)),
+      )
+      toast.error(`Nie zapisano: ${error.message}`)
+    }
+  }
 
   const sortedCallToday = useMemo(
     () =>
@@ -482,7 +578,94 @@ export function DashboardContent({
         </CardContent>
       </Card>
 
-      {/* Section 2: Pipeline overview */}
+      {/* Section 2: Zadania na dziś */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ListChecksIcon className="size-5" />
+            Zadania na dziś
+          </CardTitle>
+          <CardDescription>
+            {sortedTasks.length === 0
+              ? 'Brak otwartych zadań na dzisiaj.'
+              : `${sortedTasks.length} ${
+                  sortedTasks.length === 1 ? 'zadanie' : 'zadań'
+                } do wykonania (overdue + dziś).`}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {visibleTasks.length > 0 && (
+            <ul className="divide-y">
+              {visibleTasks.map((task) => {
+                const overdue =
+                  task.due != null && daysBetween(today, task.due) < 0
+                return (
+                  <li
+                    key={task.id}
+                    className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"
+                  >
+                    <Checkbox
+                      checked={task.done}
+                      onCheckedChange={(checked) =>
+                        handleTaskComplete(task.id, !!checked)
+                      }
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{task.title}</p>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                        {task.due && (
+                          <span
+                            className={cn(
+                              'flex items-center gap-1',
+                              overdue && 'text-destructive font-medium',
+                            )}
+                          >
+                            <CalendarIcon className="size-3" />
+                            {formatRelativeDay(task.due, today)}
+                          </span>
+                        )}
+                        {task.client && (
+                          <Link
+                            href={`/clients/${task.client.id}`}
+                            className="hover:underline"
+                          >
+                            {task.client.title}
+                          </Link>
+                        )}
+                        {task.goal && (
+                          <span className="italic">
+                            cel: {task.goal.title}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        'shrink-0 text-xs',
+                        priorityBadgeClass[task.priority],
+                      )}
+                    >
+                      {priorityLabel[task.priority]}
+                    </Badge>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          {overflowTasks > 0 && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              ...i jeszcze {overflowTasks}.{' '}
+              <Link href="/tasks" className="hover:underline">
+                Otwórz pełną listę →
+              </Link>
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Section 3: Pipeline overview */}
       <div>
         <h2 className="text-lg font-semibold flex items-center gap-2 mb-3">
           <TargetIcon className="size-5" />
@@ -526,7 +709,85 @@ export function DashboardContent({
         </div>
       </div>
 
-      {/* Section 3: Wymagają uwagi */}
+      {/* Section 4: Twoje nawyki — hidden if no habits exist */}
+      {habits.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarCheckIcon className="size-5" />
+              Twoje nawyki
+            </CardTitle>
+            <CardDescription>
+              Bieżący tydzień (poniedziałek → niedziela). Klik w kafelek
+              przełącza wykonanie nawyku w danym dniu.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {habits.map((habit) => {
+              const log = habit.log ?? {}
+              const completedThisWeek = weekDays.filter((d) => log[d]).length
+              return (
+                <div
+                  key={habit.id}
+                  className="flex items-center justify-between gap-3"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium truncate">
+                        {habit.name}
+                      </p>
+                      {completedThisWeek > 0 && (
+                        <span className="flex items-center gap-1 text-xs text-amber-600">
+                          <FlameIcon className="size-3" />
+                          {completedThisWeek}/7
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    {weekDays.map((date) => {
+                      const isCompleted = !!log[date]
+                      const isToday = date === today
+                      return (
+                        <button
+                          key={date}
+                          type="button"
+                          onClick={() => handleHabitToggle(habit.id, date)}
+                          className={cn(
+                            'flex h-9 min-w-[28px] flex-col items-center justify-center rounded-md text-xs transition-colors',
+                            isCompleted
+                              ? 'bg-green-500 text-white'
+                              : 'bg-muted hover:bg-muted/80',
+                            isToday && !isCompleted && 'ring-2 ring-primary',
+                          )}
+                          title={date}
+                        >
+                          <span className="text-[10px] leading-none opacity-70">
+                            {new Date(date).toLocaleDateString('pl-PL', {
+                              weekday: 'narrow',
+                            })}
+                          </span>
+                          <span className="font-medium">
+                            {new Date(date).getDate()}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+            <Link
+              href="/habits"
+              className="text-xs text-muted-foreground hover:underline"
+            >
+              Zarządzaj nawykami →
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Section 5: Wymagają uwagi */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -556,7 +817,7 @@ export function DashboardContent({
         </CardContent>
       </Card>
 
-      {/* Section 4: Najbliższe 7 dni */}
+      {/* Section 6: Najbliższe 7 dni */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
