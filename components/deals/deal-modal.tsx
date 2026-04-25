@@ -46,6 +46,11 @@ import { createClient } from '@/lib/supabase/client'
 import type { Deal, DealStage } from '@/lib/types'
 import { DEAL_STAGES } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { revalidateDealRoutes } from '@/app/actions/revalidate'
+
+const stageLabel: Record<DealStage, string> = Object.fromEntries(
+  DEAL_STAGES.map((s) => [s.value, s.label]),
+) as Record<DealStage, string>
 
 export interface DealModalClient {
   id: string
@@ -516,6 +521,7 @@ export function DealModal({
         })
       }
 
+      await revalidateDealRoutes()
       toast.success('Umowa zaktualizowana')
       onSaved?.(deal.id)
       router.refresh()
@@ -543,6 +549,7 @@ export function DealModal({
       owner_id: user.id,
     })
 
+    await revalidateDealRoutes()
     toast.success('Umowa utworzona')
     onSaved?.(created.id)
     router.refresh()
@@ -562,10 +569,14 @@ export function DealModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{deal ? 'Edytuj umowe' : 'Nowa umowa'}</DialogTitle>
+          <DialogTitle>
+            {deal
+              ? `Edycja umowy · ${stageLabel[values.stage]}`
+              : 'Nowa umowa'}
+          </DialogTitle>
           <DialogDescription>
             {deal
-              ? 'Zmiany zapisują się w bazie po kliknięciu "Zapisz".'
+              ? 'Zmień dowolne pole — łącznie z etapem (Etap *). Zapisz, żeby utrwalić.'
               : 'Wypełnij dane sprzedaży. Etap możesz zmieniać później przeciągając kartę na tablicy.'}
           </DialogDescription>
         </DialogHeader>
