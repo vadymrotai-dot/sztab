@@ -66,15 +66,36 @@ export interface Deal {
   supplier?: Supplier | null
 }
 
+export type SupplierType =
+  | 'producent'
+  | 'trader'
+  | 'posrednik'
+  | 'wlasna_marka'
+
+export type SupplierDealType = 'reseller' | 'agent' | 'partner'
+
 export interface Supplier {
   id: string
-  name: string
-  contact_name?: string
-  email?: string
-  phone?: string
-  notes?: string
-  created_at: string
   owner_id: string
+  name: string
+  legal_name: string | null
+  nip: string | null
+  country: string | null
+  type: SupplierType
+  deal_type: SupplierDealType | null
+  commission_pct: number | null
+  verticals: string[] | null
+  exclusivity_scope: string[] | null
+  exclusive_territory: string | null
+  exclusive_until: string | null
+  payment_terms: string | null
+  moq_value: number | null
+  lead_time_days: number | null
+  reliability_score: number | null
+  notes: string | null
+  contract_files: unknown
+  created_at: string
+  updated_at: string
 }
 
 export interface Person {
