@@ -10,13 +10,8 @@ export default async function DealsPage() {
 
   const { data: deals } = await supabase
     .from('deals')
-    .select('*, client:clients(id, title)')
+    .select('*, client:clients(id, title), product:products(id, name)')
     .order('updated_at', { ascending: false })
-
-  const { data: clients } = await supabase
-    .from('clients')
-    .select('id, title')
-    .order('title', { ascending: true })
 
   return (
     <div className="flex flex-col h-full">
@@ -31,7 +26,7 @@ export default async function DealsPage() {
           </Button>
         }
       />
-      <DealsKanban deals={deals || []} clients={clients || []} />
+      <DealsKanban deals={deals || []} />
     </div>
   )
 }
