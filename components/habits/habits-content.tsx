@@ -177,8 +177,9 @@ export function HabitsContent({ habits: initialHabits }: HabitsContentProps) {
       ) : (
         <div className="space-y-4">
           {habits.map((habit) => {
-            const streak = getCurrentStreak(habit.log)
-            const completedDays = last30Days.filter((d) => habit.log[d]).length
+            const log = habit.log ?? {}
+            const streak = getCurrentStreak(log)
+            const completedDays = last30Days.filter((d) => log[d]).length
 
             return (
               <Card key={habit.id}>
@@ -217,13 +218,13 @@ export function HabitsContent({ habits: initialHabits }: HabitsContentProps) {
                 <CardContent>
                   <div className="flex gap-1 overflow-x-auto pb-2">
                     {last30Days.map((date) => {
-                      const isCompleted = habit.log[date]
+                      const isCompleted = log[date]
                       const isToday = date === today
 
                       return (
                         <button
                           key={date}
-                          onClick={() => handleToggle(habit.id, date, habit.log)}
+                          onClick={() => handleToggle(habit.id, date, log)}
                           className={cn(
                             'flex flex-col items-center justify-center min-w-[28px] h-10 rounded-md text-xs transition-colors',
                             isCompleted

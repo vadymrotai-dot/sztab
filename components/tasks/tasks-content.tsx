@@ -280,14 +280,19 @@ export function TasksContent({ tasks: initialTasks, clients, goals }: TasksConte
                 <Field>
                   <FieldLabel htmlFor="client">Klient (opcjonalnie)</FieldLabel>
                   <Select
-                    value={formData.client_id}
-                    onValueChange={(value) => setFormData({ ...formData, client_id: value })}
+                    value={formData.client_id || '__none__'}
+                    onValueChange={(value) =>
+                      setFormData({
+                        ...formData,
+                        client_id: value === '__none__' ? '' : value,
+                      })
+                    }
                   >
                     <SelectTrigger id="client">
                       <SelectValue placeholder="Wybierz klienta" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Brak</SelectItem>
+                      <SelectItem value="__none__">Brak</SelectItem>
                       {clients.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
                           {c.title}
@@ -299,14 +304,19 @@ export function TasksContent({ tasks: initialTasks, clients, goals }: TasksConte
                 <Field>
                   <FieldLabel htmlFor="goal">Cel (opcjonalnie)</FieldLabel>
                   <Select
-                    value={formData.goal_id}
-                    onValueChange={(value) => setFormData({ ...formData, goal_id: value })}
+                    value={formData.goal_id || '__none__'}
+                    onValueChange={(value) =>
+                      setFormData({
+                        ...formData,
+                        goal_id: value === '__none__' ? '' : value,
+                      })
+                    }
                   >
                     <SelectTrigger id="goal">
                       <SelectValue placeholder="Wybierz cel" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Brak</SelectItem>
+                      <SelectItem value="__none__">Brak</SelectItem>
                       {goals.map((g) => (
                         <SelectItem key={g.id} value={g.id}>
                           {g.title}
