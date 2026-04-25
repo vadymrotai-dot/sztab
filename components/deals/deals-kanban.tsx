@@ -45,6 +45,8 @@ const stageColors: Record<DealStage, string> = {
   lead: 'border-slate-300 bg-slate-50',
   oferta: 'border-blue-300 bg-blue-50',
   negocjacje: 'border-amber-300 bg-amber-50',
+  sample: 'border-violet-300 bg-violet-50',
+  kontrakt: 'border-cyan-300 bg-cyan-50',
   wygrana: 'border-green-300 bg-green-50',
   przegrana: 'border-red-300 bg-red-50',
 }
@@ -53,6 +55,8 @@ const stageTitleColors: Record<DealStage, string> = {
   lead: 'text-slate-700',
   oferta: 'text-blue-700',
   negocjacje: 'text-amber-700',
+  sample: 'text-violet-700',
+  kontrakt: 'text-cyan-700',
   wygrana: 'text-green-700',
   przegrana: 'text-red-700',
 }

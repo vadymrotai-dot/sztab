@@ -45,7 +45,7 @@ Dostępne akcje i ich schematy:
   "payload": {
     "title": "string",
     "clientTitle": "string lub null",
-    "stage": "'lead'|'negocjacje'|'oferta'|'wygrana'|'przegrana'",
+    "stage": "'lead'|'oferta'|'negocjacje'|'sample'|'kontrakt'|'wygrana'|'przegrana'",
     "amount": "number PLN lub 0"
   }
 }

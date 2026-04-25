@@ -86,10 +86,7 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Ustawienia"
-        description="Zarządzaj ustawieniami aplikacji"
-      />
+      <PageHeader title="Ustawienia" />
 
       <Tabs defaultValue="pricing" className="space-y-4">
         <TabsList>
