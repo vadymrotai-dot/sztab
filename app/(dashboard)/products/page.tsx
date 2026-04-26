@@ -45,7 +45,10 @@ export default async function ProductsPage() {
           </div>
         }
       />
-      <ProductsContent products={products || []} params={null} />
+      <ProductsContent
+        products={products || []}
+        suppliers={suppliers ?? []}
+      />
     </div>
   )
 }
