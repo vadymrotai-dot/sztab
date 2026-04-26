@@ -74,6 +74,8 @@ export type SupplierType =
 
 export type SupplierDealType = 'reseller' | 'agent' | 'partner'
 
+export type Currency = 'PLN' | 'EUR'
+
 export interface Supplier {
   id: string
   owner_id: string
@@ -84,6 +86,7 @@ export interface Supplier {
   type: SupplierType
   deal_type: SupplierDealType | null
   commission_pct: number | null
+  default_currency: Currency
   verticals: string[] | null
   exclusivity_scope: string[] | null
   exclusive_territory: string | null

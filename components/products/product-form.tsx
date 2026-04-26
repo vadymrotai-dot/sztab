@@ -24,19 +24,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Spinner } from '@/components/ui/spinner'
 
 import { updateProduct } from '@/app/actions/products'
 import {
   computeCostPln,
   computePriceTiers,
+  type Currency,
   type PricingSettings,
 } from '@/lib/pricing'
 import type { Product } from '@/lib/types'
 
-interface SupplierOption {
+export interface SupplierOption {
   id: string
   name: string
+  default_currency: Currency
 }
 
 interface ProductFormProps {
@@ -108,6 +111,18 @@ export function ProductForm({
   )
   const [tags, setTags] = useState<string>((product.tags ?? []).join(', '))
 
+  // Currency is derived once on mount: existing cost_eur > 0 → EUR mode
+  // (imported good), else cost_pln > 0 → PLN mode (PL supplier), else
+  // fall back to the supplier's default_currency hint. When the user
+  // changes supplier, the toggle stays put — they can flip it manually
+  // if they want to repurpose a PL row as imported, etc.
+  const initialCurrency: Currency = (() => {
+    if ((product.cost_eur ?? 0) > 0) return 'EUR'
+    if ((product.cost_pln ?? 0) > 0) return 'PLN'
+    const sup = suppliers.find((s) => s.id === product.supplier_id)
+    return sup?.default_currency ?? 'PLN'
+  })()
+  const [currency, setCurrency] = useState<Currency>(initialCurrency)
   const [costEur, setCostEur] = useState<string>(numToStr(product.cost_eur))
   const [costPln, setCostPln] = useState<string>(numToStr(product.cost_pln))
   const [priceMalyOpt, setPriceMalyOpt] = useState<string>(
@@ -131,20 +146,35 @@ export function ProductForm({
   const [unit, setUnit] = useState(product.unit ?? 'szt')
   const [vertical, setVertical] = useState<string>(product.vertical ?? '')
 
-  // Auto-recompute cost_pln when cost_eur changes (using current settings).
+  // Auto-recompute cost_pln when cost_eur changes — EUR mode only. In
+  // PLN mode the user types cost_pln directly; we don't want a stray
+  // cost_eur=0 to overwrite their PLN value.
   useEffect(() => {
+    if (currency !== 'EUR') return
     const eur = parseNum(costEur)
-    if (eur == null) {
+    if (eur == null || eur <= 0) {
       setCostPln('')
       return
     }
-    const pln = computeCostPln(
-      eur,
-      pricing.kurs_eur_pln,
-      pricing.overhead_multiplier,
-    )
+    const pln = computeCostPln({
+      cost_eur: eur,
+      kurs: pricing.kurs_eur_pln,
+      overhead: pricing.overhead_multiplier,
+    })
     setCostPln(pln.toFixed(2))
-  }, [costEur, pricing.kurs_eur_pln, pricing.overhead_multiplier])
+  }, [costEur, currency, pricing.kurs_eur_pln, pricing.overhead_multiplier])
+
+  // Toggle currency: clear the field that's no longer authoritative so
+  // submit doesn't accidentally save both costs.
+  const handleCurrencyChange = (next: Currency) => {
+    setCurrency(next)
+    if (next === 'EUR') {
+      // PLN field will get auto-recomputed once they type cost_eur
+      setCostPln('')
+    } else {
+      setCostEur('')
+    }
+  }
 
   const recomputePriceTiers = () => {
     const pln = parseNum(costPln)
@@ -168,6 +198,12 @@ export function ProductForm({
       .map((t) => t.trim())
       .filter(Boolean)
 
+    // Send the cost field that matches the active currency. The other
+    // one is null'd so the DB doesn't carry stale values from a
+    // previous mode.
+    const costEurForSave = currency === 'EUR' ? parseNum(costEur) : null
+    const costPlnForSave = parseNum(costPln)
+
     startTransition(async () => {
       const result = await updateProduct(product.id, {
         name: name.trim(),
@@ -184,8 +220,8 @@ export function ProductForm({
             | 'out_of_stock'
             | 'seasonal') || null,
         tags: tagsArr,
-        cost_eur: parseNum(costEur),
-        cost_pln: parseNum(costPln),
+        cost_eur: costEurForSave,
+        cost_pln: costPlnForSave,
         price_maly_opt: parseNum(priceMalyOpt),
         price_sredni: parseNum(priceSredni),
         price_duzy: parseNum(priceDuzy),
@@ -355,33 +391,74 @@ export function ProductForm({
         <TabsContent value="pricing">
           <Card>
             <CardContent className="space-y-4 pt-6">
+              <div className="space-y-2">
+                <Label>Waluta kosztu</Label>
+                <RadioGroup
+                  value={currency}
+                  onValueChange={(v) => handleCurrencyChange(v as Currency)}
+                  className="flex gap-6 pt-1"
+                >
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="PLN" id="curr-pln" />
+                    <Label htmlFor="curr-pln" className="cursor-pointer">
+                      PLN — koszt bezpośrednio od dostawcy (PL)
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="EUR" id="curr-eur" />
+                    <Label htmlFor="curr-eur" className="cursor-pointer">
+                      EUR — towar importowany, koszt PLN auto
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="cost_eur">Koszt EUR</Label>
-                  <Input
-                    id="cost_eur"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={costEur}
-                    onChange={(e) => setCostEur(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cost_pln">Koszt PLN (auto)</Label>
-                  <Input
-                    id="cost_pln"
-                    type="number"
-                    step="0.01"
-                    value={costPln}
-                    readOnly
-                    className="bg-muted/50"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    EUR × {pricing.kurs_eur_pln} (kurs) ×{' '}
-                    {pricing.overhead_multiplier} (narzut)
-                  </p>
-                </div>
+                {currency === 'EUR' ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="cost_eur">Koszt EUR *</Label>
+                      <Input
+                        id="cost_eur"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={costEur}
+                        onChange={(e) => setCostEur(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="cost_pln">Koszt PLN (auto)</Label>
+                      <Input
+                        id="cost_pln"
+                        type="number"
+                        step="0.01"
+                        value={costPln}
+                        readOnly
+                        className="bg-muted/50"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        EUR × {pricing.kurs_eur_pln} (kurs) ×{' '}
+                        {pricing.overhead_multiplier} (narzut)
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="cost_pln_direct">Koszt PLN *</Label>
+                    <Input
+                      id="cost_pln_direct"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={costPln}
+                      onChange={(e) => setCostPln(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Cena bezpośrednio od polskiego dostawcy. EUR pole nie
+                      jest stosowane dla tego dostawcy.
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="flex items-center justify-between rounded-md border bg-muted/30 p-3">
                 <p className="text-xs text-muted-foreground">

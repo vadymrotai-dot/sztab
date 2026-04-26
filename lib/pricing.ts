@@ -3,6 +3,8 @@
 // table — pass the raw rows in via settingsRowsToPricing() or assemble
 // the object yourself in tests.
 
+export type Currency = 'PLN' | 'EUR'
+
 export interface PricingSettings {
   kurs_eur_pln: number
   overhead_multiplier: number
@@ -42,13 +44,28 @@ export function settingsRowsToPricing(
   return out
 }
 
-export function computeCostPln(
-  cost_eur: number,
-  kurs: number,
-  overhead: number,
-): number {
-  if (!Number.isFinite(cost_eur) || cost_eur <= 0) return 0
-  return roundTo(cost_eur * kurs * overhead, 2)
+const isPositive = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isFinite(v) && v > 0
+
+// Currency-aware cost_pln resolver. Two paths:
+//   - imported goods (cost_eur set) → cost_eur × kurs × overhead
+//   - PL supplier prices (cost_pln set, no cost_eur) → cost_pln passthrough
+// Returns 0 when neither input is positive — caller is expected to
+// validate before persisting (DB has no NOT NULL > 0 CHECK because
+// some legacy v0 rows already carry 0/0).
+export function computeCostPln(input: {
+  cost_eur?: number | null
+  cost_pln?: number | null
+  kurs: number
+  overhead: number
+}): number {
+  if (isPositive(input.cost_eur)) {
+    return roundTo(input.cost_eur * input.kurs * input.overhead, 2)
+  }
+  if (isPositive(input.cost_pln)) {
+    return roundTo(input.cost_pln, 2)
+  }
+  return 0
 }
 
 // Selling price for a target margin %. cost / (1 - margin) is the

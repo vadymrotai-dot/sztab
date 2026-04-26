@@ -15,7 +15,7 @@ export default async function ProductsPage() {
         .order('lp', { ascending: true, nullsFirst: false }),
       supabase
         .from('suppliers')
-        .select('id, name')
+        .select('id, name, default_currency')
         .order('name', { ascending: true }),
       supabase
         .from('products')

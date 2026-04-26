@@ -21,7 +21,7 @@ export default async function EditProductPage({ params }: PageProps) {
     supabase.from('products').select('*').eq('id', id).single(),
     supabase
       .from('suppliers')
-      .select('id, name')
+      .select('id, name, default_currency')
       .order('name', { ascending: true }),
     supabase.from('settings').select('key, value'),
     supabase

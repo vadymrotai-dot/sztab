@@ -120,6 +120,11 @@ export async function batchCommitProducts(
 
   const { kurs, overhead } = await readPricingSettings()
 
+  // import path is EUR-only for now (CM is the only EUR-priced supplier
+  // with an Excel cennik). When PL suppliers start sending PLN
+  // spreadsheets we'll teach SupplierPriceListImporter to read a
+  // cost_pln column and let the wizard pick the currency at upload.
+
   // Pre-resolve duplicate ids in one query so we don't issue N selects.
   const eans = rows
     .filter((r) => r.status === 'duplicate' && r.ean)

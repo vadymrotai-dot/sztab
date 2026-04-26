@@ -66,6 +66,11 @@ async function readPricing() {
 // Fills cost_pln + 5 price tiers from settings if the caller didn't
 // override them. User-supplied prices always win — that's the point of
 // the price-tier inputs in the form.
+//
+// cost_pln resolution: if user sent cost_pln explicitly (PLN mode), use
+// it; else if cost_eur is set (EUR mode for imported goods), compute
+// from EUR × kurs × overhead. computeCostPln() handles the fallback
+// chain — see lib/pricing.ts for currency-aware behaviour.
 async function applyPricing<
   T extends Pick<
     ProductCreateInput,
@@ -79,10 +84,14 @@ async function applyPricing<
   >,
 >(input: T): Promise<T> {
   const pricing = await readPricing()
-  const cost_eur = input.cost_eur ?? 0
   const cost_pln =
     input.cost_pln ??
-    computeCostPln(cost_eur, pricing.kurs_eur_pln, pricing.overhead_multiplier)
+    computeCostPln({
+      cost_eur: input.cost_eur,
+      cost_pln: input.cost_pln,
+      kurs: pricing.kurs_eur_pln,
+      overhead: pricing.overhead_multiplier,
+    })
   const tiers = computePriceTiers(cost_pln, pricing)
 
   return {
