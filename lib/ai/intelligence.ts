@@ -73,14 +73,22 @@ export async function runFastLookup(
   // 90s timeout — Gemini 2.5 Flash z Google Search zwykle 20-30s,
   // ale przy peak load potrafi i 60s. Poza tym lepiej wcześniej
   // failnąć niż blokować server action w nieskończoność.
+  //
+  // maxTokens 16384: response z 5 buyer_segments × 4 firmy × rationale
+  // + 4 channels + pricing + warnings + grounding overhead potrafi
+  // wyjść poza 8K → JSON.parse fail (truncated mid-string). 16K daje
+  // bezpieczny margines bez nadmiernego cost burn.
+  // responseMimeType='application/json' jest niekompatybilne z
+  // tools.google_search (Gemini API rzuca 400) — zamiast tego prompt
+  // wymaga "WYŁĄCZNIE valid JSON".
   const aiPromise = callAI({
     apiKey,
     provider,
     userPrompt: prompt,
     useGoogleSearch: true,
     model: 'gemini-2.5-flash',
-    maxTokens: 4096,
-    temperature: 0.4,
+    maxTokens: 16384,
+    temperature: 0.7,
   })
 
   const ai = await Promise.race([
@@ -143,15 +151,26 @@ KONTEKST RYNKOWY:
 - Kanały Pikniko (główny partner Vadyma): HoReCa, catering, małe sklepy, przetwórstwo (jako surowiec), retail (negocjowany Leviathan)
 - WYKLUCZ: sieci ogólnopolskie typu ${excludeList} — Vadym nie ma do nich kanału. Skupiaj się na regionalnych dystrybutorach (<500 osób), specjalistycznych sklepach, lokalnych sieciach HoReCa.
 
-ZADANIE — przeprowadź szybką analizę i zwróć WYŁĄCZNIE valid JSON (bez wstępu, bez markdown code block) w schema:
+ZADANIE — przeprowadź szybką analizę. Zwróć WYŁĄCZNIE valid JSON. Bez wstępu, bez wyjaśnień, bez markdown code block (\`\`\`). Pierwszy znak musi być { ostatni }.
+
+LIMITY (twarde — nie przekraczaj):
+- buyer_segments: MAX 5 elementów (sortuj po priority desc)
+- channels: MAX 4 elementy
+- segment_name: MAX 8 słów
+- rationale (segment lub channel): MAX 2 zdania
+- example_companies: MAX 4 firmy per segment
+- outreach_summary: MAX 3 zdania
+- warnings: MAX 4 elementy, każdy max 1 zdanie
+
+Schema:
 
 {
   "buyer_segments": [
     {
-      "segment_name": "string — konkretna nazwa segmentu (np. 'Sklepy ekologiczne premium', 'Restauracje ukraińskie', 'Dystrybutorzy do HoReCa')",
-      "rationale": "string — 1-2 zdania uzasadnienia",
-      "example_companies": ["3-5 KONKRETNYCH nazw firm w Polsce/Mazowieckim. Wymyślania zabronione — jeśli nie znasz, daj 'n/a'"],
-      "estimated_count_in_geo": "string — np. '50-200 firm w Mazowieckim'",
+      "segment_name": "string (max 8 słów)",
+      "rationale": "string (max 2 zdania)",
+      "example_companies": ["max 4 KONKRETNYCH nazw firm. Jeśli nie znasz — 'n/a'. Wymyślania zabronione."],
+      "estimated_count_in_geo": "string (np. '50-200 firm w Mazowieckim')",
       "priority": "high | medium | low"
     }
   ],
@@ -159,7 +178,7 @@ ZADANIE — przeprowadź szybką analizę i zwróć WYŁĄCZNIE valid JSON (bez 
     {
       "channel_name": "string",
       "fit_score": 0-100,
-      "rationale": "string"
+      "rationale": "string (max 2 zdania)"
     }
   ],
   "pricing_strategy": {
@@ -167,15 +186,13 @@ ZADANIE — przeprowadź szybką analizę i zwróć WYŁĄCZNIE valid JSON (bez 
     "price_anchor": "string — porównanie z konkurentami",
     "sample_strategy": "string — konkretna taktyka wejścia"
   },
-  "outreach_summary": "string — 2-3 zdania headline strategii",
-  "warnings": ["opcjonalne ostrzeżenia o konkurencji, sezonie, regulacjach"]
+  "outreach_summary": "string (max 3 zdania)",
+  "warnings": ["max 4 ostrzeżenia o konkurencji/sezonie/regulacjach"]
 }
 
-Użyj Google Search aby zweryfikować nazwy firm i obecny stan rynku. Zwracaj tylko firmy które realnie istnieją (sprawdź przed wymienieniem).
+Użyj Google Search aby zweryfikować nazwy firm i obecny stan rynku. Zwracaj tylko firmy które realnie istnieją.
 
-Zwróć 4-7 buyer_segments, posortowane po priority desc.
-Zwróć 3-5 channels.
-Bądź konkretny i actionable.
+Bądź konkretny i actionable. ZWRÓĆ TYLKO JSON.
 `.trim()
 }
 
@@ -187,17 +204,37 @@ export function extractJsonFromResponse<T>(text: string): T {
 
   try {
     return JSON.parse(cleaned) as T
-  } catch {
+  } catch (firstErr) {
     const match = cleaned.match(/\{[\s\S]*\}/)
     if (match) {
       try {
         return JSON.parse(match[0]) as T
       } catch {
-        // fall through
+        // fall through to truncation diagnostic
       }
     }
+    // Diagnostic: log full length + last 500 chars before throw — most
+    // common cause is response truncated mid-string at maxOutputTokens
+    // boundary. Tail tells us if it ends with "...","unfinished, no
+    // closing brace.
+    const length = cleaned.length
+    const tail = cleaned.slice(-500)
+    const head = cleaned.slice(0, 200)
+    const originalMessage =
+      firstErr instanceof Error ? firstErr.message : String(firstErr)
+    console.error(
+      '[intelligence] JSON parse failed.',
+      'length=', length,
+      'firstError=', originalMessage,
+      'head=', head,
+      'tail=', tail,
+    )
+    const looksTruncated = !cleaned.trim().endsWith('}')
+    const reason = looksTruncated
+      ? 'response truncated (likely maxOutputTokens reached)'
+      : 'invalid JSON structure'
     throw new Error(
-      `Failed to parse Gemini JSON: ${cleaned.slice(0, 200)}...`,
+      `Failed to parse Gemini JSON: ${reason}. Length: ${length}. Tail: ${tail.slice(-150)}`,
     )
   }
 }

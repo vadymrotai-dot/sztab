@@ -171,7 +171,17 @@ export async function startFastLookupForProduct(productId: string): Promise<{
 
     return { runId: run.id as string, result }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    const error = err instanceof Error ? err : new Error(String(err))
+    const message = error.message
+    // Vercel logs ten console.error — bez tego production widzi
+    // tylko zgenerowany "specific message omitted in production"
+    // i nie da się zdiagnozować truncation vs auth vs network.
+    console.error('[intelligence] startFastLookupForProduct failed', {
+      productId,
+      runId: run.id,
+      message,
+      stack: error.stack,
+    })
     await supabase
       .from('intelligence_runs')
       .update({
@@ -182,7 +192,12 @@ export async function startFastLookupForProduct(productId: string): Promise<{
       .eq('id', run.id)
 
     revalidatePath('/intelligence')
-    throw new Error(message)
+    // Clean Polish message dla UI (toast). Truncated → konkret, inne →
+    // zachowujemy treść (max 200 znaków) żeby Vadym widział co się stało.
+    const userMessage = /truncat/i.test(message)
+      ? 'Odpowiedź AI była zbyt długa — spróbuj ponownie'
+      : `Analiza nieudana: ${message.slice(0, 200)}`
+    throw new Error(userMessage)
   }
 }
 

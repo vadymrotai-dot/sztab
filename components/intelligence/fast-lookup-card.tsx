@@ -55,9 +55,16 @@ export function FastLookupCard({
           {lastRunDate && (
             <p className="mt-1 text-xs text-muted-foreground">
               Ostatnia analiza:{' '}
+              {/*
+                Eksplicytna timeZone='Europe/Warsaw' eliminuje hydration
+                mismatch (#418): bez niej server SSR na Vercel używa UTC
+                a klient lokalnej strefy → różny string → React errors.
+                Z explicit timezone obie strony produkują ten sam output.
+              */}
               {new Date(lastRunDate).toLocaleString('pl-PL', {
                 dateStyle: 'short',
                 timeStyle: 'short',
+                timeZone: 'Europe/Warsaw',
               })}
             </p>
           )}
