@@ -152,19 +152,6 @@ const buildInitialValues = (
   title: deal?.title ?? '',
 })
 
-const readUrlDefaults = (): DealModalDefaults => {
-  if (typeof window === 'undefined') return {}
-  const params = new URLSearchParams(window.location.search)
-  const stageRaw = params.get('stage')
-  const validStage = DEAL_STAGES.some((s) => s.value === stageRaw)
-    ? (stageRaw as DealStage)
-    : undefined
-  return {
-    stage: validStage,
-    client_id: params.get('client') ?? undefined,
-  }
-}
-
 interface ComboOption {
   id: string
   label: string
@@ -271,16 +258,16 @@ export function DealModal({
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
-  const mergedDefaults: DealModalDefaults = (() => {
-    const url = readUrlDefaults()
-    return {
-      client_id: defaults?.client_id ?? url.client_id,
-      stage: defaults?.stage ?? url.stage,
-    }
-  })()
-
+  // URL-based defaults (?stage / ?client) come in via the `defaults` prop
+  // — server pages parse searchParams and pass them down. Wcześniej
+  // window.location.search był też re-czytany w trakcie render w
+  // DealModal i zwracał {} na serwerze ale URL params na kliencie →
+  // form initial state różniła się między SSR i hydration → React
+  // error #418 hydration mismatch. Teraz URL params idą jednym
+  // kanałem (server-side props), klient nie czyta window podczas
+  // render.
   const [values, setValues] = useState<DealFormValues>(() =>
-    buildInitialValues(deal, mergedDefaults),
+    buildInitialValues(deal, defaults),
   )
   const [errors, setErrors] = useState<
     Partial<Record<keyof DealFormValues, string>>
