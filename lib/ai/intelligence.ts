@@ -441,16 +441,43 @@ async function runStage2Scraping(
 
   // Concurrency-limited Promise.all. Apify per-account concurrency
   // limit zazwyczaj 8-32 — 3 to bezpiecznie.
+  // Diagnostic: log job plan przed wykonaniem żeby Vercel logs
+  // pokazały ile actual scrape calls zostanie zrobione (segments ×
+  // cities × keywords po slice'ach z limitów).
+  console.log('[apify-stage2] plan:', {
+    total_jobs: jobs.length,
+    by_segment: jobs.reduce<Record<string, number>>((acc, j) => {
+      acc[j.segment.segment_name] = (acc[j.segment.segment_name] ?? 0) + 1
+      return acc
+    }, {}),
+  })
+
   const results: DiscoveredEntity[] = []
   for (let i = 0; i < jobs.length; i += MAX_PARALLEL_SCRAPES) {
     const chunk = jobs.slice(i, i + MAX_PARALLEL_SCRAPES)
     const chunkResults = await Promise.all(
       chunk.map(async (job) => {
+        console.log('[apify-stage2] requesting:', {
+          keyword: job.keyword,
+          city: job.city,
+          segment: job.segment.segment_name,
+        })
         const out = await scrapePanoramaFirm(input.apifyToken, {
           keyword: job.keyword,
           city: job.city,
           limit: MAX_ITEMS_PER_SCRAPE,
           extractDetails: true,
+        })
+        console.log('[apify-stage2] result:', {
+          keyword: job.keyword,
+          city: job.city,
+          status: out.status,
+          items_count: out.items.length,
+          duration_ms: out.duration_ms,
+          first_item_keys: out.items[0]
+            ? Object.keys(out.items[0])
+            : null,
+          error: out.error,
         })
         if (out.status !== 'SUCCEEDED') {
           warnings.push(
@@ -482,6 +509,8 @@ async function runStage2Scraping(
     )
     for (const batch of chunkResults) results.push(...batch)
   }
+
+  console.log('[apify-stage2] total raw entities:', results.length)
   return results
 }
 

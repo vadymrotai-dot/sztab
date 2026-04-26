@@ -1,15 +1,16 @@
 // lib/integrations/krs-rejestr.ts
-// KRS Rejestr.io API client. Phase 2 / Hotfix 3:
-//   - URL pattern: /api/v2/krs/podstawowe/nip{nip} (verified, raw "nip"
-//     prefix glued do numeru — NIE query string)
+// KRS Rejestr.io API client. Phase 2 / Hotfix 5:
+//   - URL pattern: /api/v2/org/nip{nip} ("nip" prefix glued do
+//     10-cyfrowego numeru, NIE query string). Hotfix 3 używał
+//     /krs/podstawowe/... który nie istnieje — rejestr.io zwracał 400.
 //   - Auth header: "Authorization: <token>" (BEZ "Bearer " prefix —
 //     rejestr.io używa raw token jako wartość headera)
 //   - lookupKrsByName: /api/v2/krs/wyszukiwarka?nazwa={encoded}
 //
-// adaptKrsResponse mapuje real schema rejestr.io: nazwa, krs, nip,
-// regon, forma_prawna, adres, pkd_glowny, kapital_zakladowy,
-// rejestr_przedsiebiorcow_data_wpisu/wykreslenia, osoba_glowna,
-// dane_kontaktowe.
+// adaptKrsResponse mapuje permissive — endpoint /org/ zwraca pola pod
+// 'nazwy' (object z pelna/skrocona) i 'siedziba' (address); fallback
+// na 'nazwa'/'adres' z poprzednich wariantów. KRS pobierany z 'krs'
+// lub fallback na 'id' (integer padded do 10 cyfr).
 
 const KRS_BASE = 'https://rejestr.io/api/v2'
 
@@ -80,16 +81,29 @@ const pickNumber = (
 
 function adaptKrsResponse(raw: unknown): KrsCompanyData | null {
   if (!isObject(raw)) return null
-  const name = pickString(raw, 'nazwa', 'name')
+
+  // Endpoint /org/{id} zwraca name pod 'nazwy' object z wariantami
+  // (pelna/skrocona). Stary endpoint /podmioty zwracał 'nazwa' jako
+  // string. Próbujemy obu (defensive).
+  let name: string | undefined
+  if (isObject(raw.nazwy)) {
+    name =
+      pickString(raw.nazwy, 'pelna', 'skrocona', 'pełna') ?? undefined
+  }
+  if (!name) name = pickString(raw, 'nazwa', 'name')
   if (!name) return null
 
-  // Address: rejestr.io zwraca pod 'adres' (PL) lub 'address' (EN).
+  // Address: rejestr.io endpoint /org/ zwraca pod 'siedziba',
+  // /podmioty zwracał pod 'adres'. /api/v2/krs/podstawowe... zwracał
+  // 'address' (EN). Wszystkie trzy pomija obsługujemy.
   const addrRaw =
-    isObject(raw.adres)
-      ? raw.adres
-      : isObject(raw.address)
-        ? raw.address
-        : undefined
+    isObject(raw.siedziba)
+      ? raw.siedziba
+      : isObject(raw.adres)
+        ? raw.adres
+        : isObject(raw.address)
+          ? raw.address
+          : undefined
 
   const address: KrsAddress | undefined = addrRaw
     ? {
@@ -161,10 +175,18 @@ function adaptKrsResponse(raw: unknown): KrsCompanyData | null {
     }
   }
 
+  // KRS fallback: endpoint /org/ zwraca KRS jako 'id' (integer) —
+  // padded do 10 cyfr to standardowy format. /podmioty zwracał już
+  // pole 'krs'.
+  let krsValue = pickString(raw, 'krs')
+  if (!krsValue && (typeof raw.id === 'number' || typeof raw.id === 'string')) {
+    krsValue = String(raw.id).padStart(10, '0')
+  }
+
   return {
     name,
     nip: pickString(raw, 'nip'),
-    krs: pickString(raw, 'krs'),
+    krs: krsValue,
     regon: pickString(raw, 'regon'),
     legalForm: pickString(raw, 'forma_prawna', 'formaPrawna', 'legalForm'),
     status,
@@ -208,9 +230,13 @@ export async function lookupKrsByNip(
     return null
   }
 
-  // Format ścieżki: /krs/podstawowe/nip{numer} — literalny prefix
-  // "nip" przyklejony do 10-cyfrowego numeru, NIE query string.
-  const url = `${KRS_BASE}/krs/podstawowe/nip${cleanNip}`
+  // Endpoint /api/v2/org/{id} — gdzie {id} to NIP poprzedzony "nip"
+  // (np. nip1234567890) lub raw KRS number. Hotfix 3 używał
+  // /krs/podstawowe/nip... — to był nieprawidłowy endpoint, rejestr.io
+  // zwracał 400 "Podana ścieżka żądania API nie odpowiada żadnemu
+  // zdefiniowanemu endpointowi API". Poprawny endpoint /org/nip{nip}
+  // potwierdzony z rejestr.io/api/info/podstawowe-dane-organizacji.
+  const url = `${KRS_BASE}/org/nip${cleanNip}`
 
   try {
     const response = await fetch(url, {
