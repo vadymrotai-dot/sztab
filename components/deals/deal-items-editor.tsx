@@ -10,6 +10,16 @@ import {
   TrashIcon,
 } from 'lucide-react'
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -148,6 +158,10 @@ export function DealItemsEditor({
   const [items, setItems] = useState<DealItem[]>(initialItems)
   const [pending, startTransition] = useTransition()
   const [productPickerOpen, setProductPickerOpen] = useState(false)
+  const [negativeMarginPending, setNegativeMarginPending] = useState<{
+    item: DealItem
+    newPrice: number
+  } | null>(null)
 
   // Sync from server when initialItems changes (e.g. after revalidate)
   useEffect(() => {
@@ -298,9 +312,7 @@ export function DealItemsEditor({
     })
   }
 
-  const handlePrice = (item: DealItem, value: string) => {
-    const p = Number.parseFloat(value.replace(',', '.'))
-    if (!Number.isFinite(p) || p < 0) return
+  const persistPrice = (item: DealItem, p: number) => {
     const optimistic = items.map((it) =>
       it.id === item.id
         ? {
@@ -337,6 +349,19 @@ export function DealItemsEditor({
       ])
       router.refresh()
     })
+  }
+
+  const handlePrice = (item: DealItem, value: string) => {
+    const p = Number.parseFloat(value.replace(',', '.'))
+    if (!Number.isFinite(p) || p < 0) return
+    // Gate na sprzedaż pod cost — czerwona linia. AlertDialog pozwala
+    // świadomie pominąć (np. promocja, sample), ale wymaga kliknięcia.
+    const cost = item.unit_price_buy != null ? Number(item.unit_price_buy) : null
+    if (cost != null && cost > 0 && p < cost) {
+      setNegativeMarginPending({ item, newPrice: p })
+      return
+    }
+    persistPrice(item, p)
   }
 
   const handleDelete = (id: string) => {
@@ -439,6 +464,43 @@ export function DealItemsEditor({
                           </TooltipContent>
                         </Tooltip>
                       )}
+                      {(() => {
+                        const sell = Number(item.unit_price_sell ?? 0)
+                        const cost =
+                          item.unit_price_buy != null
+                            ? Number(item.unit_price_buy)
+                            : null
+                        if (cost == null || cost <= 0 || sell <= 0) return null
+                        const marginPct = ((sell - cost) / sell) * 100
+                        if (marginPct < 0) {
+                          return (
+                            <Badge
+                              variant="outline"
+                              className="bg-red-100 text-red-800 border-transparent text-[10px] px-1 py-0 h-4 leading-none whitespace-nowrap"
+                            >
+                              ⚠ Marża ujemna! Cena pod kosztem
+                            </Badge>
+                          )
+                        }
+                        const docelFr =
+                          clientContext.contracted_margin_docel_pct
+                        if (
+                          clientContext.client_type === 'strategic_partner' &&
+                          docelFr != null &&
+                          marginPct < docelFr * 100
+                        ) {
+                          return (
+                            <Badge
+                              variant="outline"
+                              className="bg-amber-100 text-amber-800 border-transparent text-[10px] px-1 py-0 h-4 leading-none whitespace-nowrap"
+                            >
+                              ⚠ Marża {marginPct.toFixed(1)}% poniżej docel{' '}
+                              {(docelFr * 100).toFixed(0)}%
+                            </Badge>
+                          )
+                        }
+                        return null
+                      })()}
                     </div>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
@@ -521,6 +583,58 @@ export function DealItemsEditor({
           </div>
         </div>
       </div>
+
+      <AlertDialog
+        open={negativeMarginPending != null}
+        onOpenChange={(open) => {
+          if (!open) setNegativeMarginPending(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>⚠ UWAGA: marża ujemna</AlertDialogTitle>
+            <AlertDialogDescription>
+              {negativeMarginPending && (
+                <>
+                  Cena {formatPLN.format(negativeMarginPending.newPrice)} jest
+                  niższa od kosztu zakupu{' '}
+                  {formatPLN.format(
+                    Number(negativeMarginPending.item.unit_price_buy ?? 0),
+                  )}
+                  . Pozycja: <strong>
+                    {negativeMarginPending.item.product_name_snapshot ??
+                      '(usunięty produkt)'}
+                  </strong>
+                  . Marża ujemna —{' '}
+                  {(
+                    ((negativeMarginPending.newPrice -
+                      Number(negativeMarginPending.item.unit_price_buy ?? 0)) /
+                      negativeMarginPending.newPrice) *
+                    100
+                  ).toFixed(1)}
+                  %.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Zmień</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (!negativeMarginPending) return
+                persistPrice(
+                  negativeMarginPending.item,
+                  negativeMarginPending.newPrice,
+                )
+                setNegativeMarginPending(null)
+              }}
+            >
+              Zapisz mimo to
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
