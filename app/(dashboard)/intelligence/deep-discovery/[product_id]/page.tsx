@@ -12,9 +12,11 @@ import {
 } from '@/app/actions/intelligence'
 
 // Vercel function timeout dla server actions wywołanych z tej route.
-// runDeepDiscovery pipeline trzyma się ≤4 min — 300s daje bufor.
-// Hobby plan limit 10s — jeśli plan != Pro, action timeout'nie.
-export const maxDuration = 300
+// 800s zgodnie z Pro plan ceiling (recently bumped z 300 na 800).
+// Pipeline real-time runs ~3-5 min = 180-300s — 800s daje 2-3x bufor
+// jeśli Apify lub KRS rate-limit-ują albo Gemini zacznie streamingować.
+// Hobby plan ma limit 60s → na Hobby pipeline ZAWSZE timeout.
+export const maxDuration = 800
 
 export default async function DeepDiscoveryPage({
   params,

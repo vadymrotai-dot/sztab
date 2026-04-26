@@ -3,6 +3,13 @@
 import { revalidatePath } from 'next/cache'
 
 import { createClient } from '@/lib/supabase/server'
+
+// Server actions inheritują route segment config (maxDuration) z page
+// która je wywołuje. Page route ma export const maxDuration = 800. Ten
+// re-export tutaj jest defensywny — jeśli akcja byłaby wywołana z innej
+// route bez explicit maxDuration, Next.js użyje tego.
+// Pełen backup w vercel.json `functions` field.
+export const maxDuration = 800
 import {
   runFastLookup,
   runDeepDiscovery,

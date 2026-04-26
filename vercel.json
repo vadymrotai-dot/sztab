@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "app/(dashboard)/intelligence/deep-discovery/[product_id]/page.tsx": {
+      "maxDuration": 800
+    },
+    "app/actions/intelligence.ts": {
+      "maxDuration": 800
+    }
+  }
+}
