@@ -2,7 +2,10 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/page-header'
 import { ProductForm } from '@/components/products/product-form'
+import { FastLookupCard } from '@/components/intelligence/fast-lookup-card'
+import { getIntelligenceRunsForProduct } from '@/app/actions/intelligence'
 import { settingsRowsToPricing } from '@/lib/pricing'
+import type { FastLookupResult } from '@/lib/ai/intelligence'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -17,6 +20,7 @@ export default async function EditProductPage({ params }: PageProps) {
     { data: suppliers },
     { data: settingsRows },
     { data: categoryRows },
+    intelligenceRuns,
   ] = await Promise.all([
     supabase.from('products').select('*').eq('id', id).single(),
     supabase
@@ -28,9 +32,20 @@ export default async function EditProductPage({ params }: PageProps) {
       .from('products')
       .select('category')
       .not('category', 'is', null),
+    getIntelligenceRunsForProduct(id),
   ])
 
   if (!product) notFound()
+
+  // Pierwszy completed run z parsed_results — pokaż wyniki natychmiast
+  // bez czekania na ponowny click. Failed/running runy pomijamy.
+  const latestCompleted = intelligenceRuns.find(
+    (r) => r.status === 'completed' && r.parsed_results,
+  )
+  const initialResult =
+    (latestCompleted?.parsed_results as FastLookupResult | null) ?? null
+  const initialRunDate =
+    latestCompleted?.completed_at ?? latestCompleted?.created_at ?? null
 
   const pricing = settingsRowsToPricing(settingsRows)
   const categorySuggestions = Array.from(
@@ -50,12 +65,17 @@ export default async function EditProductPage({ params }: PageProps) {
           { label: product.name },
         ]}
       />
-      <div className="max-w-3xl p-6">
+      <div className="max-w-3xl space-y-6 p-6">
         <ProductForm
           product={product}
           suppliers={suppliers ?? []}
           pricing={pricing}
           categorySuggestions={categorySuggestions}
+        />
+        <FastLookupCard
+          productId={id}
+          initialResult={initialResult}
+          initialRunDate={initialRunDate}
         />
       </div>
     </div>
