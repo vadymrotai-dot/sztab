@@ -1,37 +1,47 @@
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/page-header'
 import { ProductsContent } from '@/components/products/products-content'
-import { Button } from '@/components/ui/button'
-import { PlusIcon } from 'lucide-react'
-import Link from 'next/link'
+import { NewProductModal } from '@/components/products/new-product-modal'
 
 export default async function ProductsPage() {
   const supabase = await createClient()
 
-  const { data: products } = await supabase
-    .from('products')
-    .select('*')
-    .order('lp', { ascending: true })
+  const [{ data: products }, { data: suppliers }, { data: categoryRows }] =
+    await Promise.all([
+      supabase
+        .from('products')
+        .select('*')
+        .order('lp', { ascending: true, nullsFirst: false }),
+      supabase
+        .from('suppliers')
+        .select('id, name')
+        .order('name', { ascending: true }),
+      supabase
+        .from('products')
+        .select('category')
+        .not('category', 'is', null),
+    ])
 
-  const { data: params } = await supabase
-    .from('params')
-    .select('*')
-    .single()
+  const categorySuggestions = Array.from(
+    new Set(
+      (categoryRows ?? [])
+        .map((r) => (r.category as string | null)?.trim())
+        .filter((c): c is string => Boolean(c)),
+    ),
+  ).sort()
 
   return (
     <div className="flex flex-col">
       <PageHeader
         title="Produkty"
         actions={
-          <Button asChild>
-            <Link href="/products/new">
-              <PlusIcon className="mr-2 size-4" />
-              Nowy produkt
-            </Link>
-          </Button>
+          <NewProductModal
+            suppliers={suppliers ?? []}
+            categorySuggestions={categorySuggestions}
+          />
         }
       />
-      <ProductsContent products={products || []} params={params} />
+      <ProductsContent products={products || []} params={null} />
     </div>
   )
 }

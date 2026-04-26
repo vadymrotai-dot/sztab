@@ -154,6 +154,7 @@ export interface Product {
   seasonality_status: string | null
   shelf_life_days: number | null
   supplier_id: string | null
+  tags: string[] | null
   created_at: string
   owner_id: string
 }

@@ -1,27 +1,8 @@
-import { createClient } from '@/lib/supabase/server'
-import { PageHeader } from '@/components/page-header'
-import { ProductForm } from '@/components/products/product-form'
+import { redirect } from 'next/navigation'
 
-export default async function NewProductPage() {
-  const supabase = await createClient()
-
-  const { data: params } = await supabase
-    .from('params')
-    .select('*')
-    .single()
-
-  return (
-    <div className="flex flex-col">
-      <PageHeader
-        title="Nowy produkt"
-        breadcrumbs={[
-          { label: 'Produkty', href: '/products' },
-          { label: 'Nowy produkt' },
-        ]}
-      />
-      <div className="p-6">
-        <ProductForm params={params} />
-      </div>
-    </div>
-  )
+// Legacy route — manual product creation now happens via the modal on
+// /products. Kept as a permanent redirect so old browser bookmarks /
+// links from emails / Bitrix imports keep working.
+export default function NewProductLegacyRedirect() {
+  redirect('/products')
 }
