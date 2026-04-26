@@ -387,12 +387,27 @@ export async function startDeepDiscoveryForProduct(
     const result = await runDeepDiscovery(input)
 
     if (result.entities.length > 0) {
-      // raw_data nie idzie do JSONB column osobno — pipeline trzyma
-      // go w entity. Mapujemy snake_case kolumny + raw_data zostawiony
-      // jako JSONB. ON CONFLICT obsłużone partial unique index
-      // (nip, owner_id) — dorzucamy ignoreDuplicates: true via upsert,
-      // żeby kolejny run nie wybuchł na duplikatach.
-      const rows = result.entities.map((e) => ({
+      // discovered_entities jest history per run — duplikaty między
+      // runami OK (każdy run = osobna sesja exploracji). W obrębie
+      // jednego runa runDeepDiscovery → dedupeEntities() w
+      // lib/ai/intelligence.ts już zwraca unique po NIP+name+city,
+      // więc plain INSERT wystarczy.
+      //
+      // Defensive in-memory dedupe drugiej linii — gdyby pipeline
+      // zwrócił coś z duplikatem (race, bug). NIP-first, fallback na
+      // normalized name+city.
+      const dedupedMap = new Map<string, typeof result.entities[number]>()
+      for (const e of result.entities) {
+        const cleanNip = e.nip?.replace(/\D/g, '') ?? ''
+        const key =
+          cleanNip.length === 10
+            ? `nip:${cleanNip}`
+            : `name:${(e.name ?? '').toLowerCase().trim()}|${(e.city ?? '').toLowerCase().trim()}`
+        if (!dedupedMap.has(key)) dedupedMap.set(key, e)
+      }
+      const finalEntities = Array.from(dedupedMap.values())
+
+      const rows = finalEntities.map((e) => ({
         run_id: run.id,
         owner_id: user.id,
         name: e.name,
@@ -419,19 +434,13 @@ export async function startDeepDiscoveryForProduct(
         raw_data: e.raw_data,
       }))
 
-      // upsert with onConflict na unique index pomija duplikaty (entity
-      // tego samego owner-a z tym samym NIP). Inserts entities bez NIP
-      // jak normal rows.
-      const { error: upsertError } = await supabase
+      const { error: insertError } = await supabase
         .from('discovered_entities')
-        .upsert(rows, {
-          onConflict: 'nip,owner_id',
-          ignoreDuplicates: true,
-        })
+        .insert(rows)
 
-      if (upsertError) {
+      if (insertError) {
         result.warnings.push(
-          `Persist entities partial fail: ${upsertError.message}`,
+          `Persist entities partial fail: ${insertError.message}`,
         )
       }
     }
