@@ -18,6 +18,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { updateSettings } from '@/app/actions/settings'
 
 import { TemplateButton } from './template-button'
+import { ApiKeysForm, type ApiKeysFormProps } from './api-keys-form'
 
 export interface SettingsRow {
   key: string
@@ -27,6 +28,7 @@ export interface SettingsRow {
 
 interface SettingsFormProps {
   settings: SettingsRow[]
+  maskedKeys: ApiKeysFormProps
 }
 
 const KEY_ORDER_GENERAL = ['kurs_eur_pln', 'overhead_multiplier']
@@ -80,7 +82,7 @@ const suffixFor = (key: string): string => {
   return ''
 }
 
-export function SettingsForm({ settings }: SettingsFormProps) {
+export function SettingsForm({ settings, maskedKeys }: SettingsFormProps) {
   const [pending, startTransition] = useTransition()
 
   const initialMap = useMemo(() => {
@@ -167,6 +169,7 @@ export function SettingsForm({ settings }: SettingsFormProps) {
         <TabsList>
           <TabsTrigger value="general">Ogólne</TabsTrigger>
           <TabsTrigger value="pricing">Ceny i marże</TabsTrigger>
+          <TabsTrigger value="api">Klucze API</TabsTrigger>
           <TabsTrigger value="templates">Szablony</TabsTrigger>
         </TabsList>
 
@@ -189,6 +192,14 @@ export function SettingsForm({ settings }: SettingsFormProps) {
                 <h3 className="text-sm font-medium">Progi wartości zamówienia</h3>
                 {KEY_ORDER_THRESHOLDS.map(renderField)}
               </section>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="api">
+          <Card>
+            <CardContent className="pt-6">
+              <ApiKeysForm {...maskedKeys} />
             </CardContent>
           </Card>
         </TabsContent>
