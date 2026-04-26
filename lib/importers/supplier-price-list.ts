@@ -21,6 +21,14 @@ import {
   findProductsByEans,
 } from '@/app/actions/import'
 
+// Reviewed 2026-04-26: EAN duplicate detection is supplier-scoped
+// (findProductsByEans in app/actions/import.ts uses .eq('owner_id')
+// .eq('supplier_id') .in('ean') — orphans with supplier_id IS NULL are
+// excluded because PG NULL never equals a UUID). Commit with
+// updateExisting=true uses UPDATE on the matched id (not INSERT/upsert)
+// — see batchCommitProducts. NULL EAN is flagged as invalid in
+// validate() below and skipped at commit. No code changes needed.
+
 // Subset of Product fields a supplier price-list provides. Server commit
 // fills in owner_id, supplier_id, computed cost_pln, and any auto prices
 // from settings. We keep the type narrow on purpose.
