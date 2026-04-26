@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
 import type { Client } from '@/lib/types'
 import { CLIENT_SEGMENTS } from '@/lib/types'
 
@@ -47,6 +48,15 @@ export function ClientForm({ client }: ClientFormProps) {
     notes: client?.notes || '',
     segment: client?.segment || 'niesklasyfikowany',
     status: client?.status || 'nowy',
+    client_type: client?.client_type || ('standard' as 'standard' | 'strategic_partner'),
+    contracted_margin_katalog_pct:
+      client?.contracted_margin_katalog_pct != null
+        ? (client.contracted_margin_katalog_pct * 100).toFixed(1)
+        : '32',
+    contracted_margin_docel_pct:
+      client?.contracted_margin_docel_pct != null
+        ? (client.contracted_margin_docel_pct * 100).toFixed(1)
+        : '23',
   })
 
   // === NIP lookup state ===
@@ -116,6 +126,29 @@ export function ClientForm({ client }: ClientFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+
+    // Strategic partner validation: docel ≤ katalog, both 0..100%
+    let katalogFraction: number | null = null
+    let docelFraction: number | null = null
+    if (formData.client_type === 'strategic_partner') {
+      const k = Number.parseFloat(formData.contracted_margin_katalog_pct)
+      const d = Number.parseFloat(formData.contracted_margin_docel_pct)
+      if (!Number.isFinite(k) || k < 0 || k > 100) {
+        setError('Marża katalog musi być 0-100%')
+        return
+      }
+      if (!Number.isFinite(d) || d < 0 || d > 100) {
+        setError('Marża docel musi być 0-100%')
+        return
+      }
+      if (d > k) {
+        setError('Marża docel musi być ≤ marża katalog')
+        return
+      }
+      katalogFraction = k / 100
+      docelFraction = d / 100
+    }
+
     setLoading(true)
 
     const { data: { user } } = await supabase.auth.getUser()
@@ -125,10 +158,23 @@ export function ClientForm({ client }: ClientFormProps) {
       return
     }
 
+    // Strip the display-only string fields before save and substitute
+    // the validated fraction values (or null for standard clients).
+    const {
+      contracted_margin_katalog_pct: _displayK,
+      contracted_margin_docel_pct: _displayD,
+      ...rest
+    } = formData
+    const persistPayload = {
+      ...rest,
+      contracted_margin_katalog_pct: katalogFraction,
+      contracted_margin_docel_pct: docelFraction,
+    }
+
     if (client) {
       const { error } = await supabase
         .from('clients')
-        .update({ ...formData, updated_at: new Date().toISOString() })
+        .update({ ...persistPayload, updated_at: new Date().toISOString() })
         .eq('id', client.id)
 
       if (error) {
@@ -141,7 +187,7 @@ export function ClientForm({ client }: ClientFormProps) {
     } else {
       const { data, error } = await supabase
         .from('clients')
-        .insert({ ...formData, owner_id: user.id })
+        .insert({ ...persistPayload, owner_id: user.id })
         .select()
         .single()
 
@@ -304,6 +350,73 @@ export function ClientForm({ client }: ClientFormProps) {
                 rows={4}
               />
             </Field>
+
+            <div className="space-y-3 rounded-md border p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <FieldLabel htmlFor="client_type_switch">
+                    Strategic partner („Duzi gracze")
+                  </FieldLabel>
+                  <p className="text-xs text-muted-foreground">
+                    Klient z indywidualnie negocjowanymi marżami katalog/docel.
+                    Cennik tier-owy jest pomijany w DealModal — używamy
+                    contracted margins.
+                  </p>
+                </div>
+                <Switch
+                  id="client_type_switch"
+                  checked={formData.client_type === 'strategic_partner'}
+                  onCheckedChange={(v) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      client_type: v ? 'strategic_partner' : 'standard',
+                    }))
+                  }
+                />
+              </div>
+              {formData.client_type === 'strategic_partner' && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field>
+                    <FieldLabel htmlFor="margin_katalog_edit">
+                      Marża katalog (%)
+                    </FieldLabel>
+                    <Input
+                      id="margin_katalog_edit"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={formData.contracted_margin_katalog_pct}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          contracted_margin_katalog_pct: e.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="margin_docel_edit">
+                      Marża docel (%) — minimalna
+                    </FieldLabel>
+                    <Input
+                      id="margin_docel_edit"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={formData.contracted_margin_docel_pct}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          contracted_margin_docel_pct: e.target.value,
+                        })
+                      }
+                    />
+                  </Field>
+                </div>
+              )}
+            </div>
           </FieldGroup>
           {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
           <div className="mt-6 flex gap-3">
