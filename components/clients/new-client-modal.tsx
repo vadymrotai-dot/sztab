@@ -64,18 +64,24 @@ export function NewClientModal() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nip: cleanNip }),
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        toast.error(err.error ?? 'Nie udało się pobrać danych z rejestru')
+      const json = await res.json().catch(() => ({}))
+      // API shape: { ok: true, data: { name, nip, address, city, regon,
+      // krs, statusVat, registrationDate } } | { ok: false, error }.
+      // The earlier { result: ... } parse path was wrong — it left every
+      // form field empty even though the toast said "wczytane".
+      if (!json?.ok) {
+        toast.error(json?.error ?? 'Nie udało się pobrać danych z rejestru')
         return
       }
-      const data = await res.json()
-      const r = data.result ?? data
-      if (r.title || r.name) setTitle(r.title ?? r.name ?? title)
-      if (r.city) setCity(r.city)
-      if (r.address) setAddress(r.address)
-      if (r.region) setRegion(r.region)
-      toast.success('Dane z rejestru wczytane')
+      const d = json.data ?? {}
+      if (d.name) setTitle(d.name)
+      if (d.nip) setNip(d.nip)
+      if (d.city) setCity(d.city)
+      if (d.address) setAddress(d.address)
+      // MF subject doesn't carry region — leave existing value alone.
+      toast.success(
+        `Wczytano: ${(d.name as string | undefined)?.slice(0, 50) ?? 'firma'}`,
+      )
     } catch (err) {
       toast.error(`Błąd lookup: ${(err as Error).message}`)
     } finally {
