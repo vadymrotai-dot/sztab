@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/page-header'
 import { ProductsContent } from '@/components/products/products-content'
 import { NewProductModal } from '@/components/products/new-product-modal'
+import { ImportLauncher } from '@/components/products/import-launcher'
 
 export default async function ProductsPage() {
   const supabase = await createClient()
@@ -35,10 +36,13 @@ export default async function ProductsPage() {
       <PageHeader
         title="Produkty"
         actions={
-          <NewProductModal
-            suppliers={suppliers ?? []}
-            categorySuggestions={categorySuggestions}
-          />
+          <div className="flex gap-2">
+            <ImportLauncher suppliers={suppliers ?? []} />
+            <NewProductModal
+              suppliers={suppliers ?? []}
+              categorySuggestions={categorySuggestions}
+            />
+          </div>
         }
       />
       <ProductsContent products={products || []} params={null} />

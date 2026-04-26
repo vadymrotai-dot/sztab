@@ -8,6 +8,25 @@ import type {
   ImportResult,
   ImportPreset,
 } from '@/lib/importers/types'
+
+// Returns the saved column→field mapping for a supplier so the wizard
+// can skip Step 2 on a re-import. Null means "ask for mapping".
+export async function getSupplierImportPreset(
+  supplierId: string,
+): Promise<ImportPreset | null> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data } = await supabase
+    .from('suppliers')
+    .select('import_preset')
+    .eq('id', supplierId)
+    .eq('owner_id', user.id)
+    .maybeSingle()
+  return (data?.import_preset as ImportPreset | null) ?? null
+}
 import type { ImportedProductDraft } from '@/lib/importers/supplier-price-list'
 
 // Reads `kurs_eur_pln` and `overhead_multiplier` from the settings table.
