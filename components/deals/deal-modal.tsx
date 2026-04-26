@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { z } from 'zod'
 import { toast } from 'sonner'
-import { CheckIcon, ChevronsUpDownIcon, TrashIcon } from 'lucide-react'
+import { CheckIcon, ChevronsUpDownIcon, TrashIcon, ListIcon } from 'lucide-react'
 
 import {
   AlertDialog,
@@ -95,7 +95,7 @@ export interface DealModalProps {
   deal?: Deal
   defaults?: DealModalDefaults
   clients: DealModalClient[]
-  products: DealModalProduct[]
+  products: DealModalProduct[] // kept for API compat with Phase 1 wrappers; unused in v2 shell
   people: DealModalPerson[]
   suppliers: DealModalSupplier[]
   onSaved?: (id: string) => void
@@ -108,19 +108,13 @@ const dealStageValues = DEAL_STAGES.map((s) => s.value) as [
 
 const dealSchema = z.object({
   client_id: z.string().min(1, 'Klient jest wymagany'),
-  product_id: z.string().optional(),
   person_id: z.string().optional(),
   supplier_id: z.string().optional(),
   stage: z.enum(dealStageValues),
   probability: z.number().min(0).max(100),
-  quantity: z.number().min(0).nullable(),
-  unit: z.string().optional(),
-  unit_price_buy: z.number().min(0).nullable(),
-  unit_price_sell: z.number().min(0).nullable(),
-  total_value: z.number().min(0).nullable(),
-  margin_amount: z.number().nullable(),
-  margin_pct: z.number().nullable(),
   currency: z.string().min(3).max(3),
+  deal_type: z.enum(['reseller', 'agent', 'partner']).optional().nullable(),
+  commission_pct: z.number().min(0).max(100).nullable().optional(),
   delivery_terms: z.string().optional(),
   expected_close_date: z.string().optional(),
   next_action_date: z.string().optional(),
@@ -137,20 +131,27 @@ const todayISO = () => {
   return d.toISOString().slice(0, 10)
 }
 
-const parseNumOrNull = (v: string): number | null => {
-  if (v === '') return null
-  const n = parseFloat(v)
-  return Number.isFinite(n) ? n : null
-}
+const buildInitialValues = (
+  deal: Deal | undefined,
+  defaults: DealModalDefaults | undefined,
+): DealFormValues => ({
+  client_id: deal?.client_id ?? defaults?.client_id ?? '',
+  person_id: deal?.person_id ?? undefined,
+  supplier_id: deal?.supplier_id ?? undefined,
+  stage: deal?.stage ?? defaults?.stage ?? 'lead',
+  probability: deal?.probability ?? 30,
+  currency: deal?.currency ?? 'PLN',
+  deal_type: deal?.deal_type ?? null,
+  commission_pct: deal?.commission_pct ?? null,
+  delivery_terms: deal?.delivery_terms ?? '',
+  expected_close_date:
+    deal?.expected_close_date ?? deal?.close_date ?? '',
+  next_action_date: deal?.next_action_date ?? '',
+  next_action_note: deal?.next_action_note ?? '',
+  notes: deal?.notes ?? '',
+  title: deal?.title ?? '',
+})
 
-const formatNum = (v: number | null | undefined): string =>
-  v == null || !Number.isFinite(v) ? '' : String(v)
-
-// Reads ?stage=, ?client=, ?product= directly from the browser URL.
-// Bypasses useSearchParams (which has been unreliable for our case)
-// and reads window.location synchronously. SSR-safe via the typeof
-// window guard — on the server we return an empty object and rely
-// on server-passed defaults instead.
 const readUrlDefaults = (): DealModalDefaults => {
   if (typeof window === 'undefined') return {}
   const params = new URLSearchParams(window.location.search)
@@ -161,65 +162,6 @@ const readUrlDefaults = (): DealModalDefaults => {
   return {
     stage: validStage,
     client_id: params.get('client') ?? undefined,
-    product_id: params.get('product') ?? undefined,
-  }
-}
-
-const buildInitialValues = (
-  deal: Deal | undefined,
-  defaults: DealModalDefaults | undefined,
-): DealFormValues => ({
-  client_id: deal?.client_id ?? defaults?.client_id ?? '',
-  // product_id removed in 010 — deal_items child table replaces single-product fields.
-  // Phase 3 Commit 5 rewrites this form on top of DealItemsEditor.
-  product_id: defaults?.product_id ?? undefined,
-  person_id: deal?.person_id ?? undefined,
-  supplier_id: deal?.supplier_id ?? undefined,
-  stage: deal?.stage ?? defaults?.stage ?? 'lead',
-  probability: deal?.probability ?? 30,
-  quantity: null,
-  unit: '',
-  unit_price_buy: null,
-  unit_price_sell: null,
-  total_value: deal?.total_value ?? deal?.amount ?? null,
-  margin_amount: null,
-  margin_pct: null,
-  currency: deal?.currency ?? 'PLN',
-  delivery_terms: deal?.delivery_terms ?? '',
-  expected_close_date:
-    deal?.expected_close_date ?? deal?.close_date ?? '',
-  next_action_date: deal?.next_action_date ?? '',
-  next_action_note: deal?.next_action_note ?? '',
-  notes: deal?.notes ?? '',
-  title: deal?.title ?? '',
-})
-
-const recomputeDerived = (
-  values: DealFormValues,
-  overridden: boolean,
-): DealFormValues => {
-  const qty = values.quantity ?? 0
-  const sell = values.unit_price_sell ?? 0
-  const buy = values.unit_price_buy ?? 0
-  const autoTotal = qty * sell
-
-  let total: number | null
-  if (overridden) {
-    total = values.total_value
-  } else {
-    total = qty > 0 || sell > 0 ? autoTotal : null
-  }
-
-  const cost = qty * buy
-  const margin = total != null ? total - cost : null
-  const pct =
-    total != null && total > 0 && margin != null ? (margin / total) * 100 : null
-
-  return {
-    ...values,
-    total_value: total,
-    margin_amount: margin,
-    margin_pct: pct,
   }
 }
 
@@ -235,22 +177,17 @@ function FieldCombobox({
   onChange,
   placeholder,
   required = false,
-  emptyText = 'Nie znaleziono.',
   searchPlaceholder = 'Szukaj...',
-  disabled = false,
 }: {
   options: ComboOption[]
   value?: string
   onChange: (id: string | undefined) => void
   placeholder: string
   required?: boolean
-  emptyText?: string
   searchPlaceholder?: string
-  disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const selected = options.find((o) => o.id === value)
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -259,7 +196,6 @@ function FieldCombobox({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          disabled={disabled}
           className={cn(
             'w-full justify-between font-normal',
             !selected && 'text-muted-foreground',
@@ -276,7 +212,7 @@ function FieldCombobox({
         <Command>
           <CommandInput placeholder={searchPlaceholder} />
           <CommandList>
-            <CommandEmpty>{emptyText}</CommandEmpty>
+            <CommandEmpty>Nie znaleziono.</CommandEmpty>
             <CommandGroup>
               {!required && (
                 <CommandItem
@@ -286,9 +222,7 @@ function FieldCombobox({
                     setOpen(false)
                   }}
                 >
-                  <span className="text-muted-foreground italic">
-                    — Brak —
-                  </span>
+                  <span className="text-muted-foreground italic">— Brak —</span>
                 </CommandItem>
               )}
               {options.map((option) => (
@@ -330,7 +264,6 @@ export function DealModal({
   deal,
   defaults,
   clients,
-  products,
   people,
   suppliers,
   onSaved,
@@ -338,15 +271,10 @@ export function DealModal({
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
-  // Merge defaults from three sources, in priority order:
-  //   1. Existing deal (edit mode) — handled inside buildInitialValues
-  //   2. Server-passed defaults prop
-  //   3. URL params read directly from window.location (client only)
   const mergedDefaults: DealModalDefaults = (() => {
     const url = readUrlDefaults()
     return {
       client_id: defaults?.client_id ?? url.client_id,
-      product_id: defaults?.product_id ?? url.product_id,
       stage: defaults?.stage ?? url.stage,
     }
   })()
@@ -354,29 +282,16 @@ export function DealModal({
   const [values, setValues] = useState<DealFormValues>(() =>
     buildInitialValues(deal, mergedDefaults),
   )
-  const [errors, setErrors] = useState<Partial<Record<keyof DealFormValues, string>>>({})
+  const [errors, setErrors] = useState<
+    Partial<Record<keyof DealFormValues, string>>
+  >({})
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
-  const [totalOverridden, setTotalOverridden] = useState<boolean>(() => {
-    const init = buildInitialValues(deal, mergedDefaults)
-    const autoTotal = (init.quantity ?? 0) * (init.unit_price_sell ?? 0)
-    return Boolean(
-      deal &&
-        init.total_value != null &&
-        Math.abs(autoTotal - init.total_value) > 0.005,
-    )
-  })
-
   const clientOptions: ComboOption[] = useMemo(
     () => clients.map((c) => ({ id: c.id, label: c.title })),
     [clients],
-  )
-
-  const productOptions: ComboOption[] = useMemo(
-    () => products.map((p) => ({ id: p.id, label: p.name })),
-    [products],
   )
 
   const filteredPeople = useMemo(() => {
@@ -409,22 +324,8 @@ export function DealModal({
   ) => {
     setValues((prev) => {
       const next = { ...prev, [key]: raw }
-
-      if (key === 'total_value') {
-        setTotalOverridden(true)
-        return recomputeDerived(next, true)
-      }
-
-      if (
-        key === 'quantity' ||
-        key === 'unit_price_sell' ||
-        key === 'unit_price_buy'
-      ) {
-        return recomputeDerived(next, totalOverridden)
-      }
-
       if (key === 'client_id') {
-        // Reset person if it doesn't belong to the new client
+        // Clear person if it doesn't belong to the new client.
         const personStillValid = next.person_id
           ? people.some(
               (p) =>
@@ -436,31 +337,18 @@ export function DealModal({
           next.person_id = undefined
         }
       }
-
       return next
     })
     setErrors((prev) => ({ ...prev, [key]: undefined }))
   }
 
-  const resetTotalOverride = () => {
-    setTotalOverridden(false)
-    setValues((prev) => recomputeDerived(prev, false))
-  }
-
   const buildAutoTitle = (): string => {
     const clientTitle = clients.find((c) => c.id === values.client_id)?.title
-    const productName = values.product_id
-      ? products.find((p) => p.id === values.product_id)?.name
-      : undefined
-    if (clientTitle && productName) return `${clientTitle} — ${productName}`
-    if (clientTitle) return clientTitle
-    if (productName) return productName
-    return 'Umowa'
+    return clientTitle ? `Szansa: ${clientTitle}` : 'Nowa szansa'
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
     const parsed = dealSchema.safeParse(values)
     if (!parsed.success) {
       const fieldErrors: Partial<Record<keyof DealFormValues, string>> = {}
@@ -469,15 +357,13 @@ export function DealModal({
         if (k && !fieldErrors[k]) fieldErrors[k] = issue.message
       }
       setErrors(fieldErrors)
-      toast.error('Sprawdz pola formularza')
+      toast.error('Sprawdź pola formularza')
       return
     }
 
     setSubmitting(true)
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       toast.error('Sesja wygasła. Zaloguj się ponownie.')
       setSubmitting(false)
@@ -487,25 +373,22 @@ export function DealModal({
     const data = parsed.data
     const titleToSave = data.title?.trim() || buildAutoTitle()
 
+    // v2 shell payload: no single-product fields. total_value is computed
+    // by the recompute_deal_total trigger from deal_items, so we don't
+    // touch it here. amount column kept at 0 as a legacy mirror — old
+    // dashboards that still read it will see total_value via the
+    // refreshed row.
     const payload = {
       title: titleToSave,
       client_id: data.client_id,
-      product_id: data.product_id ?? null,
       person_id: data.person_id ?? null,
       supplier_id: data.supplier_id ?? null,
       stage: data.stage,
       probability: data.probability,
-      quantity: data.quantity,
-      unit: data.unit?.trim() || null,
-      unit_price_buy: data.unit_price_buy,
-      unit_price_sell: data.unit_price_sell,
-      total_value: data.total_value,
-      // Mirror total_value into legacy amount column so old code paths
-      // (Bitrix-imported listings, dashboard sums) keep working.
-      amount: data.total_value ?? deal?.amount ?? 0,
-      margin_amount: data.margin_amount,
-      margin_pct: data.margin_pct,
       currency: data.currency,
+      deal_type: data.deal_type ?? null,
+      commission_pct:
+        data.deal_type === 'agent' ? (data.commission_pct ?? null) : null,
       delivery_terms: data.delivery_terms?.trim() || null,
       expected_close_date: data.expected_close_date || null,
       next_action_date: data.next_action_date || null,
@@ -536,7 +419,7 @@ export function DealModal({
       }
 
       await revalidateDealRoutes()
-      toast.success('Umowa zaktualizowana')
+      toast.success('Szansa zaktualizowana')
       onSaved?.(deal.id)
       router.refresh()
       onOpenChange(false)
@@ -544,14 +427,17 @@ export function DealModal({
       return
     }
 
+    // Create — leaves user on /deals/[id] so they can add Pozycje there.
     const { data: created, error } = await supabase
       .from('deals')
-      .insert({ ...payload, owner_id: user.id })
+      .insert({ ...payload, owner_id: user.id, amount: 0 })
       .select('id')
       .single()
 
     if (error || !created) {
-      toast.error(`Nie udało się utworzyć umowy: ${error?.message ?? 'nieznany błąd'}`)
+      toast.error(
+        `Nie udało się utworzyć szansy: ${error?.message ?? 'nieznany błąd'}`,
+      )
       setSubmitting(false)
       return
     }
@@ -564,10 +450,10 @@ export function DealModal({
     })
 
     await revalidateDealRoutes()
-    toast.success('Umowa utworzona')
+    toast.success('Szansa utworzona — dodaj pozycje na stronie szansy')
     onSaved?.(created.id)
-    router.refresh()
     onOpenChange(false)
+    router.push(`/deals/${created.id}`)
     setSubmitting(false)
   }
 
@@ -575,23 +461,16 @@ export function DealModal({
     if (!deal) return
     setDeleting(true)
     setDeleteConfirmOpen(false)
-
-    const { error } = await supabase
-      .from('deals')
-      .delete()
-      .eq('id', deal.id)
-
+    const { error } = await supabase.from('deals').delete().eq('id', deal.id)
     if (error) {
       toast.error(`Nie udało się usunąć: ${error.message}`)
       setDeleting(false)
       return
     }
-
     await revalidateDealRoutes()
-    toast.success('Umowa usunięta')
+    toast.success('Szansa usunięta')
     setDeleting(false)
     onOpenChange(false)
-    // Leave the now-deleted deal's detail/edit page so we don't 404.
     router.push('/deals')
   }
 
@@ -605,22 +484,29 @@ export function DealModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {deal
-              ? `Edycja umowy · ${stageLabel[values.stage]}`
-              : 'Nowa umowa'}
+              ? `Edycja szansy · ${stageLabel[values.stage]}`
+              : 'Nowa szansa'}
           </DialogTitle>
           <DialogDescription>
             {deal
-              ? 'Zmień dowolne pole — łącznie z etapem (Etap *). Zapisz, żeby utrwalić.'
-              : 'Wypełnij dane sprzedaży. Etap możesz zmieniać później przeciągając kartę na tablicy.'}
+              ? 'Edytuj dane szansy. Pozycje (produkty) edytujesz na stronie szczegółów szansy.'
+              : 'Wypełnij dane szansy. Po zapisaniu zostaniesz przeniesiony na stronę szansy, gdzie dodasz pozycje (produkty).'}
           </DialogDescription>
         </DialogHeader>
 
+        {!deal && (
+          <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+            <ListIcon className="mb-1 inline size-3.5" /> Multi-product:
+            wartość szansy obliczy się z pozycji (line items). Zapisz dane
+            podstawowe — następnie dodawaj produkty na stronie szczegółów.
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Klient + produkt */}
           <section className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="client_id">Klient *</Label>
@@ -635,20 +521,9 @@ export function DealModal({
               {error('client_id')}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="product_id">Produkt</Label>
-              <FieldCombobox
-                options={productOptions}
-                value={values.product_id}
-                onChange={(id) => updateField('product_id', id)}
-                placeholder="Wybierz produkt (opcjonalnie)"
-                searchPlaceholder="Szukaj produktu..."
-              />
-            </div>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="person_id">Osoba kontaktowa</Label>
+                <Label>Osoba kontaktowa</Label>
                 <FieldCombobox
                   options={peopleOptions}
                   value={values.person_id}
@@ -658,12 +533,12 @@ export function DealModal({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="supplier_id">Dostawca</Label>
+                <Label>Dostawca (główny)</Label>
                 <FieldCombobox
                   options={supplierOptions}
                   value={values.supplier_id}
                   onChange={(id) => updateField('supplier_id', id)}
-                  placeholder="Wybierz dostawcę"
+                  placeholder="Pomocniczo — auto z pozycji"
                   searchPlaceholder="Szukaj dostawcy..."
                 />
               </div>
@@ -672,7 +547,6 @@ export function DealModal({
 
           <Separator />
 
-          {/* Etap + probability */}
           <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="stage">Etap *</Label>
@@ -711,100 +585,53 @@ export function DealModal({
 
           <Separator />
 
-          {/* Wartość */}
           <section className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="quantity">Ilość</Label>
-                <Input
-                  id="quantity"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  value={formatNum(values.quantity)}
-                  onChange={(e) =>
-                    updateField('quantity', parseNumOrNull(e.target.value))
+                <Label htmlFor="deal_type">Typ szansy</Label>
+                <Select
+                  value={values.deal_type ?? '__none__'}
+                  onValueChange={(v) =>
+                    updateField(
+                      'deal_type',
+                      v === '__none__' ? null : (v as 'reseller' | 'agent' | 'partner'),
+                    )
                   }
-                />
+                >
+                  <SelectTrigger id="deal_type">
+                    <SelectValue placeholder="—" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Brak —</SelectItem>
+                    <SelectItem value="reseller">Reseller</SelectItem>
+                    <SelectItem value="agent">Agent</SelectItem>
+                    <SelectItem value="partner">Partner</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="unit">Jednostka</Label>
-                <Input
-                  id="unit"
-                  placeholder="kg / szt / paleta..."
-                  value={values.unit ?? ''}
-                  onChange={(e) => updateField('unit', e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="unit_price_buy">Cena zakupu (jednostkowa)</Label>
-                <Input
-                  id="unit_price_buy"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  value={formatNum(values.unit_price_buy)}
-                  onChange={(e) =>
-                    updateField('unit_price_buy', parseNumOrNull(e.target.value))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="unit_price_sell">
-                  Cena sprzedaży (jednostkowa)
-                </Label>
-                <Input
-                  id="unit_price_sell"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  value={formatNum(values.unit_price_sell)}
-                  onChange={(e) =>
-                    updateField('unit_price_sell', parseNumOrNull(e.target.value))
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="total_value">
-                    Wartość całkowita
-                    {!totalOverridden && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        (auto)
-                      </span>
-                    )}
-                  </Label>
-                  {totalOverridden && (
-                    <button
-                      type="button"
-                      onClick={resetTotalOverride}
-                      className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
-                    >
-                      Wylicz auto
-                    </button>
-                  )}
+              {values.deal_type === 'agent' && (
+                <div className="space-y-2">
+                  <Label htmlFor="commission_pct">Prowizja (%)</Label>
+                  <Input
+                    id="commission_pct"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={values.commission_pct ?? ''}
+                    onChange={(e) => {
+                      const v = Number.parseFloat(e.target.value)
+                      updateField(
+                        'commission_pct',
+                        Number.isFinite(v) ? v : null,
+                      )
+                    }}
+                  />
                 </div>
-                <Input
-                  id="total_value"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  value={formatNum(values.total_value)}
-                  onChange={(e) =>
-                    updateField('total_value', parseNumOrNull(e.target.value))
-                  }
-                />
-              </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="currency">Waluta</Label>
                 <Select
@@ -822,53 +649,6 @@ export function DealModal({
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Marża (kwotowa)</Label>
-                <Input
-                  readOnly
-                  value={
-                    values.margin_amount != null
-                      ? values.margin_amount.toFixed(2)
-                      : ''
-                  }
-                  className="bg-muted/50"
-                  placeholder="—"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Marża (%)</Label>
-                <Input
-                  readOnly
-                  value={
-                    values.margin_pct != null
-                      ? `${values.margin_pct.toFixed(1)}%`
-                      : ''
-                  }
-                  className="bg-muted/50"
-                  placeholder="—"
-                />
-              </div>
-            </div>
-          </section>
-
-          <Separator />
-
-          {/* Termin + akcje */}
-          <section className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="delivery_terms">Warunki dostawy</Label>
-              <Input
-                id="delivery_terms"
-                placeholder="EXW magazyn / FCA Poznań / DDP Warszawa..."
-                value={values.delivery_terms ?? ''}
-                onChange={(e) => updateField('delivery_terms', e.target.value)}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="expected_close_date">
                   Planowana data zamknięcia
@@ -882,8 +662,27 @@ export function DealModal({
                   }
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="delivery_terms">Warunki dostawy</Label>
+              <Input
+                id="delivery_terms"
+                placeholder="EXW magazyn / FCA Poznań / DDP Warszawa..."
+                value={values.delivery_terms ?? ''}
+                onChange={(e) => updateField('delivery_terms', e.target.value)}
+              />
+            </div>
+          </section>
+
+          <Separator />
+
+          <section className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="next_action_date">Następna akcja — data</Label>
+                <Label htmlFor="next_action_date">
+                  Następna akcja — data
+                </Label>
                 <Input
                   id="next_action_date"
                   type="date"
@@ -898,41 +697,35 @@ export function DealModal({
                   </p>
                 )}
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="title">
+                  Tytuł szansy
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    (opcjonalnie)
+                  </span>
+                </Label>
+                <Input
+                  id="title"
+                  placeholder={buildAutoTitle()}
+                  value={values.title ?? ''}
+                  onChange={(e) => updateField('title', e.target.value)}
+                />
+              </div>
             </div>
-
             <div className="space-y-2">
-              <Label htmlFor="next_action_note">Następna akcja — notatka</Label>
+              <Label htmlFor="next_action_note">
+                Następna akcja — notatka
+              </Label>
               <Textarea
                 id="next_action_note"
                 rows={2}
-                placeholder="Zadzwonić do dyrektora zakupów, omówić warunki..."
+                placeholder="Zadzwonić do dyrektora zakupów..."
                 value={values.next_action_note ?? ''}
                 onChange={(e) =>
                   updateField('next_action_note', e.target.value)
                 }
               />
             </div>
-          </section>
-
-          <Separator />
-
-          {/* Inne */}
-          <section className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="title">
-                Tytuł umowy
-                <span className="ml-2 text-xs text-muted-foreground">
-                  (opcjonalnie — wyliczy się automatycznie)
-                </span>
-              </Label>
-              <Input
-                id="title"
-                placeholder={buildAutoTitle()}
-                value={values.title ?? ''}
-                onChange={(e) => updateField('title', e.target.value)}
-              />
-            </div>
-
             <div className="space-y-2">
               <Label htmlFor="notes">Notatki</Label>
               <Textarea
@@ -954,7 +747,7 @@ export function DealModal({
                 className="mr-auto"
               >
                 <TrashIcon className="mr-2 size-4" />
-                Usuń umowę
+                Usuń szansę
               </Button>
             )}
             <Button
@@ -967,7 +760,7 @@ export function DealModal({
             </Button>
             <Button type="submit" disabled={submitting || deleting}>
               {submitting && <Spinner className="mr-2" />}
-              {deal ? 'Zapisz zmiany' : 'Dodaj umowę'}
+              {deal ? 'Zapisz zmiany' : 'Dodaj szansę i przejdź do pozycji'}
             </Button>
           </DialogFooter>
         </form>
@@ -979,11 +772,10 @@ export function DealModal({
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Usunąć umowę?</AlertDialogTitle>
+              <AlertDialogTitle>Usunąć szansę?</AlertDialogTitle>
               <AlertDialogDescription>
-                Czy na pewno chcesz usunąć tę umowę? Tej akcji nie można
-                cofnąć. Powiązane wpisy w deal_events również zostaną
-                usunięte.
+                Usuwasz „{deal.title}". Wszystkie pozycje (deal_items) zostaną
+                również usunięte (CASCADE). Tej akcji nie można cofnąć.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -994,7 +786,7 @@ export function DealModal({
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 {deleting && <Spinner className="mr-2" />}
-                Usuń umowę
+                Usuń szansę
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
