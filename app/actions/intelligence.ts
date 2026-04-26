@@ -4,12 +4,13 @@ import { revalidatePath } from 'next/cache'
 
 import { createClient } from '@/lib/supabase/server'
 
-// Server actions inheritują route segment config (maxDuration) z page
-// która je wywołuje. Page route ma export const maxDuration = 800. Ten
-// re-export tutaj jest defensywny — jeśli akcja byłaby wywołana z innej
-// route bez explicit maxDuration, Next.js użyje tego.
-// Pełen backup w vercel.json `functions` field.
-export const maxDuration = 800
+// maxDuration nie może być eksportowany z 'use server' modułu —
+// Next.js dopuszcza wyłącznie async function exports. Server actions
+// dziedziczą route segment config z calling page; deklaracje
+// znajdują się w:
+//   - app/(dashboard)/intelligence/deep-discovery/[product_id]/page.tsx
+//   - app/(dashboard)/products/[id]/edit/page.tsx
+// Plus backup w vercel.json `functions` map dla obu pages.
 import {
   runFastLookup,
   runDeepDiscovery,

@@ -20,6 +20,12 @@ import {
 import { settingsRowsToPricing } from '@/lib/pricing'
 import type { FastLookupResult } from '@/lib/ai/intelligence'
 
+// FastLookupCard wywołuje startFastLookupForProduct (Gemini call ~30s)
+// i przekierowuje do /intelligence/deep-discovery która ma własne 800s.
+// Tu wystarczyłoby ~120s, ale ujednolicamy do 800s żeby Vercel
+// functions map był spójny.
+export const maxDuration = 800
+
 interface PageProps {
   params: Promise<{ id: string }>
 }

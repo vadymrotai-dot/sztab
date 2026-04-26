@@ -4,7 +4,7 @@
     "app/(dashboard)/intelligence/deep-discovery/[product_id]/page.tsx": {
       "maxDuration": 800
     },
-    "app/actions/intelligence.ts": {
+    "app/(dashboard)/products/[id]/edit/page.tsx": {
       "maxDuration": 800
     }
   }
