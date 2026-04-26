@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils'
 import {
   CalendarIcon,
   EyeIcon,
+  ListIcon,
   MoreHorizontalIcon,
   PencilIcon,
   PlusIcon,
@@ -48,8 +49,15 @@ import {
 } from 'lucide-react'
 
 type DealRow = Deal & {
-  client?: { id: string; title: string } | null
-  product?: { id: string; name: string } | null
+  client?: {
+    id: string
+    title: string
+    client_type?: 'standard' | 'strategic_partner' | null
+    contracted_margin_katalog_pct?: number | null
+    contracted_margin_docel_pct?: number | null
+  } | null
+  // PostgREST aggregate `deal_items(count)` returns [{ count: N }].
+  deal_items?: { count: number }[] | null
 }
 
 interface DealsKanbanProps {
@@ -92,6 +100,8 @@ const formatPLNCompact = (value: number) => {
 
 const dealValue = (deal: Deal) => deal.total_value ?? deal.amount ?? 0
 
+const itemsCount = (deal: DealRow) => deal.deal_items?.[0]?.count ?? 0
+
 const startOfToday = () => {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
@@ -99,12 +109,6 @@ const startOfToday = () => {
 }
 
 const isOverdue = (date: string) => new Date(date) < startOfToday()
-
-const marginBadgeClass = (pct: number) => {
-  if (pct < 20) return 'bg-red-100 text-red-800 hover:bg-red-100'
-  if (pct < 35) return 'bg-amber-100 text-amber-800 hover:bg-amber-100'
-  return 'bg-green-100 text-green-800 hover:bg-green-100'
-}
 
 function DealCard({
   deal,
@@ -123,9 +127,9 @@ function DealCard({
   }
 
   const value = dealValue(deal)
-  const productName = deal.product?.name
+  const items = itemsCount(deal)
   const overdue = deal.next_action_date ? isOverdue(deal.next_action_date) : false
-  const showLegacyTitle = Boolean(productName) && Boolean(deal.title) && deal.title !== productName
+  const isStrategic = deal.client?.client_type === 'strategic_partner'
 
   return (
     <Card
@@ -139,22 +143,27 @@ function DealCard({
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <p className="font-medium text-sm line-clamp-1">
-              {productName || deal.title || 'Bez nazwy'}
+              {deal.title || 'Bez nazwy'}
             </p>
             {deal.client && (
-              <Link
-                href={`/clients/${deal.client.id}`}
-                className="text-xs text-muted-foreground hover:underline truncate block"
-                onClick={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                {deal.client.title}
-              </Link>
-            )}
-            {showLegacyTitle && (
-              <p className="text-[11px] text-muted-foreground italic line-clamp-1 mt-0.5">
-                {deal.title}
-              </p>
+              <div className="flex items-center gap-1 mt-0.5">
+                <Link
+                  href={`/clients/${deal.client.id}`}
+                  className="text-xs text-muted-foreground hover:underline truncate"
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  {deal.client.title}
+                </Link>
+                {isStrategic && (
+                  <Badge
+                    variant="outline"
+                    className="bg-purple-100 text-purple-800 border-transparent text-[9px] px-1 py-0 h-3.5 leading-none"
+                  >
+                    Strategic
+                  </Badge>
+                )}
+              </div>
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -205,7 +214,13 @@ function DealCard({
         </div>
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold">{formatPLN(value)}</span>
-          {/* Margin badge removed — deals.margin_* dropped in 010, will compute from deal_items in Phase 3 Commit 7. */}
+          <span
+            className="flex items-center gap-1 text-xs text-muted-foreground"
+            title={`${items} ${items === 1 ? 'pozycja' : 'pozycji'} w szansie`}
+          >
+            <ListIcon className="size-3" />
+            {items}
+          </span>
         </div>
         {deal.next_action_date && (
           <div
@@ -441,7 +456,7 @@ export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
           <Card className="cursor-grabbing shadow-lg w-[264px]">
             <CardContent className="p-3">
               <p className="font-medium text-sm line-clamp-1">
-                {activeDeal.product?.name || activeDeal.title || 'Bez nazwy'}
+                {activeDeal.title || 'Bez nazwy'}
               </p>
               {activeDeal.client && (
                 <p className="text-xs text-muted-foreground mt-0.5 truncate">
