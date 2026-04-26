@@ -5,8 +5,11 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import {
   runFastLookup,
+  runDeepDiscovery,
   type FastLookupInput,
   type FastLookupResult,
+  type DeepDiscoveryInput,
+  type DiscoveredEntity as PipelineEntity,
 } from '@/lib/ai/intelligence'
 import type { AIProvider } from '@/lib/ai-providers'
 
@@ -246,4 +249,392 @@ export async function listIntelligenceRuns(
 
   const { data } = await q
   return (data ?? []) as IntelligenceRunSummary[]
+}
+
+// ════════════════════════════════════════════════════════════════
+// PHASE 2 — Deep Discovery
+// ════════════════════════════════════════════════════════════════
+
+export interface DiscoveredEntityRow extends PipelineEntity {
+  id: string
+  run_id: string
+  status: 'new' | 'reviewed' | 'exported' | 'rejected'
+  imported_to_clients_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+const DEEP_DISCOVERY_RATE_LIMIT_MS = 5 * 60_000
+
+export async function startDeepDiscoveryForProduct(
+  productId: string,
+): Promise<{
+  runId: string
+  entities_count: number
+  verified_count: number
+}> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) throw new Error('Sesja wygasła. Zaloguj się ponownie.')
+
+  // Read tokens z params (fallback na ENV jeśli params puste — ENV
+  // przewidziane dla seedowanego setup, ale UI w /settings → tab
+  // "Klucze API" jest preferowanym kanałem).
+  const { data: paramsRow } = await supabase
+    .from('params')
+    .select('gemini_key, apify_api_token, krs_rejestr_api_token')
+    .single()
+
+  const geminiKey =
+    paramsRow?.gemini_key || process.env.GEMINI_API_KEY || ''
+  const apifyToken =
+    paramsRow?.apify_api_token || process.env.APIFY_API_TOKEN || ''
+  const krsToken =
+    paramsRow?.krs_rejestr_api_token ||
+    process.env.KRS_REJESTR_API_TOKEN ||
+    ''
+
+  if (!geminiKey) {
+    throw new Error('Brak klucza Gemini API. Dodaj go w Ustawieniach → Klucze API.')
+  }
+  if (!apifyToken) {
+    throw new Error('Brak Apify API token. Dodaj go w Ustawieniach → Klucze API.')
+  }
+  if (!krsToken) {
+    throw new Error('Brak KRS Rejestr.io API token. Dodaj go w Ustawieniach → Klucze API.')
+  }
+
+  // Rate limit: 1 deep_discovery z status=running w oknie 5 min.
+  const { data: recentRuns } = await supabase
+    .from('intelligence_runs')
+    .select('id, status')
+    .eq('owner_id', user.id)
+    .eq('run_type', 'deep_discovery')
+    .gte(
+      'created_at',
+      new Date(Date.now() - DEEP_DISCOVERY_RATE_LIMIT_MS).toISOString(),
+    )
+
+  if (recentRuns?.some((r) => r.status === 'running')) {
+    throw new Error('Inny Deep Discovery jest w trakcie. Poczekaj.')
+  }
+
+  const { data: product, error: productError } = await supabase
+    .from('products')
+    .select(
+      'id, name, category, gramatura, cost_pln, push_tier, tags, supplier:suppliers(name)',
+    )
+    .eq('id', productId)
+    .single()
+
+  if (productError || !product) {
+    throw new Error('Produkt nie znaleziony')
+  }
+
+  const supplierName = pickSupplierName(
+    (product as { supplier: SupplierJoin }).supplier,
+  )
+
+  const input: DeepDiscoveryInput = {
+    product: {
+      id: product.id as string,
+      name: product.name as string,
+      category: (product.category as string | null) ?? null,
+      gramatura: (product.gramatura as string | null) ?? null,
+      supplier_name: supplierName,
+      cost_pln: (product.cost_pln as number | null) ?? null,
+      push_tier: (product.push_tier as number | null) ?? null,
+      tags: (product.tags as string[] | null) ?? null,
+    },
+    context: {
+      geo: 'mazowieckie',
+      exclude_chains: [
+        'Biedronka',
+        'Lidl',
+        'Auchan',
+        'Carrefour',
+        'Tesco',
+        'Kaufland',
+      ],
+    },
+    apifyToken,
+    krsToken,
+    geminiKey,
+  }
+
+  const { data: run, error: insertError } = await supabase
+    .from('intelligence_runs')
+    .insert({
+      owner_id: user.id,
+      run_type: 'deep_discovery',
+      target_type: 'product',
+      target_id: productId,
+      target_snapshot: product,
+      status: 'running',
+    })
+    .select('id')
+    .single()
+
+  if (insertError || !run) {
+    throw new Error(
+      `Nie udało się zarejestrować runa: ${insertError?.message ?? 'unknown'}`,
+    )
+  }
+
+  try {
+    const result = await runDeepDiscovery(input)
+
+    if (result.entities.length > 0) {
+      // raw_data nie idzie do JSONB column osobno — pipeline trzyma
+      // go w entity. Mapujemy snake_case kolumny + raw_data zostawiony
+      // jako JSONB. ON CONFLICT obsłużone partial unique index
+      // (nip, owner_id) — dorzucamy ignoreDuplicates: true via upsert,
+      // żeby kolejny run nie wybuchł na duplikatach.
+      const rows = result.entities.map((e) => ({
+        run_id: run.id,
+        owner_id: user.id,
+        name: e.name,
+        nip: e.nip,
+        krs: e.krs,
+        regon: e.regon,
+        website: e.website,
+        email: e.email,
+        phone: e.phone,
+        address: e.address,
+        city: e.city,
+        region: e.region,
+        postal_code: e.postal_code,
+        segment_name: e.segment_name,
+        branza: e.branza,
+        channel_type: e.channel_type,
+        source: e.source,
+        source_confidence: e.source_confidence,
+        fit_score: e.fit_score,
+        nip_verified: e.nip_verified,
+        krs_verified: e.krs_verified,
+        outreach_approach: e.outreach_approach,
+        outreach_pitch: e.outreach_pitch,
+        raw_data: e.raw_data,
+      }))
+
+      // upsert with onConflict na unique index pomija duplikaty (entity
+      // tego samego owner-a z tym samym NIP). Inserts entities bez NIP
+      // jak normal rows.
+      const { error: upsertError } = await supabase
+        .from('discovered_entities')
+        .upsert(rows, {
+          onConflict: 'nip,owner_id',
+          ignoreDuplicates: true,
+        })
+
+      if (upsertError) {
+        result.warnings.push(
+          `Persist entities partial fail: ${upsertError.message}`,
+        )
+      }
+    }
+
+    await supabase
+      .from('intelligence_runs')
+      .update({
+        status: 'completed',
+        parsed_results: {
+          segments: result.segments,
+          total_found: result.total_found,
+          total_verified: result.total_verified,
+          warnings: result.warnings,
+        },
+        results_count: result.entities.length,
+        duration_ms: result.duration_ms,
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', run.id)
+
+    revalidatePath(`/products/${productId}/edit`)
+    revalidatePath('/intelligence')
+    revalidatePath(`/intelligence/deep-discovery/${productId}`)
+
+    return {
+      runId: run.id as string,
+      entities_count: result.entities.length,
+      verified_count: result.total_verified,
+    }
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err))
+    console.error('[intelligence] startDeepDiscoveryForProduct failed', {
+      productId,
+      runId: run.id,
+      message: error.message,
+      stack: error.stack,
+    })
+    await supabase
+      .from('intelligence_runs')
+      .update({
+        status: 'failed',
+        error_message: error.message.slice(0, 1000),
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', run.id)
+    revalidatePath('/intelligence')
+    revalidatePath(`/intelligence/deep-discovery/${productId}`)
+    throw new Error(
+      `Deep Discovery nieudany: ${error.message.slice(0, 200)}`,
+    )
+  }
+}
+
+export async function getDiscoveredEntities(
+  runId: string,
+): Promise<DiscoveredEntityRow[]> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data } = await supabase
+    .from('discovered_entities')
+    .select('*')
+    .eq('run_id', runId)
+    .order('fit_score', { ascending: false })
+
+  return (data ?? []) as DiscoveredEntityRow[]
+}
+
+export async function getLatestDeepDiscoveryRun(
+  productId: string,
+): Promise<IntelligenceRunSummary | null> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data } = await supabase
+    .from('intelligence_runs')
+    .select(
+      'id, run_type, target_type, target_id, target_snapshot, status, parsed_results, raw_response, results_count, duration_ms, error_message, created_at, completed_at',
+    )
+    .eq('target_type', 'product')
+    .eq('target_id', productId)
+    .eq('run_type', 'deep_discovery')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  return (data ?? null) as IntelligenceRunSummary | null
+}
+
+export async function exportEntityToClient(entityId: string): Promise<{
+  clientId: string
+  alreadyExisted: boolean
+}> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) throw new Error('Sesja wygasła.')
+
+  const { data: entity } = await supabase
+    .from('discovered_entities')
+    .select('*')
+    .eq('id', entityId)
+    .single()
+
+  if (!entity) throw new Error('Encja nie znaleziona')
+
+  // Match po NIP — Client.regon nie istnieje w schemacie więc nie
+  // przepisujemy. Jeśli klient z tym NIP już istnieje, oznacz encję
+  // jako exported i zwróć existing.
+  const cleanNip =
+    typeof entity.nip === 'string' ? entity.nip.replace(/\D/g, '') : ''
+
+  let existingClientId: string | null = null
+  if (cleanNip.length === 10) {
+    const { data: existing } = await supabase
+      .from('clients')
+      .select('id')
+      .eq('nip', cleanNip)
+      .eq('owner_id', user.id)
+      .maybeSingle()
+    if (existing) existingClientId = existing.id as string
+  }
+
+  if (existingClientId) {
+    await supabase
+      .from('discovered_entities')
+      .update({
+        status: 'exported',
+        imported_to_clients_id: existingClientId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', entityId)
+    revalidatePath('/clients')
+    return { clientId: existingClientId, alreadyExisted: true }
+  }
+
+  // Notes: outreach_approach + outreach_pitch zachowane w polu notes
+  // — Client schema nie ma osobnego pola na to. branza → industry
+  // (Client field). regon NIE persist — Client schema nie ma regon.
+  const notesParts = [
+    'Imported z Deep Discovery.',
+    entity.outreach_approach ? `Outreach: ${entity.outreach_approach}` : '',
+    entity.outreach_pitch ? `Pitch: ${entity.outreach_pitch}` : '',
+  ].filter(Boolean)
+
+  const { data: newClient, error: clientErr } = await supabase
+    .from('clients')
+    .insert({
+      title: entity.name,
+      nip: cleanNip || null,
+      city: entity.city ?? null,
+      address: entity.address ?? null,
+      region: entity.region ?? null,
+      industry: entity.branza ?? null,
+      channel_type: entity.channel_type ?? null,
+      website: entity.website ?? null,
+      email: entity.email ?? null,
+      phone: entity.phone ?? null,
+      owner_id: user.id,
+      client_type: 'standard',
+      status: 'nowy',
+      segment: 'niesklasyfikowany',
+      notes: notesParts.join('\n\n'),
+    })
+    .select('id')
+    .single()
+
+  if (clientErr || !newClient) {
+    throw new Error(`Nie udało się dodać klienta: ${clientErr?.message ?? 'unknown'}`)
+  }
+
+  await supabase
+    .from('discovered_entities')
+    .update({
+      status: 'exported',
+      imported_to_clients_id: newClient.id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', entityId)
+
+  revalidatePath('/clients')
+  return { clientId: newClient.id as string, alreadyExisted: false }
+}
+
+export async function updateDiscoveredEntityStatus(
+  entityId: string,
+  status: 'new' | 'reviewed' | 'rejected',
+): Promise<void> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) throw new Error('Sesja wygasła.')
+
+  await supabase
+    .from('discovered_entities')
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq('id', entityId)
 }
