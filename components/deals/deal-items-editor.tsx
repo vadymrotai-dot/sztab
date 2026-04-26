@@ -431,6 +431,12 @@ export function DealItemsEditor({
                   </TableCell>
                   <TableCell>
                     <Input
+                      // key remountuje input gdy quantity zmieni się ze
+                      // strony rodzica (rzadko: external refresh) — bez
+                      // tego defaultValue zostaje przyklejone do starego
+                      // numeru. User typing nie wywoła remountu bo qty
+                      // w state aktualizuje się dopiero na onBlur.
+                      key={`qty-${item.id}-${item.quantity}`}
                       type="number"
                       step="0.01"
                       min="0.01"
@@ -442,6 +448,14 @@ export function DealItemsEditor({
                   <TableCell>
                     <div className="flex flex-col items-end gap-1">
                       <Input
+                        // key remountuje input gdy unit_price_sell zmieni
+                        // się ze strony rodzica — w szczególności po tier
+                        // shift, gdzie applyTierShift przelicza ceny
+                        // dla wszystkich non-override rows. Bez tego
+                        // defaultValue zostaje na starej cenie pomimo
+                        // że state ma nową, line_total i totals
+                        // pokazują dobrze ale input field stale.
+                        key={`price-${item.id}-${item.unit_price_sell}`}
                         type="number"
                         step="0.01"
                         min="0"
