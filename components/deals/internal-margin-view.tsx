@@ -56,20 +56,28 @@ export function InternalMarginView({ items, client }: InternalMarginViewProps) {
       const qty = Number(it.quantity ?? 0)
       const cost = Number(it.unit_price_buy ?? 0)
       const sell = Number(it.unit_price_sell ?? 0)
+      const vatRate = Number(it.vat_rate ?? 0)
       const lineCost = cost * qty
       const lineSell = sell * qty
+      const lineVat = lineSell * vatRate
       const lineMarginPln = Number(it.line_margin_pln ?? lineSell - lineCost)
       acc.totalCost += lineCost
       acc.totalSell += lineSell
+      acc.totalVat += lineVat
       acc.totalMargin += lineMarginPln
       if (cost <= 0) acc.missingCost += 1
       return acc
     },
-    { totalCost: 0, totalSell: 0, totalMargin: 0, missingCost: 0 },
+    { totalCost: 0, totalSell: 0, totalVat: 0, totalMargin: 0, missingCost: 0 },
   )
 
   const totalMarginPct =
     totals.totalSell > 0 ? (totals.totalMargin / totals.totalSell) * 100 : null
+
+  // Profit netto = sprzedaż netto − koszty − VAT. VAT jest pass-through
+  // w PL — zbierany od klienta, oddany do US — więc nie liczy się jako
+  // przychód brokera. Wyciągnięcie go z totalu daje "co realnie zostaje".
+  const profitNetto = totals.totalSell - totals.totalCost - totals.totalVat
 
   const overallTone = marginTone(totalMarginPct)
 
@@ -288,6 +296,49 @@ export function InternalMarginView({ items, client }: InternalMarginViewProps) {
                   })}
                 </TableBody>
               </Table>
+            </div>
+          )}
+
+          {items.length > 0 && (
+            <div className="border-t pt-4 mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Marża absolute</p>
+                <p className="text-lg font-medium tabular-nums">
+                  {formatPLN.format(totals.totalMargin)}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Marża %</p>
+                <p
+                  className={cn(
+                    'text-lg font-medium tabular-nums',
+                    overallTone === 'bad' && 'text-red-700',
+                    overallTone === 'warn' && 'text-amber-700',
+                    overallTone === 'good' && 'text-green-700',
+                  )}
+                >
+                  {totalMarginPct != null
+                    ? `${totalMarginPct.toFixed(1)}%`
+                    : '—'}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">VAT</p>
+                <p className="text-lg font-medium tabular-nums">
+                  {formatPLN.format(totals.totalVat)}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Profit netto</p>
+                <p
+                  className={cn(
+                    'text-lg font-bold tabular-nums',
+                    profitNetto >= 0 ? 'text-green-600' : 'text-red-600',
+                  )}
+                >
+                  {formatPLN.format(profitNetto)}
+                </p>
+              </div>
             </div>
           )}
         </CardContent>
