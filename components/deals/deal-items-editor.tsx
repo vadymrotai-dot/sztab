@@ -35,6 +35,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import {
   createDealItem,
@@ -42,6 +47,7 @@ import {
   suggestPriceForProduct,
   updateDealItem,
 } from '@/app/actions/deals'
+import { computePrice, type PricingSettings } from '@/lib/pricing'
 import type { DealItem } from '@/lib/types'
 
 export interface ProductOption {
@@ -69,6 +75,7 @@ interface DealItemsEditorProps {
   initialItems: DealItem[]
   products: ProductOption[]
   clientContext: ClientPricingContext
+  pricing: PricingSettings
 }
 
 const formatPLN = new Intl.NumberFormat('pl-PL', {
@@ -77,11 +84,65 @@ const formatPLN = new Intl.NumberFormat('pl-PL', {
   minimumFractionDigits: 2,
 })
 
+type TierKey =
+  | 'strategic_katalog'
+  | 'standard_maly'
+  | 'standard_sredni'
+  | 'standard_duzy'
+
+interface TierInfo {
+  key: TierKey
+  label: string
+  margin: number | null // fraction (0..1); null for strategic without contract
+}
+
+// Single source of truth for "what tier am I in given this deal total
+// and client". Strategic partner with a kontraktowa marża katalog uses
+// that; standard clients walk the threshold ladder by total_value.
+function resolveTier(
+  totalNetto: number,
+  clientContext: ClientPricingContext,
+  pricing: PricingSettings,
+): TierInfo {
+  if (clientContext.client_type === 'strategic_partner') {
+    const margin =
+      clientContext.contracted_margin_katalog_pct ??
+      pricing.margin_strategic_katalog
+    return {
+      key: 'strategic_katalog',
+      margin,
+      label: clientContext.contracted_margin_katalog_pct != null
+        ? `Strategic — katalog ${(clientContext.contracted_margin_katalog_pct * 100).toFixed(0)}% / docel ${((clientContext.contracted_margin_docel_pct ?? 0) * 100).toFixed(0)}%`
+        : 'Strategic — bez kontraktu',
+    }
+  }
+  if (totalNetto >= pricing.threshold_duzy_pln) {
+    return {
+      key: 'standard_duzy',
+      margin: pricing.margin_duzy_opt,
+      label: `Standard — Duży opt ${(pricing.margin_duzy_opt * 100).toFixed(0)}%`,
+    }
+  }
+  if (totalNetto >= pricing.threshold_sredni_pln) {
+    return {
+      key: 'standard_sredni',
+      margin: pricing.margin_sredni_opt,
+      label: `Standard — Średni opt ${(pricing.margin_sredni_opt * 100).toFixed(0)}%`,
+    }
+  }
+  return {
+    key: 'standard_maly',
+    margin: pricing.margin_maly_opt,
+    label: `Standard — Mały opt ${(pricing.margin_maly_opt * 100).toFixed(0)}%`,
+  }
+}
+
 export function DealItemsEditor({
   dealId,
   initialItems,
   products,
   clientContext,
+  pricing,
 }: DealItemsEditorProps) {
   const router = useRouter()
   const [items, setItems] = useState<DealItem[]>(initialItems)
@@ -109,19 +170,10 @@ export function DealItemsEditor({
 
   const totalBrutto = totalNetto + totalVat
 
-  const tierLabel = useMemo(() => {
-    if (clientContext.client_type === 'strategic_partner') {
-      const k = clientContext.contracted_margin_katalog_pct
-      const d = clientContext.contracted_margin_docel_pct
-      if (k != null && d != null) {
-        return `Strategic — katalog ${(k * 100).toFixed(0)}% / docel ${(d * 100).toFixed(0)}%`
-      }
-      return 'Strategic — bez kontraktu'
-    }
-    if (totalNetto >= 2500) return 'Standard — Duży opt 35%'
-    if (totalNetto >= 1000) return 'Standard — Średni opt 40%'
-    return 'Standard — Mały opt 50%'
-  }, [clientContext, totalNetto])
+  const currentTier = useMemo(
+    () => resolveTier(totalNetto, clientContext, pricing),
+    [totalNetto, clientContext, pricing],
+  )
 
   const handleAddProduct = (product: ProductOption) => {
     setProductPickerOpen(false)
@@ -152,22 +204,96 @@ export function DealItemsEditor({
     })
   }
 
+  // Recompute non-override items' unit_price_sell after a change shifts
+  // the standard-tier ladder. Strategic clients are exempt — their margin
+  // is contracted and total_value doesn't move it. Returns the items
+  // after shift + the list of rows that need a server update + a label
+  // for the toast (null when no tier change happened).
+  const applyTierShift = (
+    itemsAfterChange: DealItem[],
+    sourceItemId: string,
+  ): {
+    items: DealItem[]
+    extraUpdates: { id: string; unit_price_sell: number; quantity: number; unit_price_buy: number | null }[]
+    shiftedTo: string | null
+  } => {
+    const prevTotalNetto = items.reduce(
+      (sum, i) => sum + Number(i.line_total ?? 0),
+      0,
+    )
+    const newTotalNetto = itemsAfterChange.reduce(
+      (sum, i) => sum + Number(i.line_total ?? 0),
+      0,
+    )
+    const prevTier = resolveTier(prevTotalNetto, clientContext, pricing)
+    const newTier = resolveTier(newTotalNetto, clientContext, pricing)
+    if (prevTier.key === newTier.key) {
+      return { items: itemsAfterChange, extraUpdates: [], shiftedTo: null }
+    }
+    if (
+      clientContext.client_type === 'strategic_partner' ||
+      newTier.margin == null
+    ) {
+      return { items: itemsAfterChange, extraUpdates: [], shiftedTo: null }
+    }
+    const margin = newTier.margin
+    const extraUpdates: { id: string; unit_price_sell: number; quantity: number; unit_price_buy: number | null }[] = []
+    const shifted = itemsAfterChange.map((it) => {
+      // Don't touch the row that triggered this change (user just typed
+      // there) and don't touch user-overridden prices.
+      if (it.id === sourceItemId) return it
+      if (it.unit_price_override) return it
+      const cost = it.unit_price_buy != null ? Number(it.unit_price_buy) : null
+      if (cost == null || cost <= 0) return it
+      const newSell = computePrice(cost, margin)
+      if (newSell <= 0 || newSell === Number(it.unit_price_sell)) return it
+      const qty = Number(it.quantity)
+      extraUpdates.push({
+        id: it.id,
+        unit_price_sell: newSell,
+        quantity: qty,
+        unit_price_buy: cost,
+      })
+      return {
+        ...it,
+        unit_price_sell: newSell,
+        line_total: newSell * qty,
+      }
+    })
+    return { items: shifted, extraUpdates, shiftedTo: newTier.label }
+  }
+
   const handleQuantity = (item: DealItem, value: string) => {
     const q = Number.parseFloat(value.replace(',', '.'))
     if (!Number.isFinite(q) || q <= 0) return
-    setItems((prev) =>
-      prev.map((it) =>
-        it.id === item.id
-          ? { ...it, quantity: q, line_total: q * Number(it.unit_price_sell) }
-          : it,
-      ),
+    const optimistic = items.map((it) =>
+      it.id === item.id
+        ? { ...it, quantity: q, line_total: q * Number(it.unit_price_sell) }
+        : it,
     )
+    const { items: finalItems, extraUpdates, shiftedTo } = applyTierShift(
+      optimistic,
+      item.id,
+    )
+    setItems(finalItems)
+    if (shiftedTo) {
+      toast.info(`Tier zmienił się: ${shiftedTo}`)
+    }
     startTransition(async () => {
-      await updateDealItem(item.id, {
-        quantity: q,
-        unit_price_sell: Number(item.unit_price_sell),
-        unit_price_buy: item.unit_price_buy ?? undefined,
-      })
+      await Promise.all([
+        updateDealItem(item.id, {
+          quantity: q,
+          unit_price_sell: Number(item.unit_price_sell),
+          unit_price_buy: item.unit_price_buy ?? undefined,
+        }),
+        ...extraUpdates.map((u) =>
+          updateDealItem(u.id, {
+            quantity: u.quantity,
+            unit_price_sell: u.unit_price_sell,
+            unit_price_buy: u.unit_price_buy ?? undefined,
+          }),
+        ),
+      ])
       router.refresh()
     })
   }
@@ -175,25 +301,40 @@ export function DealItemsEditor({
   const handlePrice = (item: DealItem, value: string) => {
     const p = Number.parseFloat(value.replace(',', '.'))
     if (!Number.isFinite(p) || p < 0) return
-    setItems((prev) =>
-      prev.map((it) =>
-        it.id === item.id
-          ? {
-              ...it,
-              unit_price_sell: p,
-              unit_price_override: true,
-              line_total: p * Number(it.quantity),
-            }
-          : it,
-      ),
+    const optimistic = items.map((it) =>
+      it.id === item.id
+        ? {
+            ...it,
+            unit_price_sell: p,
+            unit_price_override: true,
+            line_total: p * Number(it.quantity),
+          }
+        : it,
     )
+    const { items: finalItems, extraUpdates, shiftedTo } = applyTierShift(
+      optimistic,
+      item.id,
+    )
+    setItems(finalItems)
+    if (shiftedTo) {
+      toast.info(`Tier zmienił się: ${shiftedTo}`)
+    }
     startTransition(async () => {
-      await updateDealItem(item.id, {
-        unit_price_sell: p,
-        unit_price_override: true,
-        quantity: Number(item.quantity),
-        unit_price_buy: item.unit_price_buy ?? undefined,
-      })
+      await Promise.all([
+        updateDealItem(item.id, {
+          unit_price_sell: p,
+          unit_price_override: true,
+          quantity: Number(item.quantity),
+          unit_price_buy: item.unit_price_buy ?? undefined,
+        }),
+        ...extraUpdates.map((u) =>
+          updateDealItem(u.id, {
+            quantity: u.quantity,
+            unit_price_sell: u.unit_price_sell,
+            unit_price_buy: u.unit_price_buy ?? undefined,
+          }),
+        ),
+      ])
       router.refresh()
     })
   }
@@ -223,7 +364,7 @@ export function DealItemsEditor({
               : 'bg-blue-100 text-blue-800 border-transparent',
           )}
         >
-          {tierLabel}
+          {currentTier.label}
         </Badge>
       </div>
 
@@ -274,7 +415,7 @@ export function DealItemsEditor({
                     />
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1">
+                    <div className="flex flex-col items-end gap-1">
                       <Input
                         type="number"
                         step="0.01"
@@ -284,12 +425,19 @@ export function DealItemsEditor({
                         className="h-8 text-right"
                       />
                       {item.unit_price_override && (
-                        <span
-                          className="text-[9px] text-amber-600"
-                          title="Cena nadpisana ręcznie"
-                        >
-                          ✎
-                        </span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge
+                              variant="outline"
+                              className="bg-amber-100 text-amber-800 border-transparent text-[10px] px-1 py-0 h-4 leading-none cursor-help"
+                            >
+                              Manualne
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Cena ręcznie ustawiona — nie odpowiada cenniku tier
+                          </TooltipContent>
+                        </Tooltip>
                       )}
                     </div>
                   </TableCell>

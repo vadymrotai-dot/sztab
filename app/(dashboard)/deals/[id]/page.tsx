@@ -18,6 +18,7 @@ import {
   DealItemsEditor,
   type ProductOption,
 } from '@/components/deals/deal-items-editor'
+import { settingsRowsToPricing } from '@/lib/pricing'
 
 const stageColors: Record<string, string> = {
   lead: 'bg-slate-500',
@@ -47,7 +48,12 @@ export default async function DealDetailPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: deal }, items, { data: products }] = await Promise.all([
+  const [
+    { data: deal },
+    items,
+    { data: products },
+    { data: settingsRows },
+  ] = await Promise.all([
     supabase
       .from('deals')
       .select('*, client:clients(id, title, client_type, contracted_margin_katalog_pct, contracted_margin_docel_pct)')
@@ -60,7 +66,10 @@ export default async function DealDetailPage({
         'id, name, gramatura, ean, cost_pln, vat_rate, unit, supplier_id, category, supplier:suppliers(id, name)',
       )
       .order('name', { ascending: true }),
+    supabase.from('settings').select('key, value'),
   ])
+
+  const pricing = settingsRowsToPricing(settingsRows)
 
   if (!deal) {
     notFound()
@@ -257,6 +266,7 @@ export default async function DealDetailPage({
                 contracted_margin_docel_pct:
                   client?.contracted_margin_docel_pct ?? null,
               }}
+              pricing={pricing}
             />
           </CardContent>
         </Card>
