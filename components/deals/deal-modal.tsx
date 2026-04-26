@@ -451,8 +451,13 @@ export function DealModal({
 
     await revalidateDealRoutes()
     toast.success('Szansa utworzona — dodaj pozycje na stronie szansy')
+    // Single source of truth dla navigation. Nie callujemy onOpenChange
+    // — w /deals/new wrapper jego onOpenChange robi router.push('/deals'),
+    // co wygrywało z router.push(/deals/X) ostatnio i zostawiało user
+    // na /deals zamiast na detail page. router.push tutaj rozmontuje
+    // modal naturalnie kiedy nowa route załaduje. onSaved wciąż wywołane
+    // żeby wrapper mógł np. router.refresh() na liście.
     onSaved?.(created.id)
-    onOpenChange(false)
     router.push(`/deals/${created.id}`)
     setSubmitting(false)
   }
