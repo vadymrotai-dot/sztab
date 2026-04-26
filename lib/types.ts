@@ -1,3 +1,5 @@
+export type ClientType = 'standard' | 'strategic_partner'
+
 export interface Client {
   id: string
   title: string
@@ -10,8 +12,13 @@ export interface Client {
   phone?: string
   website?: string
   notes?: string
-  segment: 'maly' | 'sredni' | 'duzy' | 'niesklasyfikowany'
+  segment: 'maly' | 'sredni' | 'duzy' | 'duzi_gracze' | 'niesklasyfikowany'
   status: 'nowy' | 'aktywny' | 'nieaktywny'
+  channel_type: string | null
+  size_tier: string | null
+  client_type: ClientType
+  contracted_margin_katalog_pct: number | null
+  contracted_margin_docel_pct: number | null
   business_data?: unknown
   potential_analysis?: unknown
   created_at: string
@@ -35,21 +42,17 @@ export interface Deal {
   id: string
   title: string
   client_id?: string
-  product_id?: string
   person_id?: string
   supplier_id?: string
   stage: DealStage
   /** Legacy field from Bitrix import. Kept for backward compatibility — new code should use total_value. */
   amount: number
   total_value?: number
-  quantity?: number
-  unit?: string
-  unit_price_buy?: number
-  unit_price_sell?: number
-  margin_amount?: number
-  margin_pct?: number
   probability?: number
   currency?: string
+  deal_type?: 'reseller' | 'agent' | 'partner' | null
+  commission_pct?: number | null
+  commission_income_pln?: number | null
   delivery_terms?: string
   expected_close_date?: string
   next_action_date?: string
@@ -61,9 +64,30 @@ export interface Deal {
   updated_at: string
   owner_id: string
   client?: Client | null
-  product?: Product | null
   person?: Person | null
   supplier?: Supplier | null
+}
+
+export interface DealItem {
+  id: string
+  deal_id: string
+  product_id: string | null
+  product_name_snapshot: string | null
+  product_gramatura_snapshot: string | null
+  product_ean_snapshot: string | null
+  quantity: number
+  unit: string | null
+  unit_price_buy: number | null
+  unit_price_sell: number
+  unit_price_override: boolean
+  line_total: number
+  line_margin_pln: number | null
+  line_margin_pct: number | null
+  vat_rate: number
+  notes: string | null
+  position: number
+  created_at: string
+  updated_at: string
 }
 
 export type SupplierType =

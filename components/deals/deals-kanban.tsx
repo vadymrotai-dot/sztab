@@ -205,17 +205,7 @@ function DealCard({
         </div>
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold">{formatPLN(value)}</span>
-          {deal.margin_pct != null && Number.isFinite(deal.margin_pct) && (
-            <Badge
-              variant="outline"
-              className={cn(
-                'text-xs font-medium border-transparent',
-                marginBadgeClass(deal.margin_pct)
-              )}
-            >
-              {Math.round(deal.margin_pct)}%
-            </Badge>
-          )}
+          {/* Margin badge removed — deals.margin_* dropped in 010, will compute from deal_items in Phase 3 Commit 7. */}
         </div>
         {deal.next_action_date && (
           <div

@@ -170,18 +170,20 @@ const buildInitialValues = (
   defaults: DealModalDefaults | undefined,
 ): DealFormValues => ({
   client_id: deal?.client_id ?? defaults?.client_id ?? '',
-  product_id: deal?.product_id ?? defaults?.product_id ?? undefined,
+  // product_id removed in 010 — deal_items child table replaces single-product fields.
+  // Phase 3 Commit 5 rewrites this form on top of DealItemsEditor.
+  product_id: defaults?.product_id ?? undefined,
   person_id: deal?.person_id ?? undefined,
   supplier_id: deal?.supplier_id ?? undefined,
   stage: deal?.stage ?? defaults?.stage ?? 'lead',
   probability: deal?.probability ?? 30,
-  quantity: deal?.quantity ?? null,
-  unit: deal?.unit ?? '',
-  unit_price_buy: deal?.unit_price_buy ?? null,
-  unit_price_sell: deal?.unit_price_sell ?? null,
+  quantity: null,
+  unit: '',
+  unit_price_buy: null,
+  unit_price_sell: null,
   total_value: deal?.total_value ?? deal?.amount ?? null,
-  margin_amount: deal?.margin_amount ?? null,
-  margin_pct: deal?.margin_pct ?? null,
+  margin_amount: null,
+  margin_pct: null,
   currency: deal?.currency ?? 'PLN',
   delivery_terms: deal?.delivery_terms ?? '',
   expected_close_date:
