@@ -37,31 +37,48 @@ import {
   CalendarCheckIcon,
   SettingsIcon,
   SparklesIcon,
+  CrosshairIcon,
   LogOutIcon,
   ChevronUpIcon,
   CommandIcon,
 } from 'lucide-react'
 
-const navigation = [
-  { name: 'Dzis', href: '/dashboard', icon: LayoutDashboardIcon },
-  { name: 'Klienci', href: '/clients', icon: UsersIcon },
-  { name: 'Umowy', href: '/deals', icon: KanbanIcon },
-  { name: 'Generator KP', href: '/kp-generator', icon: FileTextIcon },
-  { name: 'Dostawcy', href: '/suppliers', icon: TruckIcon },
-  { name: 'Produkty', href: '/products', icon: PackageIcon },
-  { name: 'AI Discovery', href: '/intelligence', icon: SparklesIcon },
-  { name: 'Kalkulator', href: '/calculator', icon: CalculatorIcon },
-  { name: 'Zadania', href: '/tasks', icon: CheckSquareIcon },
-  { name: 'Cele', href: '/goals', icon: TargetIcon },
-  { name: 'Nawyki', href: '/habits', icon: CalendarCheckIcon },
-  { name: 'Ustawienia', href: '/settings', icon: SettingsIcon },
-]
+import { Badge } from '@/components/ui/badge'
+
+interface NavItem {
+  name: string
+  href: string
+  icon: React.ComponentType<{ className?: string }>
+  badgeCount?: number
+}
 
 interface AppSidebarProps {
   user: User
+  prospectHotCount?: number
 }
 
-export function AppSidebar({ user }: AppSidebarProps) {
+export function AppSidebar({ user, prospectHotCount = 0 }: AppSidebarProps) {
+  const navigation: NavItem[] = [
+    { name: 'Dzis', href: '/dashboard', icon: LayoutDashboardIcon },
+    { name: 'Klienci', href: '/clients', icon: UsersIcon },
+    { name: 'Umowy', href: '/deals', icon: KanbanIcon },
+    { name: 'Generator KP', href: '/kp-generator', icon: FileTextIcon },
+    { name: 'Dostawcy', href: '/suppliers', icon: TruckIcon },
+    { name: 'Produkty', href: '/products', icon: PackageIcon },
+    { name: 'AI Discovery', href: '/intelligence', icon: SparklesIcon },
+    {
+      name: 'Prospekty',
+      href: '/intelligence/prospects',
+      icon: CrosshairIcon,
+      badgeCount: prospectHotCount,
+    },
+    { name: 'Kalkulator', href: '/calculator', icon: CalculatorIcon },
+    { name: 'Zadania', href: '/tasks', icon: CheckSquareIcon },
+    { name: 'Cele', href: '/goals', icon: TargetIcon },
+    { name: 'Nawyki', href: '/habits', icon: CalendarCheckIcon },
+    { name: 'Ustawienia', href: '/settings', icon: SettingsIcon },
+  ]
+
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
@@ -98,14 +115,29 @@ export function AppSidebar({ user }: AppSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               {navigation.map((item) => {
-                const isActive = pathname === item.href || 
-                  (item.href !== '/dashboard' && pathname.startsWith(item.href))
+                // Active matching: exact match OR pathname startsWith href.
+                // Exception: /intelligence shouldn't capture /intelligence/prospects
+                // (uses startsWith → both would match). Use exact-or-segment
+                // boundary check instead.
+                const isExact = pathname === item.href
+                const isSubsegment =
+                  item.href !== '/dashboard' &&
+                  pathname.startsWith(item.href + '/')
+                const isActive = isExact || isSubsegment
                 return (
                   <SidebarMenuItem key={item.name}>
                     <SidebarMenuButton asChild isActive={isActive} tooltip={item.name}>
                       <Link href={item.href}>
                         <item.icon className="size-4" />
                         <span>{item.name}</span>
+                        {item.badgeCount !== undefined && item.badgeCount > 0 && (
+                          <Badge
+                            variant="secondary"
+                            className="ml-auto h-5 min-w-[20px] justify-center bg-emerald-100 px-1.5 text-[10px] text-emerald-800"
+                          >
+                            {item.badgeCount}
+                          </Badge>
+                        )}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
