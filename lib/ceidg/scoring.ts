@@ -58,8 +58,8 @@ export const CHANNEL_PROFILES: Record<
 // Chain detection — sieci handlowe / franchise networks.
 // Match przez regex Unicode-aware boundary, case-insensitive na
 // opisach uprawnień (concat z raw_data.uprawnienia[].opis). W V1
-// scoring NIE jest down-rankowany — flagujemy tylko (brand +
-// loyalty_tier) do score_breakdown.chain dla UI segregacji + V2
+// scoring NIE jest down-rankowany — flagujemy tylko (brand + tier
+// jeśli verified) do score_breakdown.chain dla UI segregacji + V2
 // re-scoring (gdy zmienimy weights bez re-fetch detail).
 //
 // CHAIN_LOYALTY_TIERS — 3 poziomy procurement autonomy w PL retail:
@@ -69,59 +69,64 @@ export const CHANNEL_PROFILES: Record<
 //              regional/ethnic suppliers. Cele leady — można sprzedać.
 //   'open'   — Każdy store decyduje sam. Optymalne leady.
 //
-// TODO V2: chain_loyalty_tier multiplier:
+// VERIFIED-ONLY POLICY: tier mapping zawiera TYLKO te brand-y które
+// Vadym osobiście potwierdził. Detect-ujemy znacznie więcej brands
+// (CHAIN_BRANDS poniżej) ale unverified dostają tier_status='unverified'
+// + loyalty_tier=null. V2 multiplier też apply tylko verified —
+// unverified pozostają neutralne (×1.0) póki Vadym nie zbada.
+//
+// TODO V2: chain_loyalty_tier multiplier (tylko dla VERIFIED):
 //   - 'closed' → score × 0.2 (no value, HQ-only procurement)
 //   - 'hybrid' → score × 0.85 (legitimate but lower priority)
 //   - 'open'   → score × 1.0 (no penalty, real decision-maker)
-//   - non-chain → score × 1.0
+//   - unverified | non-chain → score × 1.0
+//
+// TODO Vadym research backlog:
+//   1. Confirm 'closed' tier for: Biedronka, Lidl, Auchan, Carrefour,
+//      Tesco, Dino (likely HQ-only but needs validation)
+//   2. Investigate 'hybrid' candidates: Społem, Stokrotka, Polomarket,
+//      Topaz, Spar — czy jest window na local procurement
+//   3. Confirm 'open' tier for: abc, Delikatesy Centrum, niezależne
+//   4. Phase 4-5: osobna retail_chains tabela z brand-level tracking
+//      (zamiast hard-coded mapy w kodzie)
 //
 // ВАЖНЕ: kolejność w CHAIN_BRANDS ma znaczenie — detectChain zwraca
-// pierwsze dopasowanie. Dłuższe/bardziej specyficzne brands na
-// początku ('Carrefour Express' przed 'Carrefour' żeby nie złapać
-// short-form gdy w opisie był extended).
+// pierwsze dopasowanie. Multi-word brands NA POCZĄTKU żeby longer-form
+// miał priority (np. 'Delikatesy Centrum' przed 'abc' gdyby kiedyś
+// powstała kolizja).
 // ────────────────────────────────────────────────────────────
 export type ChainLoyaltyTier = 'closed' | 'hybrid' | 'open'
 
+// VERIFIED by Vadym (2026-04-28). Brand musi tu być żeby tier_status
+// było 'verified'. Reszta brandów z CHAIN_BRANDS dostaje 'unverified'.
 export const CHAIN_LOYALTY_TIERS: Record<string, ChainLoyaltyTier> = {
-  // closed — HQ-only procurement
-  Żabka: 'closed',
-  Biedronka: 'closed',
-  Lidl: 'closed',
-  Auchan: 'closed',
-  Carrefour: 'closed',
-  'Carrefour Express': 'closed',
-  Tesco: 'closed',
-  Dino: 'closed',
-
-  // hybrid — central + local supplier window
-  Lewiatan: 'hybrid',
-  Społem: 'hybrid',
-  Stokrotka: 'hybrid',
-  Polomarket: 'hybrid',
-  Groszek: 'hybrid',
-
-  // open — each store decides independently
-  abc: 'open',
-  'Delikatesy Centrum': 'open',
+  Żabka: 'closed',     // HQ-only procurement, franchisee blocked
+  Lewiatan: 'hybrid',  // Window for local suppliers
+  Groszek: 'hybrid',   // Window for local suppliers
 }
 
-// Order matters — multi-word brands FIRST żeby nie złapać "Carrefour"
-// inside "Carrefour Express", lub "Centrum" inside "Delikatesy Centrum".
+// CHAIN_BRANDS: detect-ujemy szeroko (więcej znaczy lepsza widoczność
+// w UI — operator może filtrować chains nawet gdy tier nieznany).
+// Multi-word brands na początku dla longer-match priority.
 export const CHAIN_BRANDS = [
-  'Carrefour Express',
   'Delikatesy Centrum',
+  'Małpka Express',
   'Żabka',
   'Lewiatan',
+  'Groszek',
   'Carrefour',
-  'Społem',
-  'Stokrotka',
   'Biedronka',
   'Lidl',
   'Auchan',
   'Tesco',
   'Dino',
+  'Społem',
+  'Stokrotka',
   'Polomarket',
-  'Groszek',
+  'Topaz',
+  'Spar',
+  'Frac',
+  'Milea',
   'abc',
 ] as const
 
@@ -188,17 +193,27 @@ export function extractOpisText(rawData: unknown): string {
   return opisList.join(' | ')
 }
 
+export type TierStatus = 'verified' | 'unverified'
+
 export interface ChainDetection {
   detected: boolean
   brand: string | null
   loyalty_tier: ChainLoyaltyTier | null
+  tier_status: TierStatus | null  // null gdy chain nie wykryty
 }
 
 const escapeRegex = (s: string): string =>
   s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
+const CHAIN_NULL: ChainDetection = {
+  detected: false,
+  brand: null,
+  loyalty_tier: null,
+  tier_status: null,
+}
+
 export function detectChain(opisText: string): ChainDetection {
-  if (!opisText) return { detected: false, brand: null, loyalty_tier: null }
+  if (!opisText) return CHAIN_NULL
   for (const brand of CHAIN_BRANDS) {
     // Unicode-aware word boundary: JS \b jest ASCII-only (działa tylko
     // dla [A-Za-z0-9_]), więc \bżabka\b NIE złapałby 'żabka' bo 'ż'
@@ -209,14 +224,16 @@ export function detectChain(opisText: string): ChainDetection {
       'iu',
     )
     if (regex.test(opisText)) {
+      const verifiedTier = CHAIN_LOYALTY_TIERS[brand]
       return {
         detected: true,
         brand,
-        loyalty_tier: CHAIN_LOYALTY_TIERS[brand] ?? null,
+        loyalty_tier: verifiedTier ?? null,
+        tier_status: verifiedTier ? 'verified' : 'unverified',
       }
     }
   }
-  return { detected: false, brand: null, loyalty_tier: null }
+  return CHAIN_NULL
 }
 
 /** Normalize string for brand-vs-owner comparison: strip non-alphanum +
@@ -465,6 +482,7 @@ export interface ScoreBreakdown {
     detected: boolean
     brand: string | null
     loyalty_tier: ChainLoyaltyTier | null
+    tier_status: TierStatus | null
   }
 }
 
@@ -530,6 +548,7 @@ export function scoreProspect(p: ScoreableProspect): ProspectScores {
         detected: chain.detected,
         brand: chain.brand,
         loyalty_tier: chain.loyalty_tier,
+        tier_status: chain.tier_status,
       },
     },
   }
