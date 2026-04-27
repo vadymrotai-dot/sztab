@@ -240,7 +240,10 @@ export class CeidgClient {
             Authorization: `Bearer ${this.apiKey}`,
             Accept: 'application/json',
           },
-          signal: AbortSignal.timeout(20_000),
+          // 60s — CEIDG combo filterów (pkd+woj+status) potrafi liczyć
+          // 50s+ przy zimnym cache, mimo że pojedyncze filtry wracają
+          // pod sekundę. Zweryfikowane probe-em 2026-04-27.
+          signal: AbortSignal.timeout(60_000),
         })
 
         const durationMs = Date.now() - startedAt
