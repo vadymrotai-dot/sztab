@@ -15,3 +15,7 @@ node_modules
 .next/
 .DS_Store
 .vercel
+
+# CEIDG bootstrap state (resume checkpoints — local only)
+.ceidg-progress.json
+.ceidg-progress.json.tmp

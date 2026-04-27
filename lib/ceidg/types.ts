@@ -80,6 +80,18 @@ export type CeidgStatus =
   | (string & {})
 
 // ────────────────────────────────────────────────────────────
+// Uprawnienia — koncesje/zezwolenia (rzadkie, ale ZŁOTO dla scoring:
+// pole .opis często zawiera nazwę franchise/sieci, np. "Żabka Z9868").
+// ────────────────────────────────────────────────────────────
+export interface CeidgUprawnienie {
+  dataOd?: string
+  dataDo?: string
+  nazwa?: string
+  opis?: string
+  wprowadzonePrzez?: string
+}
+
+// ────────────────────────────────────────────────────────────
 // Detail (z GET /firma/{id}) — wrap w { firma: [...] } (array z 1 elementem!)
 // ────────────────────────────────────────────────────────────
 export interface CeidgFirmaDetails extends CeidgListItem {
@@ -90,6 +102,16 @@ export interface CeidgFirmaDetails extends CeidgListItem {
   pkdGlowny?: CeidgPkd            // główny kod (= pierwszy z pkd zwykle)
   numerStatusu?: number           // 1 dla AKTYWNY (mapping wewnętrzny CEIDG)
   wspolnoscMajatkowa?: number     // 0/1 — wspólnota majątkowa małżeńska
+
+  // Contact — opcjonalne, podane przez przedsiębiorcę. Probe (2026-04-27)
+  // potwierdził obecność dla niektórych firm (np. ABDUL BASIT VENTURES
+  // miał email + telefon). Nie ma osobnego pola www w probe — gdy CEIDG
+  // doda, można rozszerzyć.
+  email?: string
+  telefon?: string
+  adresDoreczenElektronicznych?: string  // np. "AE:PL-80532-57799-EDWWE-26"
+
+  uprawnienia?: CeidgUprawnienie[]
 }
 
 // ────────────────────────────────────────────────────────────
@@ -165,7 +187,11 @@ export interface ProspectInsert {
   lokal: string | null
   adres_full: string | null
   data_rozpoczecia: string | null
-  // Geo + contact pomijamy — CEIDG nie zwraca, future enrichment.
+  // Contact — z detail.email/telefon (probe potwierdził, że niektóre firmy
+  // mają). www nie pojawiło się w probe — zostaje NULL na razie.
+  email: string | null
+  telefon: string | null
+  // Geo (lat/lng) pomijamy — CEIDG nie zwraca, future geocoding step.
   raw_data: unknown
   source?: string                 // default 'ceidg' w DB
 }
