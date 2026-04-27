@@ -56,22 +56,64 @@ export const CHANNEL_PROFILES: Record<
 
 // ────────────────────────────────────────────────────────────
 // Chain detection — sieci handlowe / franchise networks.
-// Match przez regex word-boundary, case-insensitive na opisach
-// uprawnień (concat z raw_data.uprawnienia[].opis). W V1 jeśli
-// detected, scoring NIE jest down-rankowany — flagujemy tylko dla UI
-// segregacji.
+// Match przez regex Unicode-aware boundary, case-insensitive na
+// opisach uprawnień (concat z raw_data.uprawnienia[].opis). W V1
+// scoring NIE jest down-rankowany — flagujemy tylko (brand +
+// loyalty_tier) do score_breakdown.chain dla UI segregacji + V2
+// re-scoring (gdy zmienimy weights bez re-fetch detail).
 //
-// TODO V2: chain franchisees should have score multiplier 0.7
-// Reason: centralized procurement (Żabka HQ buys, не franchisee).
-// Independent businesses make real procurement decisions; franchisees
-// musi kupować z central supply chain → realnie nie są nasi prospects.
+// CHAIN_LOYALTY_TIERS — 3 poziomy procurement autonomy w PL retail:
+//   'closed' — HQ-only procurement, franchisee NIE może kupować od
+//              zewnętrznych dostawców. Marne leady dla food traderа.
+//   'hybrid' — Mixed: mainstream przez HQ, ale window dla local/
+//              regional/ethnic suppliers. Cele leady — można sprzedać.
+//   'open'   — Każdy store decyduje sam. Optymalne leady.
+//
+// TODO V2: chain_loyalty_tier multiplier:
+//   - 'closed' → score × 0.2 (no value, HQ-only procurement)
+//   - 'hybrid' → score × 0.85 (legitimate but lower priority)
+//   - 'open'   → score × 1.0 (no penalty, real decision-maker)
+//   - non-chain → score × 1.0
+//
+// ВАЖНЕ: kolejność w CHAIN_BRANDS ma znaczenie — detectChain zwraca
+// pierwsze dopasowanie. Dłuższe/bardziej specyficzne brands na
+// początku ('Carrefour Express' przed 'Carrefour' żeby nie złapać
+// short-form gdy w opisie był extended).
 // ────────────────────────────────────────────────────────────
+export type ChainLoyaltyTier = 'closed' | 'hybrid' | 'open'
+
+export const CHAIN_LOYALTY_TIERS: Record<string, ChainLoyaltyTier> = {
+  // closed — HQ-only procurement
+  Żabka: 'closed',
+  Biedronka: 'closed',
+  Lidl: 'closed',
+  Auchan: 'closed',
+  Carrefour: 'closed',
+  'Carrefour Express': 'closed',
+  Tesco: 'closed',
+  Dino: 'closed',
+
+  // hybrid — central + local supplier window
+  Lewiatan: 'hybrid',
+  Społem: 'hybrid',
+  Stokrotka: 'hybrid',
+  Polomarket: 'hybrid',
+  Groszek: 'hybrid',
+
+  // open — each store decides independently
+  abc: 'open',
+  'Delikatesy Centrum': 'open',
+}
+
+// Order matters — multi-word brands FIRST żeby nie złapać "Carrefour"
+// inside "Carrefour Express", lub "Centrum" inside "Delikatesy Centrum".
 export const CHAIN_BRANDS = [
+  'Carrefour Express',
+  'Delikatesy Centrum',
   'Żabka',
   'Lewiatan',
   'Carrefour',
   'Społem',
-  'abc',
   'Stokrotka',
   'Biedronka',
   'Lidl',
@@ -79,6 +121,8 @@ export const CHAIN_BRANDS = [
   'Tesco',
   'Dino',
   'Polomarket',
+  'Groszek',
+  'abc',
 ] as const
 
 // ────────────────────────────────────────────────────────────
@@ -147,13 +191,14 @@ export function extractOpisText(rawData: unknown): string {
 export interface ChainDetection {
   detected: boolean
   brand: string | null
+  loyalty_tier: ChainLoyaltyTier | null
 }
 
 const escapeRegex = (s: string): string =>
   s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 export function detectChain(opisText: string): ChainDetection {
-  if (!opisText) return { detected: false, brand: null }
+  if (!opisText) return { detected: false, brand: null, loyalty_tier: null }
   for (const brand of CHAIN_BRANDS) {
     // Unicode-aware word boundary: JS \b jest ASCII-only (działa tylko
     // dla [A-Za-z0-9_]), więc \bżabka\b NIE złapałby 'żabka' bo 'ż'
@@ -164,10 +209,14 @@ export function detectChain(opisText: string): ChainDetection {
       'iu',
     )
     if (regex.test(opisText)) {
-      return { detected: true, brand }
+      return {
+        detected: true,
+        brand,
+        loyalty_tier: CHAIN_LOYALTY_TIERS[brand] ?? null,
+      }
     }
   }
-  return { detected: false, brand: null }
+  return { detected: false, brand: null, loyalty_tier: null }
 }
 
 /** Normalize string for brand-vs-owner comparison: strip non-alphanum +
@@ -412,7 +461,11 @@ export interface ScoreBreakdown {
     final: number
   }
   filter: { passed: boolean; reason: string | null }
-  chain: { detected: boolean; brand: string | null }
+  chain: {
+    detected: boolean
+    brand: string | null
+    loyalty_tier: ChainLoyaltyTier | null
+  }
 }
 
 export interface ProspectScores {
@@ -473,7 +526,11 @@ export function scoreProspect(p: ScoreableProspect): ProspectScores {
         final: meta.metaRaw,
       },
       filter: { passed: true, reason: null },
-      chain: { detected: chain.detected, brand: chain.brand },
+      chain: {
+        detected: chain.detected,
+        brand: chain.brand,
+        loyalty_tier: chain.loyalty_tier,
+      },
     },
   }
 }
