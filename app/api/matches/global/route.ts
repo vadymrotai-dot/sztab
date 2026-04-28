@@ -121,18 +121,61 @@ export async function GET(req: Request) {
     ),
   )
 
+  // Fetch contact_enrichment per target (latest success)
+  const [contactsClientRes, contactsProspectRes] = await Promise.all([
+    clientIds.length > 0
+      ? supabase
+          .from('contact_enrichment')
+          .select('target_type, target_id, phone, email, website, status')
+          .eq('target_type', 'client')
+          .in('target_id', clientIds)
+          .eq('status', 'success')
+      : Promise.resolve({ data: [] }),
+    prospectIds.length > 0
+      ? supabase
+          .from('contact_enrichment')
+          .select('target_type, target_id, phone, email, website, status')
+          .eq('target_type', 'prospect')
+          .in('target_id', prospectIds)
+          .eq('status', 'success')
+      : Promise.resolve({ data: [] }),
+  ])
+  const contactMap = new Map<string, { phone: string | null; email: string | null; website: string | null }>()
+  for (const c of [
+    ...((contactsClientRes.data ?? []) as Array<{ target_type: string; target_id: string; phone: string | null; email: string | null; website: string | null }>),
+    ...((contactsProspectRes.data ?? []) as Array<{ target_type: string; target_id: string; phone: string | null; email: string | null; website: string | null }>),
+  ]) {
+    contactMap.set(`${c.target_type}:${c.target_id}`, {
+      phone: c.phone,
+      email: c.email,
+      website: c.website,
+    })
+  }
+
   const enriched = rows.map((r) => {
     const isClient = r.client_id !== null
     const target = isClient
       ? clientMap.get(r.client_id as string)
       : prospectMap.get(r.prospect_id as string)
+    const targetType: 'client' | 'prospect' = isClient ? 'client' : 'prospect'
+    const targetId = (isClient ? r.client_id : r.prospect_id) as string
     return {
       ...r,
-      target_type: (isClient ? 'client' : 'prospect') as 'client' | 'prospect',
+      target_type: targetType,
       target: target ?? null,
       product: productMap.get(r.product_id) ?? null,
+      contact: contactMap.get(`${targetType}:${targetId}`) ?? null,
     }
   })
 
-  return NextResponse.json({ ok: true, data: enriched, meta: { count: enriched.length, min_score: minScore } })
+  // Stats: how many enriched (≥1 contact field)
+  const enrichedCount = enriched.filter(
+    (r) => r.contact && (r.contact.phone || r.contact.email || r.contact.website),
+  ).length
+
+  return NextResponse.json({
+    ok: true,
+    data: enriched,
+    meta: { count: enriched.length, enriched_count: enrichedCount, min_score: minScore },
+  })
 }

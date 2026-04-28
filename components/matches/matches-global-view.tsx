@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2Icon, RefreshCwIcon, SparklesIcon } from 'lucide-react'
+import { Loader2Icon, RefreshCwIcon, SparklesIcon, PhoneIcon, MailIcon, GlobeIcon, DownloadIcon, ZapIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface MatchEntry {
@@ -40,6 +40,7 @@ interface MatchEntry {
   product?: { name?: string; brand?: string } | null
   target?: { title?: string; name?: string; nip?: string; region?: string; wojewodztwo?: string } | null
   target_type: 'client' | 'prospect'
+  contact?: { phone: string | null; email: string | null; website: string | null } | null
 }
 
 type FilterTargetType = 'all' | 'client' | 'prospect'
@@ -50,6 +51,8 @@ export function MatchesGlobalView() {
   const [error, setError] = useState<string | null>(null)
   const [recomputing, setRecomputing] = useState(false)
   const [airescoring, setAirescoring] = useState(false)
+  const [enrichingBatch, setEnrichingBatch] = useState(false)
+  const [enrichedCount, setEnrichedCount] = useState(0)
 
   // Filters
   const [targetType, setTargetType] = useState<FilterTargetType>('all')
@@ -70,6 +73,7 @@ export function MatchesGlobalView() {
       const json = await res.json()
       if (!json.ok) throw new Error(json.error || 'Błąd ładowania')
       setData((json.data ?? []) as MatchEntry[])
+      setEnrichedCount(json.meta?.enriched_count ?? 0)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -96,6 +100,55 @@ export function MatchesGlobalView() {
     } finally {
       setRecomputing(false)
     }
+  }
+
+  async function handleApifyBatch() {
+    if (!confirm('Запустити Apify enrichment на TOP-50 unique NIPs? Estimated cost ~$1.05.')) return
+    setEnrichingBatch(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/enrich/apify-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source: 'mixed',
+          min_combined_score: 60,
+          limit: 50,
+          dry_run: false,
+        }),
+      })
+      const json = await res.json()
+      if (!json.ok) {
+        setError(json.error ?? 'Apify batch failed')
+      } else {
+        const s = json.summary
+        alert(
+          `Apify batch DONE\n\n` +
+            `Unique NIPs: ${s.unique_nips_attempted}\n` +
+            `Successful: ${s.successful_nips}\n` +
+            `Partial: ${s.partial_nips}\n` +
+            `No match: ${s.no_match_nips}\n` +
+            `Errors: ${s.error_nips}\n` +
+            `Rows inserted: ${s.rows_inserted}\n` +
+            `Cost: $${s.total_cost_usd}\n` +
+            `Duration: ${(s.duration_ms / 1000).toFixed(1)}s`,
+        )
+      }
+      await fetchMatches()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setEnrichingBatch(false)
+    }
+  }
+
+  function handleExport() {
+    const url = new URL('/api/export/pikniko-handoff', window.location.origin)
+    url.searchParams.set('min_score', String(Math.max(minScore, 60)))
+    url.searchParams.set('limit', '50')
+    url.searchParams.set('format', 'csv')
+    url.searchParams.set('with_contacts_only', 'true')
+    window.location.href = url.toString()
   }
 
   async function handleAiBulk() {
@@ -175,12 +228,12 @@ export function MatchesGlobalView() {
               tylko AI-rescored
             </Label>
           </div>
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={fetchMatches} disabled={loading}>
               <RefreshCwIcon className="size-4 mr-1" />
               Odśwież
             </Button>
-            <Button onClick={handleBulk} disabled={recomputing || airescoring} variant="outline" size="sm">
+            <Button onClick={handleBulk} disabled={recomputing || airescoring || enrichingBatch} variant="outline" size="sm">
               {recomputing ? (
                 <Loader2Icon className="size-4 mr-1 animate-spin" />
               ) : (
@@ -188,13 +241,25 @@ export function MatchesGlobalView() {
               )}
               {recomputing ? 'L5 algo…' : 'L5 algo bulk'}
             </Button>
-            <Button onClick={handleAiBulk} disabled={airescoring || recomputing} size="sm">
+            <Button onClick={handleAiBulk} disabled={airescoring || recomputing || enrichingBatch} variant="outline" size="sm">
               {airescoring ? (
                 <Loader2Icon className="size-4 mr-1 animate-spin" />
               ) : (
                 <SparklesIcon className="size-4 mr-1" />
               )}
-              {airescoring ? 'L6 AI…' : 'L6 AI bulk re-score'}
+              {airescoring ? 'L6 AI…' : 'L6 AI bulk'}
+            </Button>
+            <Button onClick={handleApifyBatch} disabled={enrichingBatch || airescoring || recomputing} variant="outline" size="sm">
+              {enrichingBatch ? (
+                <Loader2Icon className="size-4 mr-1 animate-spin" />
+              ) : (
+                <ZapIcon className="size-4 mr-1" />
+              )}
+              {enrichingBatch ? 'Apify batch…' : 'Apify (TOP-50)'}
+            </Button>
+            <Button onClick={handleExport} size="sm">
+              <DownloadIcon className="size-4 mr-1" />
+              Export Pikniko CSV
             </Button>
           </div>
         </CardContent>
@@ -203,11 +268,16 @@ export function MatchesGlobalView() {
       {/* Results */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
-            {loading ? 'Ładowanie…' : `${data.length} dopasowań`}
-            <span className="ml-2 text-xs font-normal text-muted-foreground">
+          <CardTitle className="flex items-center gap-3 text-base">
+            <span>{loading ? 'Ładowanie…' : `${data.length} dopasowań`}</span>
+            <span className="text-xs font-normal text-muted-foreground">
               (sortowanie: score DESC)
             </span>
+            {!loading && data.length > 0 && (
+              <span className="ml-auto rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                {enrichedCount} / {data.length} z kontaktami
+              </span>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -225,7 +295,7 @@ export function MatchesGlobalView() {
           ) : (
             <ul className="divide-y">
               {data.map((m, idx) => (
-                <GlobalMatchRow key={m.id} match={m} rank={idx + 1} />
+                <GlobalMatchRow key={m.id} match={m} rank={idx + 1} onRefresh={fetchMatches} />
               ))}
             </ul>
           )}
@@ -235,7 +305,18 @@ export function MatchesGlobalView() {
   )
 }
 
-function GlobalMatchRow({ match, rank }: { match: MatchEntry; rank: number }) {
+function GlobalMatchRow({
+  match,
+  rank,
+  onRefresh,
+}: {
+  match: MatchEntry
+  rank: number
+  onRefresh: () => void
+}) {
+  const [enriching, setEnriching] = useState(false)
+  const [enrichError, setEnrichError] = useState<string | null>(null)
+
   const score = match.combined_score ?? match.algo_score
   const hasAi = match.ai_score !== null
   const scoreColor =
@@ -259,9 +340,36 @@ function GlobalMatchRow({ match, rank }: { match: MatchEntry; rank: number }) {
     match.target_type === 'client' && match.client_id
       ? `/clients/${match.client_id}`
       : match.target_type === 'prospect'
-        ? `/intelligence/prospects` // panel-based, не deep link
+        ? `/intelligence/prospects`
         : '#'
   const productHref = `/products/${match.product_id}/edit`
+
+  const targetId =
+    match.target_type === 'client' ? match.client_id : match.prospect_id
+  const hasPhone = Boolean(match.contact?.phone)
+  const hasEmail = Boolean(match.contact?.email)
+  const hasWebsite = Boolean(match.contact?.website)
+  const hasAnyContact = hasPhone || hasEmail || hasWebsite
+
+  async function handleEnrich() {
+    if (!targetId) return
+    setEnriching(true)
+    setEnrichError(null)
+    try {
+      const path =
+        match.target_type === 'client'
+          ? `/api/clients/${targetId}/enrich-apify`
+          : `/api/prospects/${targetId}/enrich-apify`
+      const res = await fetch(path, { method: 'POST' })
+      const json = await res.json()
+      if (!json.ok) throw new Error(json.error || 'enrich failed')
+      onRefresh()
+    } catch (err) {
+      setEnrichError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setEnriching(false)
+    }
+  }
 
   return (
     <li className="grid grid-cols-12 items-start gap-2 py-3">
@@ -279,7 +387,7 @@ function GlobalMatchRow({ match, rank }: { match: MatchEntry; rank: number }) {
           </span>
         )}
       </div>
-      <div className="col-span-5 min-w-0 space-y-1">
+      <div className="col-span-4 min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <Badge
             className={cn(
@@ -295,7 +403,7 @@ function GlobalMatchRow({ match, rank }: { match: MatchEntry; rank: number }) {
         </div>
         {targetSub && <p className="text-xs text-muted-foreground truncate">{targetSub}</p>}
       </div>
-      <div className="col-span-5 min-w-0 space-y-1">
+      <div className="col-span-4 min-w-0 space-y-1">
         <Link href={productHref} className="text-sm font-medium hover:underline">
           {match.product?.name ?? '—'}
         </Link>
@@ -303,15 +411,84 @@ function GlobalMatchRow({ match, rank }: { match: MatchEntry; rank: number }) {
           {match.product?.brand ?? ''}
         </p>
         <div className="flex flex-wrap gap-1 pt-1">
-          {match.reason_codes.slice(0, 4).map((r, idx) => (
+          {match.reason_codes.slice(0, 3).map((r, idx) => (
             <Badge key={`${match.id}-${idx}`} variant="outline" className="text-[10px] font-mono font-normal">
               {r}
             </Badge>
           ))}
-          {match.reason_codes.length > 4 && (
-            <span className="text-[10px] text-muted-foreground">+{match.reason_codes.length - 4}</span>
+          {match.reason_codes.length > 3 && (
+            <span className="text-[10px] text-muted-foreground">+{match.reason_codes.length - 3}</span>
           )}
         </div>
+      </div>
+      <div className="col-span-2 space-y-1">
+        <div className="flex items-center gap-1.5">
+          <PhoneIcon
+            className={cn(
+              'size-3.5 cursor-pointer',
+              hasPhone ? 'text-emerald-600' : 'text-gray-300',
+            )}
+            onClick={() => {
+              if (match.contact?.phone) {
+                navigator.clipboard.writeText(match.contact.phone).catch(() => {})
+              }
+            }}
+            aria-label={match.contact?.phone ?? 'no phone'}
+          />
+          <MailIcon
+            className={cn(
+              'size-3.5 cursor-pointer',
+              hasEmail ? 'text-emerald-600' : 'text-gray-300',
+            )}
+            onClick={() => {
+              if (match.contact?.email) {
+                navigator.clipboard.writeText(match.contact.email).catch(() => {})
+              }
+            }}
+            aria-label={match.contact?.email ?? 'no email'}
+          />
+          <GlobeIcon
+            className={cn(
+              'size-3.5 cursor-pointer',
+              hasWebsite ? 'text-emerald-600' : 'text-gray-300',
+            )}
+            onClick={() => {
+              if (match.contact?.website) window.open(match.contact.website, '_blank')
+            }}
+            aria-label={match.contact?.website ?? 'no website'}
+          />
+          {!hasAnyContact && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleEnrich}
+              disabled={enriching}
+              className="h-6 px-1 text-[10px]"
+              title="Enrich z Apify (~$0.02)"
+            >
+              {enriching ? (
+                <Loader2Icon className="size-3 animate-spin" />
+              ) : (
+                <ZapIcon className="size-3" />
+              )}
+            </Button>
+          )}
+        </div>
+        {hasAnyContact && (
+          <div className="space-y-0.5 text-[10px] text-muted-foreground">
+            {match.contact?.phone && (
+              <div className="truncate" title={match.contact.phone}>
+                {match.contact.phone}
+              </div>
+            )}
+            {match.contact?.email && (
+              <div className="truncate" title={match.contact.email}>
+                {match.contact.email}
+              </div>
+            )}
+          </div>
+        )}
+        {enrichError && <p className="text-[10px] text-red-600">{enrichError}</p>}
       </div>
     </li>
   )
