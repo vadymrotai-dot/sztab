@@ -301,11 +301,46 @@ async function callGemini(params: AIParams): Promise<AIResult> {
   let nonRetryableHit = false
 
   for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt += 1) {
-    res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        // 45s per-request timeout. Vercel function maxDuration=60s, so
+        // 5 attempts × ~45s wouldn't fit — but in praktyce timeout fires
+        // tylko gdy Google nie odpowiada wcale (network hang). Normalne
+        // odpowiedzi <5s. Mirror lib/ceidg/client.ts pattern (60s tam,
+        // 45s tutaj — Gemini latencja niższa niż CEIDG combo filters).
+        signal: AbortSignal.timeout(45_000),
+      })
+    } catch (err) {
+      // Network-level failure: timeout, DNS, connection refused, etc.
+      const isAbort =
+        err instanceof Error &&
+        (err.name === "TimeoutError" || err.name === "AbortError")
+      lastStatus = isAbort ? 0 : -1
+      lastErrText = err instanceof Error ? err.message : String(err)
+
+      if (attempt === GEMINI_MAX_ATTEMPTS) {
+        console.error(
+          `[GEMINI] attempt ${attempt}/${GEMINI_MAX_ATTEMPTS} fetch failed (${lastErrText}) — exhausted`,
+        )
+        throw new GeminiUnavailableError(
+          isAbort
+            ? "Gemini API nie odpowiada. Spróbuj ponownie za chwilę."
+            : `Gemini API błąd sieci: ${lastErrText.slice(0, 200)}. Spróbuj ponownie za chwilę.`,
+          lastStatus,
+          attempt,
+        )
+      }
+
+      const delayMs = GEMINI_RETRY_DELAYS_MS[attempt - 1]
+      console.warn(
+        `[GEMINI] attempt ${attempt}/${GEMINI_MAX_ATTEMPTS} fetch failed (${lastErrText}), retry in ${delayMs / 1000}s`,
+      )
+      await new Promise((r) => setTimeout(r, delayMs))
+      continue
+    }
 
     if (res.ok) {
       if (attempt > 1) {

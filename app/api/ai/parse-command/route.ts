@@ -4,10 +4,27 @@
 
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { callAI, extractJSON, AIParseError, type AIProvider } from "@/lib/ai-providers"
+import {
+  callAI,
+  extractJSON,
+  AIParseError,
+  AIInvalidResponseError,
+  type AIProvider,
+} from "@/lib/ai-providers"
+import {
+  validateAIResponse,
+  AISchemaInvalidError,
+  ParseCommandSchema,
+} from "@/lib/ai/schemas"
 
 const FRIENDLY_PARSE_ERROR =
   "Nie udało się przetworzyć komendy. Spróbuj ponownie."
+
+const FRIENDLY_INVALID_RESPONSE =
+  "Gemini nie zwrócił prawidłowej odpowiedzi. Spróbuj ponownie."
+
+const FRIENDLY_SCHEMA_INVALID =
+  "AI zwróciło dane w nieprawidłowym formacie. Spróbuj ponownie."
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -140,17 +157,26 @@ export async function POST(req: Request) {
       )
     }
 
-    let parsed: any
+    let parsed: unknown
     try {
-      parsed = extractJSON<any>(ai.text)
+      parsed = extractJSON(ai.text)
     } catch (e: any) {
+      if (e instanceof AIInvalidResponseError) {
+        console.error("[AI_INVALID_RESPONSE] parse-command", {
+          rawPreview: e.rawText.slice(0, 1000),
+        })
+        return NextResponse.json(
+          { ok: false, error: FRIENDLY_INVALID_RESPONSE },
+          { status: 502 }
+        )
+      }
       if (e instanceof AIParseError) {
         console.error("[AI_PARSE_ERROR] parse-command", {
           message: e.message,
           rawPreview: e.rawText.slice(0, 1000),
         })
       } else {
-        console.error("[AI_PARSE_ERROR] parse-command (non-AIParseError)", e)
+        console.error("[AI_PARSE_ERROR] parse-command (unknown)", e)
       }
       return NextResponse.json(
         { ok: false, error: FRIENDLY_PARSE_ERROR },
@@ -158,9 +184,29 @@ export async function POST(req: Request) {
       )
     }
 
+    // Schema validation — discriminated union (5 action variants)
+    let validated: import("@/lib/ai/schemas").ParseCommandResult
+    try {
+      validated = validateAIResponse(parsed, ParseCommandSchema, "parse-command")
+    } catch (e: any) {
+      if (e instanceof AISchemaInvalidError) {
+        console.error("[AI_SCHEMA_INVALID] parse-command", {
+          context: e.context,
+          issues: e.issues,
+          rawPreview: JSON.stringify(e.raw).slice(0, 1000),
+        })
+      } else {
+        console.error("[AI_SCHEMA_INVALID] parse-command (unknown)", e)
+      }
+      return NextResponse.json(
+        { ok: false, error: FRIENDLY_SCHEMA_INVALID },
+        { status: 502 }
+      )
+    }
+
     return NextResponse.json({
       ok: true,
-      result: parsed,
+      result: validated,
       provider,
       model: ai.model,
       tokensUsed: ai.tokensUsed,

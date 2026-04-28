@@ -12,12 +12,21 @@ import {
   AIInvalidResponseError,
   type AIProvider,
 } from "@/lib/ai-providers"
+import {
+  validateAIResponse,
+  AISchemaInvalidError,
+  PotentialAnalysisSchema,
+  InsufficientDataSchema,
+} from "@/lib/ai/schemas"
 
 const FRIENDLY_PARSE_ERROR =
   "Nie udało się przetworzyć odpowiedzi AI dla tego klienta. Spróbuj ponownie za chwilę."
 
 const FRIENDLY_INVALID_RESPONSE =
   "Gemini nie zwrócił prawidłowej odpowiedzi. To czasem zdarza się dla skomplikowanych klientów (35+ kodów PKD). Spróbuj ponownie lub uprość zapytanie."
+
+const FRIENDLY_SCHEMA_INVALID =
+  "AI zwróciło dane w nieprawidłowym formacie. Spróbuj ponownie."
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -210,42 +219,55 @@ export async function POST(req: Request) {
     }
 
     // Handle AI-generated insufficient_data signal — model explicit
-    // refused to score (per strengthened prompt). Return friendly
-    // message instead of writing garbage to potential_analysis JSONB.
-    if (parsed && typeof parsed === "object" && parsed.error === "insufficient_data") {
+    // refused to score (per strengthened prompt). Detected via separate
+    // schema before main validation. Return friendly message instead
+    // of writing garbage to potential_analysis JSONB.
+    const insufficientCheck = InsufficientDataSchema.safeParse(parsed)
+    if (insufficientCheck.success) {
       console.warn("[AI_INSUFFICIENT_DATA] potential-analysis", {
         clientId,
-        reason: parsed.reason,
+        reason: insufficientCheck.data.reason,
       })
       return NextResponse.json(
         {
           ok: false,
-          error: `Gemini nie ma dość danych aby ocenić tego klienta: ${parsed.reason || "brak szczegółów"}`,
+          error: `Gemini nie ma dość danych aby ocenić tego klienta: ${insufficientCheck.data.reason || "brak szczegółów"}`,
         },
         { status: 422 }
       )
     }
 
+    // Schema validation — typed access to fields, catches hallucinated
+    // shapes (potential_score: "siedem", missing keys, wrong segment enum).
+    let validated: import("@/lib/ai/schemas").PotentialAnalysis
+    try {
+      validated = validateAIResponse(parsed, PotentialAnalysisSchema, "potential-analysis")
+    } catch (e: any) {
+      if (e instanceof AISchemaInvalidError) {
+        console.error("[AI_SCHEMA_INVALID] potential-analysis", {
+          clientId,
+          context: e.context,
+          issues: e.issues,
+          rawPreview: JSON.stringify(e.raw).slice(0, 1500),
+        })
+      } else {
+        console.error("[AI_SCHEMA_INVALID] potential-analysis (unknown)", e)
+      }
+      return NextResponse.json(
+        { ok: false, error: FRIENDLY_SCHEMA_INVALID },
+        { status: 502 }
+      )
+    }
+
     const potentialAnalysis = {
-      ...parsed,
+      ...validated,
       generated_at: new Date().toISOString(),
       sources: ai.groundingSources || [],
       model: ai.model,
     }
 
-    // Map recommended_segment to valid values
-    const segmentMap: Record<string, string> = {
-      niesklasyfikowany: "niesklasyfikowany",
-      maly_opt: "maly_opt",
-      "maly opt": "maly_opt",
-      sredni_opt: "sredni_opt",
-      "sredni opt": "sredni_opt",
-      duzy_opt: "duzy_opt",
-      "duzy opt": "duzy_opt",
-      katalog: "katalog",
-      docel: "docel",
-    }
-    const validSegment = segmentMap[(parsed.recommended_segment || "").toLowerCase()]
+    // recommended_segment już zwalidowane do enum'a — direct use
+    const validSegment = validated.recommended_segment
 
     const updates: any = {
       potential_analysis: potentialAnalysis,

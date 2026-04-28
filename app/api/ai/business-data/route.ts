@@ -4,10 +4,27 @@
 
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { callAI, extractJSON, AIParseError, type AIProvider } from "@/lib/ai-providers"
+import {
+  callAI,
+  extractJSON,
+  AIParseError,
+  AIInvalidResponseError,
+  type AIProvider,
+} from "@/lib/ai-providers"
+import {
+  validateAIResponse,
+  AISchemaInvalidError,
+  BusinessDataSchema,
+} from "@/lib/ai/schemas"
 
 const FRIENDLY_PARSE_ERROR =
   "Nie udało się przetworzyć odpowiedzi AI dla tego klienta. Spróbuj ponownie za chwilę."
+
+const FRIENDLY_INVALID_RESPONSE =
+  "Gemini nie zwrócił prawidłowej odpowiedzi. Spróbuj ponownie."
+
+const FRIENDLY_SCHEMA_INVALID =
+  "AI zwróciło dane w nieprawidłowym formacie. Spróbuj ponownie."
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -153,10 +170,21 @@ export async function POST(req: Request) {
       )
     }
 
-    let parsed: any = null
+    let parsed: unknown = null
     try {
-      parsed = extractJSON<any>(ai.text)
+      parsed = extractJSON(ai.text)
     } catch (e: any) {
+      if (e instanceof AIInvalidResponseError) {
+        console.error("[AI_INVALID_RESPONSE] business-data", {
+          message: e.message,
+          rawLength: e.rawText.length,
+          rawPreview: e.rawText.slice(0, 2000),
+        })
+        return NextResponse.json(
+          { ok: false, error: FRIENDLY_INVALID_RESPONSE },
+          { status: 502 }
+        )
+      }
       if (e instanceof AIParseError) {
         console.error("[AI_PARSE_ERROR] business-data", {
           message: e.message,
@@ -165,7 +193,7 @@ export async function POST(req: Request) {
           cleanedPreview: e.cleaned?.slice(0, 2000),
         })
       } else {
-        console.error("[AI_PARSE_ERROR] business-data (non-AIParseError)", e)
+        console.error("[AI_PARSE_ERROR] business-data (unknown)", e)
       }
       return NextResponse.json(
         { ok: false, error: FRIENDLY_PARSE_ERROR },
@@ -173,9 +201,30 @@ export async function POST(req: Request) {
       )
     }
 
+    // Schema validation
+    let validated: import("@/lib/ai/schemas").BusinessData
+    try {
+      validated = validateAIResponse(parsed, BusinessDataSchema, "business-data")
+    } catch (e: any) {
+      if (e instanceof AISchemaInvalidError) {
+        console.error("[AI_SCHEMA_INVALID] business-data", {
+          clientId,
+          context: e.context,
+          issues: e.issues,
+          rawPreview: JSON.stringify(e.raw).slice(0, 1500),
+        })
+      } else {
+        console.error("[AI_SCHEMA_INVALID] business-data (unknown)", e)
+      }
+      return NextResponse.json(
+        { ok: false, error: FRIENDLY_SCHEMA_INVALID },
+        { status: 502 }
+      )
+    }
+
     // Build business_data JSONB object
     const businessData = {
-      ...parsed,
+      ...validated,
       generated_at: new Date().toISOString(),
       sources: ai.groundingSources || [],
       model: ai.model,
@@ -189,22 +238,11 @@ export async function POST(req: Request) {
 
     // If we got a better website, save it separately for easy access
     if (
-      parsed.website &&
-      parsed.website !== "brak danych" &&
+      validated.website &&
+      validated.website !== "brak danych" &&
       !client.website
     ) {
-      updates.website = parsed.website
-    }
-
-    // If verified name differs significantly from current, keep old as backup in notes
-    // (but only if there's real verified_name, not "brak danych")
-    const verified = parsed.verified_name
-    if (
-      verified &&
-      verified !== "brak danych" &&
-      verified.toLowerCase() !== (client.title || "").toLowerCase()
-    ) {
-      // don't auto-overwrite title — user can decide manually
+      updates.website = validated.website
     }
 
     const { error: uerr } = await supabase
