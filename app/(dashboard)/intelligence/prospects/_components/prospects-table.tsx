@@ -139,6 +139,7 @@ interface FilterState {
   channels: Set<Channel> // empty = no channel filter (all)
   hasContact: boolean
   hideClosedChains: boolean
+  showExcluded: boolean // default FALSE — excluded prospects (filter_passed=false) hidden
   sortKey: SortKey
   sortDir: SortDir
 }
@@ -149,6 +150,7 @@ const DEFAULT_FILTER: FilterState = {
   channels: new Set(),
   hasContact: false,
   hideClosedChains: false,
+  showExcluded: false,
   sortKey: 'horeca_meta_score',
   sortDir: 'desc',
 }
@@ -170,6 +172,7 @@ function parseFilterFromUrl(sp: URLSearchParams): FilterState {
     channels,
     hasContact: sp.get('has_contact') === 'true',
     hideClosedChains: sp.get('hide_closed') === 'true',
+    showExcluded: sp.get('show_excluded') === 'true',
     sortKey:
       sortKeyRaw === 'name' ||
       sortKeyRaw === 'miejscowosc' ||
@@ -188,6 +191,7 @@ function filterToUrl(f: FilterState): string {
     params.set('channels', Array.from(f.channels).join(','))
   if (f.hasContact) params.set('has_contact', 'true')
   if (f.hideClosedChains) params.set('hide_closed', 'true')
+  if (f.showExcluded) params.set('show_excluded', 'true')
   if (f.sortKey !== 'horeca_meta_score') params.set('sort', f.sortKey)
   if (f.sortDir !== 'desc') params.set('dir', f.sortDir ?? 'desc')
   const s = params.toString()
@@ -223,9 +227,18 @@ export function ProspectsTable({ initialProspects }: ProspectsTableProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter])
 
+  // Total excluded (filter_passed=false) — for transparency counter
+  const totalExcluded = useMemo(
+    () => initialProspects.filter((p) => p.filter_passed === false).length,
+    [initialProspects],
+  )
+
   // Apply filters + sort
   const filtered = useMemo(() => {
     let rows = initialProspects.filter((p) => {
+      // Hide excluded by default (RADEKZOOH wide_spectrum_freelancer etc.)
+      // Toggle "Pokaż wykluczone" inverts to show them.
+      if (!filter.showExcluded && p.filter_passed === false) return false
       const meta = num(p.horeca_meta_score)
       if (meta < filter.scoreMin || meta > filter.scoreMax) return false
       if (filter.channels.size > 0) {
@@ -339,6 +352,12 @@ export function ProspectsTable({ initialProspects }: ProspectsTableProps) {
             {totalFiltered === totalAvailable
               ? `${totalAvailable} dostępnych`
               : `${totalFiltered} z ${totalAvailable} po filtrach`}
+            {totalExcluded > 0 && (
+              <span className="ml-2 text-xs">
+                · Wykluczone: <span className="font-medium">{totalExcluded}</span>
+                {!filter.showExcluded && ' (ukryte)'}
+              </span>
+            )}
           </div>
           <Button
             variant="link"
@@ -419,6 +438,20 @@ export function ProspectsTable({ initialProspects }: ProspectsTableProps) {
             />
             <Label htmlFor="hide-closed" className="cursor-pointer text-xs">
               Ukryj closed chains
+            </Label>
+          </div>
+
+          {/* Show excluded (default false — RADEKZOOH wide_spectrum etc. hidden) */}
+          <div className="flex items-center gap-2">
+            <Switch
+              id="show-excluded"
+              checked={filter.showExcluded}
+              onCheckedChange={(v) =>
+                setFilter((f) => ({ ...f, showExcluded: v }))
+              }
+            />
+            <Label htmlFor="show-excluded" className="cursor-pointer text-xs">
+              Pokaż wykluczone
             </Label>
           </div>
         </div>
