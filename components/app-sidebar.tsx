@@ -72,6 +72,7 @@ export function AppSidebar({ user, prospectHotCount = 0 }: AppSidebarProps) {
       icon: CrosshairIcon,
       badgeCount: prospectHotCount,
     },
+    { name: 'Matche (TOP-100)', href: '/matches', icon: SparklesIcon },
     { name: 'Kalkulator', href: '/calculator', icon: CalculatorIcon },
     { name: 'Zadania', href: '/tasks', icon: CheckSquareIcon },
     { name: 'Cele', href: '/goals', icon: TargetIcon },

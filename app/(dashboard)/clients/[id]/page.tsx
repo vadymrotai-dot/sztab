@@ -18,6 +18,7 @@ import { VatSection } from '@/app/(dashboard)/_shared/vat-section'
 import { GusSection } from '@/app/(dashboard)/_shared/gus-section'
 import { KrsSection } from '@/app/(dashboard)/_shared/krs-section'
 import { StatusBadgesRow } from '@/app/(dashboard)/_shared/status-badges-row'
+import { MatchesPanel } from '@/components/matches/matches-panel'
 
 const segmentColors: Record<string, string> = {
   maly_opt: 'bg-slate-500',
@@ -270,6 +271,15 @@ export default async function ClientDetailPage({
             initial={client.potential_analysis}
           />
         </div>
+
+        {/* Row 2.5: L5 algo matching */}
+        <MatchesPanel
+          mode="product-side"
+          keyType="client_id"
+          keyValue={id}
+          recomputePath="/api/admin/matching/recompute-client"
+          title="Dopasowane produkty"
+        />
 
         {/* Row 3: zakladki */}
         <Tabs defaultValue="contacts">

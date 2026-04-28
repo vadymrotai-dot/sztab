@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/page-header'
 import { ProductForm } from '@/components/products/product-form'
 import { FastLookupCard } from '@/components/intelligence/fast-lookup-card'
 import { ProductAttributesPanel } from '@/components/products/product-attributes-panel'
+import { MatchesPanel } from '@/components/matches/matches-panel'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -103,6 +104,14 @@ export default async function EditProductPage({ params }: PageProps) {
         <ProductAttributesPanel
           productId={id}
           externalData={externalRow ?? null}
+        />
+        <MatchesPanel
+          mode="target-side"
+          keyType="product_id"
+          keyValue={id}
+          recomputePath="/api/admin/matching/recompute-product"
+          title="Potencjalni klienci / prospekci"
+          limit={20}
         />
         <FastLookupCard
           productId={id}

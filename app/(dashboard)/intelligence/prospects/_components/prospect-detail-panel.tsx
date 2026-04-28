@@ -23,6 +23,7 @@ import {
 import { cn } from '@/lib/utils'
 import { VatSection } from '@/app/(dashboard)/_shared/vat-section'
 import { GusSection } from '@/app/(dashboard)/_shared/gus-section'
+import { MatchesPanel } from '@/components/matches/matches-panel'
 import { KrsSection } from '@/app/(dashboard)/_shared/krs-section'
 import { StatusBadgesRow } from '@/app/(dashboard)/_shared/status-badges-row'
 
@@ -416,6 +417,16 @@ export function ProspectDetailPanel({
               {JSON.stringify(prospect.raw_data, null, 2)}
             </pre>
           </details>
+
+          {/* Sprint F — L5 algo matching */}
+          <MatchesPanel
+            mode="product-side"
+            keyType="prospect_id"
+            keyValue={prospect.id}
+            recomputePath="/api/admin/matching/recompute-prospect"
+            title="Dopasowane produkty"
+            limit={20}
+          />
 
           {/* Footer actions */}
           <div className="flex items-center gap-2 border-t pt-4">
