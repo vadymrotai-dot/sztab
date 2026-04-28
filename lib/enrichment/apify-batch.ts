@@ -87,15 +87,17 @@ export async function buildBatchPlan(
   const minScore = opts.min_combined_score
   const safeLimit = Math.max(1, Math.min(opts.limit ?? 50, 200))
 
-  // Pull score-ordered match rows з denormalized target info
+  // Pull score-ordered match rows з denormalized target info.
+  // Sprint I: filter by apify_review_status='approved' (Vadym pre-vetted).
   const { data: matchRows, error: mErr } = await supabase
     .from('matches')
     .select(
-      'id, combined_score, product_id, client_id, prospect_id',
+      'id, combined_score, product_id, client_id, prospect_id, apify_review_status',
     )
     .gte('combined_score', minScore)
+    .eq('apify_review_status', 'approved')
     .order('combined_score', { ascending: false })
-    .limit(safeLimit * 6) // fetch wider pool, then filter після dedup
+    .limit(safeLimit * 6) // fetch wider pool, then dedup
   if (mErr) throw new Error(`build plan: ${mErr.message}`)
   const matches = (matchRows ?? []) as Array<{
     id: string

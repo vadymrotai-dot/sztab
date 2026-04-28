@@ -53,8 +53,21 @@ export async function POST(req: Request) {
     budget_usd: body.budget_usd ?? APIFY_BATCH_BUDGET_DEFAULT,
   }
 
-  // Build plan
+  // Build plan (Sprint I: filters to apify_review_status='approved' only)
   const plan = await buildBatchPlan(supabase, opts)
+
+  // Sprint I: refuse якщо no approved matches → review queue first
+  if (plan.unique_nips === 0) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          'Brak approved matches w kolejce. Otwórz /matches/review, zatwierdź candidates і spróbuj ponownie.',
+        plan,
+      },
+      { status: 400 },
+    )
+  }
 
   // Cost guard
   if (plan.estimated_cost_usd > opts.budget_usd) {
