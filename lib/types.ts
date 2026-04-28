@@ -184,6 +184,13 @@ export interface Product {
   tags: string[] | null
   created_at: string
   owner_id: string
+  // Sprint E — taxonomy + hygiene
+  family_id?: string | null
+  class_id?: string | null
+  brand?: string | null
+  hygiene_status?: 'CLEAN' | 'DIRTY' | 'UNCHECKED' | null
+  hygiene_issues?: Array<{ key: string; issue: string }> | null
+  hygiene_checked_at?: string | null
 }
 
 export interface Task {

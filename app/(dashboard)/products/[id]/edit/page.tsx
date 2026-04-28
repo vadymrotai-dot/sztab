@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/page-header'
 import { ProductForm } from '@/components/products/product-form'
 import { FastLookupCard } from '@/components/intelligence/fast-lookup-card'
+import { ProductAttributesPanel } from '@/components/products/product-attributes-panel'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -39,6 +40,7 @@ export default async function EditProductPage({ params }: PageProps) {
     { data: suppliers },
     { data: settingsRows },
     { data: categoryRows },
+    { data: externalRow },
     intelligenceRuns,
     latestDeepRun,
   ] = await Promise.all([
@@ -52,6 +54,11 @@ export default async function EditProductPage({ params }: PageProps) {
       .from('products')
       .select('category')
       .not('category', 'is', null),
+    supabase
+      .from('product_external')
+      .select('off_payload, off_fetched_at, gemini_payload, gemini_fetched_at')
+      .eq('sku_id', id)
+      .maybeSingle(),
     getIntelligenceRunsForProduct(id),
     getLatestDeepDiscoveryRun(id),
   ])
@@ -92,6 +99,10 @@ export default async function EditProductPage({ params }: PageProps) {
           suppliers={suppliers ?? []}
           pricing={pricing}
           categorySuggestions={categorySuggestions}
+        />
+        <ProductAttributesPanel
+          productId={id}
+          externalData={externalRow ?? null}
         />
         <FastLookupCard
           productId={id}

@@ -47,6 +47,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import type { Product } from '@/lib/types'
+import { HygieneBadge } from '@/components/products/hygiene-badge'
 
 type GroupBy = 'supplier' | 'category' | 'none'
 
@@ -666,6 +667,12 @@ function ProductRow({
             </span>
           )}
         </Link>
+        <span className="ml-2 inline-block align-middle">
+          <HygieneBadge
+            status={product.hygiene_status}
+            issues={product.hygiene_issues}
+          />
+        </span>
       </TableCell>
       <TableCell className="text-sm">{product.gramatura ?? '—'}</TableCell>
       <TableCell className="font-mono text-xs">
