@@ -19,6 +19,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Loader2Icon, RefreshCwIcon, SparklesIcon, PhoneIcon, MailIcon, GlobeIcon, DownloadIcon, ZapIcon } from 'lucide-react'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
 interface MatchEntry {
@@ -376,17 +382,43 @@ function GlobalMatchRow({
       <div className="col-span-1 text-xs font-mono text-muted-foreground pt-1">
         #{rank}
       </div>
-      <div
-        className={cn('col-span-1 flex h-12 w-12 items-center justify-center rounded-md text-white text-sm font-bold relative', scoreColor)}
-        title={hasAi ? `AI: ${match.ai_score} (algo: ${match.algo_score}, conf: ${match.ai_confidence ?? 0})\n${match.ai_reasoning ?? ''}` : 'Algo only'}
-      >
-        {score}
-        {hasAi && (
-          <span className="absolute -top-1 -right-1 size-3.5 rounded-full bg-purple-600 border border-white text-[8px] flex items-center justify-center text-white font-bold">
-            AI
-          </span>
-        )}
-      </div>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              className={cn(
+                'col-span-1 flex h-12 w-12 items-center justify-center rounded-md text-white text-sm font-bold relative cursor-help',
+                scoreColor,
+              )}
+            >
+              {score}
+              {hasAi && (
+                <span className="absolute -top-1 -right-1 size-3.5 rounded-full bg-purple-600 border border-white text-[8px] flex items-center justify-center text-white font-bold">
+                  AI
+                </span>
+              )}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="max-w-sm">
+            {hasAi ? (
+              <div className="space-y-1.5 text-xs">
+                <div className="flex justify-between gap-3 font-mono">
+                  <span>AI: {match.ai_score}</span>
+                  <span className="text-muted-foreground">algo: {match.algo_score}</span>
+                  <span className="text-muted-foreground">
+                    conf: {(match.ai_confidence ?? 0).toFixed(2)}
+                  </span>
+                </div>
+                {match.ai_reasoning && (
+                  <p className="italic">🤖 {match.ai_reasoning}</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs">Algo score only — нema AI re-score yet</p>
+            )}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <div className="col-span-4 min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <Badge

@@ -11,6 +11,12 @@ import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { Loader2Icon, RefreshCwIcon, SparklesIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SalesSnippetButton, type SalesSnippetData } from './sales-snippet-button'
@@ -170,17 +176,43 @@ function MatchRow({ match, mode }: { match: MatchEntry; mode: 'product-side' | '
   return (
     <li className="flex items-start gap-3 py-3">
       {/* Score badge */}
-      <div
-        className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-md text-white text-sm font-bold relative', scoreColor)}
-        title={hasAi ? `AI: ${match.ai_score} (algo: ${match.algo_score}, conf: ${match.ai_confidence ?? 0})\n${match.ai_reasoning ?? ''}` : `Algo only`}
-      >
-        {score}
-        {hasAi && (
-          <span className="absolute -top-1 -right-1 size-3.5 rounded-full bg-purple-600 border border-white text-[8px] flex items-center justify-center text-white font-bold">
-            AI
-          </span>
-        )}
-      </div>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              className={cn(
+                'flex h-12 w-12 shrink-0 items-center justify-center rounded-md text-white text-sm font-bold relative cursor-help',
+                scoreColor,
+              )}
+            >
+              {score}
+              {hasAi && (
+                <span className="absolute -top-1 -right-1 size-3.5 rounded-full bg-purple-600 border border-white text-[8px] flex items-center justify-center text-white font-bold">
+                  AI
+                </span>
+              )}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="max-w-sm">
+            {hasAi ? (
+              <div className="space-y-1.5 text-xs">
+                <div className="flex justify-between gap-3 font-mono">
+                  <span>AI: {match.ai_score}</span>
+                  <span className="text-muted-foreground">algo: {match.algo_score}</span>
+                  <span className="text-muted-foreground">
+                    conf: {(match.ai_confidence ?? 0).toFixed(2)}
+                  </span>
+                </div>
+                {match.ai_reasoning && (
+                  <p className="italic">🤖 {match.ai_reasoning}</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs">Algo score only — нema AI re-score yet</p>
+            )}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <div className="flex-1 min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{displayName}</span>
