@@ -16,6 +16,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { resolveProductAttributes } from '@/lib/product-attributes'
+import { startCronRun, finishCronRun } from '@/lib/cron-runs'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -36,11 +37,13 @@ export async function GET(req: Request) {
   // CRON_SECRET unset → dev mode, pass through
 
   const supabase = await createClient()
+  const runId = await startCronRun(supabase, 'hygiene-scan')
 
   const { data: productRows, error } = await supabase
     .from('products')
     .select('id, family_id')
   if (error) {
+    await finishCronRun(supabase, runId, 'error', { error_message: error.message })
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
   }
   const products = (productRows ?? []) as Array<{ id: string; family_id: string | null }>
@@ -72,6 +75,12 @@ export async function GET(req: Request) {
       console.error(`[CRON_HYGIENE] product ${p.id}:`, err instanceof Error ? err.message : err)
     }
   }
+
+  await finishCronRun(supabase, runId, summary.failed === 0 ? 'success' : 'error', {
+    pairs_processed: summary.total,
+    error_message: summary.failed > 0 ? `${summary.failed} products failed` : undefined,
+    meta: { clean: summary.clean, dirty: summary.dirty, unchecked: summary.unchecked },
+  })
 
   return NextResponse.json({
     ok: true,

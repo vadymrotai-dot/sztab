@@ -16,6 +16,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { bulkRecomputeAll } from '@/lib/matching/engine'
+import { startCronRun, finishCronRun } from '@/lib/cron-runs'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -34,10 +35,30 @@ export async function GET(req: Request) {
   }
 
   const supabase = await createClient()
-  const summary = await bulkRecomputeAll(supabase)
+  const runId = await startCronRun(supabase, 'matching-refresh')
 
-  return NextResponse.json({
-    ok: summary.errors.length === 0,
-    summary,
-  })
+  try {
+    const summary = await bulkRecomputeAll(supabase)
+    await finishCronRun(
+      supabase,
+      runId,
+      summary.errors.length === 0 ? 'success' : 'error',
+      {
+        pairs_processed: summary.pairs_inserted,
+        error_message: summary.errors.join('; ') || undefined,
+        meta: {
+          clients_processed: summary.clients_processed,
+          prospects_processed: summary.prospects_processed,
+        },
+      },
+    )
+    return NextResponse.json({
+      ok: summary.errors.length === 0,
+      summary,
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    await finishCronRun(supabase, runId, 'error', { error_message: msg })
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 })
+  }
 }
