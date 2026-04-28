@@ -18,7 +18,9 @@
 
 const APIFY_BASE = 'https://api.apify.com/v2'
 const ACTOR_ID = 'compass~crawler-google-places'
-const REQUEST_TIMEOUT_MS = 90_000
+// Compass actor: cold-start ~30-60s + per-place scraping. 90s був надто тісним
+// (Sprint H smoke показав timeouts). Bumped до 4 хв.
+const REQUEST_TIMEOUT_MS = 240_000
 const RATE_LIMIT_PER_MIN = 30
 const RATE_WINDOW_MS = 60_000
 const COST_PER_RESULT_USD = 0.007
@@ -120,7 +122,11 @@ async function callApify(
   apiKey: string,
   searchQuery: string,
 ): Promise<ApifyPlace[]> {
-  const url = `${APIFY_BASE}/acts/${ACTOR_ID}/run-sync-get-dataset-items?token=${apiKey}`
+  // memory=1024MB замість default 4096 — дозволяє більше concurrent runs у
+  // межах account memory limit (8192MB total на free/starter). Cold-start
+  // даний smaller actor instance — швидше, плюс avoids "memory-limit-exceeded"
+  // 402 коли мaємo abandoned runs ще consuming slots after client timeouts.
+  const url = `${APIFY_BASE}/acts/${ACTOR_ID}/run-sync-get-dataset-items?token=${apiKey}&memory=1024`
   const body = {
     searchStringsArray: [searchQuery],
     maxCrawledPlaces: 3,
