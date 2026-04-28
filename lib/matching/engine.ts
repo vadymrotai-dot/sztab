@@ -164,19 +164,40 @@ function buildMatches(
   return out
 }
 
-// ─── Upsert helper ───
-async function upsertMatchRows(
+// ─── Insert helper (delete-then-insert pattern) ───
+//
+// Partial UNIQUE indexes (matches_client_product_uniq WHERE client_id IS NOT NULL,
+// matches_prospect_product_uniq WHERE prospect_id IS NOT NULL) cannot be used by
+// PostgREST ON CONFLICT inference. Workaround: delete existing rows for the target
+// scope before inserting fresh. Idempotent ефект same as upsert; semantics are
+// "recompute = wipe + repopulate per target".
+async function deleteExistingMatches(
+  supabase: SupabaseClient,
+  targetType: 'client' | 'prospect',
+  targetIds: string[],
+): Promise<{ ok: boolean; error?: string }> {
+  if (targetIds.length === 0) return { ok: true }
+  const col = targetType === 'client' ? 'client_id' : 'prospect_id'
+  const { error } = await supabase.from('matches').delete().in(col, targetIds)
+  if (error) return { ok: false, error: `delete ${targetType}: ${error.message}` }
+  return { ok: true }
+}
+
+async function deleteMatchesForProduct(
+  supabase: SupabaseClient,
+  productId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from('matches').delete().eq('product_id', productId)
+  if (error) return { ok: false, error: `delete product: ${error.message}` }
+  return { ok: true }
+}
+
+async function insertMatchRows(
   supabase: SupabaseClient,
   rows: MatchUpsertRow[],
-  targetType: 'client' | 'prospect',
 ): Promise<{ ok: boolean; error?: string }> {
   if (rows.length === 0) return { ok: true }
-  // Per partial UNIQUE indexes — separate onConflict
-  const conflictTarget =
-    targetType === 'client' ? 'client_id,product_id' : 'prospect_id,product_id'
-  const { error } = await supabase
-    .from('matches')
-    .upsert(rows, { onConflict: conflictTarget })
+  const { error } = await supabase.from('matches').insert(rows)
   if (error) return { ok: false, error: error.message }
   return { ok: true }
 }
@@ -203,8 +224,10 @@ export async function computeMatchesForClient(
     Array.from(new Set(products.map((p) => p.family_id))),
   )
   const rows = buildMatches(target, products, familyMap)
-  const r = await upsertMatchRows(supabase, rows, 'client')
-  return { ok: r.ok, count: rows.length, error: r.error }
+  const del = await deleteExistingMatches(supabase, 'client', [clientId])
+  if (!del.ok) return { ok: false, count: 0, error: del.error }
+  const ins = await insertMatchRows(supabase, rows)
+  return { ok: ins.ok, count: rows.length, error: ins.error }
 }
 
 export async function computeMatchesForProspect(
@@ -227,8 +250,10 @@ export async function computeMatchesForProspect(
     Array.from(new Set(products.map((p) => p.family_id))),
   )
   const rows = buildMatches(target, products, familyMap)
-  const r = await upsertMatchRows(supabase, rows, 'prospect')
-  return { ok: r.ok, count: rows.length, error: r.error }
+  const del = await deleteExistingMatches(supabase, 'prospect', [prospectId])
+  if (!del.ok) return { ok: false, count: 0, error: del.error }
+  const ins = await insertMatchRows(supabase, rows)
+  return { ok: ins.ok, count: rows.length, error: ins.error }
 }
 
 /** Recompute matches keyed by single product. Iterates all clients + prospects. */
@@ -256,6 +281,10 @@ export async function computeMatchesForProduct(
 
   let totalCount = 0
 
+  // Wipe всі rows для цього product (cross-target)
+  const delAll = await deleteMatchesForProduct(supabase, productId)
+  if (!delAll.ok) return { ok: false, count: 0, error: delAll.error }
+
   // Clients
   const { data: clientRows } = await supabase
     .from('clients')
@@ -263,31 +292,31 @@ export async function computeMatchesForProduct(
       'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region',
     )
   const clientRowsArr = (clientRows ?? []) as ClientRow[]
-  const clientUpserts: MatchUpsertRow[] = []
+  const clientInserts: MatchUpsertRow[] = []
   for (const c of clientRowsArr) {
-    clientUpserts.push(...buildMatches(clientToTarget(c), products, familyMap))
+    clientInserts.push(...buildMatches(clientToTarget(c), products, familyMap))
   }
-  if (clientUpserts.length > 0) {
-    const r = await upsertMatchRows(supabase, clientUpserts, 'client')
+  if (clientInserts.length > 0) {
+    const r = await insertMatchRows(supabase, clientInserts)
     if (!r.ok) return { ok: false, count: 0, error: r.error }
-    totalCount += clientUpserts.length
+    totalCount += clientInserts.length
   }
 
-  // Prospects (HoReCa-relevant — already CEIDG-bootstrap pre-filtered)
+  // Prospects
   const { data: prospectRows } = await supabase
     .from('ceidg_prospects')
     .select(
       'id, name, nip, vat_status, gus_status, data_rozpoczecia, krs_legal_form, krs_management_board, pkd_main, pkd_all, wojewodztwo',
     )
   const prospectRowsArr = (prospectRows ?? []) as ProspectRow[]
-  const prospectUpserts: MatchUpsertRow[] = []
+  const prospectInserts: MatchUpsertRow[] = []
   for (const p of prospectRowsArr) {
-    prospectUpserts.push(...buildMatches(prospectToTarget(p), products, familyMap))
+    prospectInserts.push(...buildMatches(prospectToTarget(p), products, familyMap))
   }
-  if (prospectUpserts.length > 0) {
-    const r = await upsertMatchRows(supabase, prospectUpserts, 'prospect')
+  if (prospectInserts.length > 0) {
+    const r = await insertMatchRows(supabase, prospectInserts)
     if (!r.ok) return { ok: false, count: 0, error: r.error }
-    totalCount += prospectUpserts.length
+    totalCount += prospectInserts.length
   }
 
   return { ok: true, count: totalCount }
@@ -336,16 +365,29 @@ export async function bulkRecomputeAll(
     const rows = (clientRows ?? []) as ClientRow[]
     summary.clients_processed = rows.length
 
+    // Delete existing client-side matches (для всіх клієнтів — bulk fresh
+    // recompute). Avoids ON CONFLICT obstacle з partial UNIQUE indexes.
+    const ids = rows.map((c) => c.id)
+    if (ids.length > 0) {
+      // Chunk DELETE (Postgres .in() works fine з кількістю IDs, але limit
+      // на URL length у PostgREST — chunk 1000 safe).
+      const delChunkSize = 1000
+      for (let i = 0; i < ids.length; i += delChunkSize) {
+        const chunk = ids.slice(i, i + delChunkSize)
+        const del = await deleteExistingMatches(supabase, 'client', chunk)
+        if (!del.ok) summary.errors.push(`clients delete chunk ${i / delChunkSize}: ${del.error}`)
+      }
+    }
+
     const allMatches: MatchUpsertRow[] = []
     for (const c of rows) {
       allMatches.push(...buildMatches(clientToTarget(c), products, familyMap))
     }
-    // Chunk upserts (Postgres can choke on huge batches; 1000 rows safe)
     const chunkSize = 1000
     for (let i = 0; i < allMatches.length; i += chunkSize) {
       const chunk = allMatches.slice(i, i + chunkSize)
-      const r = await upsertMatchRows(supabase, chunk, 'client')
-      if (!r.ok) summary.errors.push(`clients chunk ${i / chunkSize}: ${r.error}`)
+      const r = await insertMatchRows(supabase, chunk)
+      if (!r.ok) summary.errors.push(`clients insert chunk ${i / chunkSize}: ${r.error}`)
       else summary.pairs_inserted += chunk.length
     }
   }
@@ -379,6 +421,16 @@ export async function bulkRecomputeAll(
         )
       })
       summary.prospects_processed = filtered.length
+      // Delete existing prospect-side matches
+      const ids = filtered.map((p) => p.id)
+      if (ids.length > 0) {
+        const delChunkSize = 1000
+        for (let i = 0; i < ids.length; i += delChunkSize) {
+          const chunk = ids.slice(i, i + delChunkSize)
+          const del = await deleteExistingMatches(supabase, 'prospect', chunk)
+          if (!del.ok) summary.errors.push(`prospects delete chunk ${i / delChunkSize}: ${del.error}`)
+        }
+      }
       const allMatches: MatchUpsertRow[] = []
       for (const p of filtered) {
         allMatches.push(...buildMatches(prospectToTarget(p), products, familyMap))
@@ -386,14 +438,23 @@ export async function bulkRecomputeAll(
       const chunkSize = 1000
       for (let i = 0; i < allMatches.length; i += chunkSize) {
         const chunk = allMatches.slice(i, i + chunkSize)
-        const r = await upsertMatchRows(supabase, chunk, 'prospect')
-        if (!r.ok) summary.errors.push(`prospects chunk ${i / chunkSize}: ${r.error}`)
+        const r = await insertMatchRows(supabase, chunk)
+        if (!r.ok) summary.errors.push(`prospects insert chunk ${i / chunkSize}: ${r.error}`)
         else summary.pairs_inserted += chunk.length
       }
     } else {
       const rows = (prospectRows ?? []) as ProspectRow[]
       summary.prospects_processed = rows.length
 
+      const ids = rows.map((p) => p.id)
+      if (ids.length > 0) {
+        const delChunkSize = 1000
+        for (let i = 0; i < ids.length; i += delChunkSize) {
+          const chunk = ids.slice(i, i + delChunkSize)
+          const del = await deleteExistingMatches(supabase, 'prospect', chunk)
+          if (!del.ok) summary.errors.push(`prospects delete chunk ${i / delChunkSize}: ${del.error}`)
+        }
+      }
       const allMatches: MatchUpsertRow[] = []
       for (const p of rows) {
         allMatches.push(...buildMatches(prospectToTarget(p), products, familyMap))
@@ -401,8 +462,8 @@ export async function bulkRecomputeAll(
       const chunkSize = 1000
       for (let i = 0; i < allMatches.length; i += chunkSize) {
         const chunk = allMatches.slice(i, i + chunkSize)
-        const r = await upsertMatchRows(supabase, chunk, 'prospect')
-        if (!r.ok) summary.errors.push(`prospects chunk ${i / chunkSize}: ${r.error}`)
+        const r = await insertMatchRows(supabase, chunk)
+        if (!r.ok) summary.errors.push(`prospects insert chunk ${i / chunkSize}: ${r.error}`)
         else summary.pairs_inserted += chunk.length
       }
     }

@@ -12,6 +12,10 @@
     {
       "path": "/api/cron/hygiene-scan",
       "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/matching-refresh",
+      "schedule": "0 0 * * 0"
     }
   ]
 }
