@@ -74,6 +74,7 @@ export function AppSidebar({ user, prospectHotCount = 0 }: AppSidebarProps) {
       badgeCount: prospectHotCount,
     },
     { name: 'Matche (TOP-100)', href: '/matches', icon: SparklesIcon },
+    { name: 'Pre-Apify review', href: '/matches/review', icon: CheckSquareIcon },
     { name: 'Admin / Health', href: '/admin/health', icon: AlertCircleIcon },
     { name: 'Kalkulator', href: '/calculator', icon: CalculatorIcon },
     { name: 'Zadania', href: '/tasks', icon: CheckSquareIcon },
