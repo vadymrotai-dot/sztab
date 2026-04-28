@@ -41,6 +41,22 @@ export class AIParseError extends Error {
 }
 
 /**
+ * Gemini zwrócił plain-text zamiast JSON (np. "An error occurred during
+ * processing...", "I cannot...", "I apologize..."). Inny failure mode niż
+ * AIParseError (malformed JSON) — to Gemini-side refusal/hallucination,
+ * nie nasz parse bug. Caller pokazuje inną friendly message.
+ */
+export class AIInvalidResponseError extends Error {
+  constructor(
+    message: string,
+    public readonly rawText: string,
+  ) {
+    super(message)
+    this.name = 'AIInvalidResponseError'
+  }
+}
+
+/**
  * Sanitize raw control chars within JSON string values. Naïve scanner
  * (tracks in-string + escape state) — unescaped 0x00-0x1F inside a
  * string literal is replaced with \n / \r / \t / \uXXXX.
@@ -88,10 +104,24 @@ export function extractJSON<T = unknown>(rawText: string): T {
     throw new AIParseError('Empty AI response', rawText ?? '')
   }
 
+  const trimmed = rawText.trim()
+
+  // Pre-check: response without any '{' to oznacza że Gemini zwrócił
+  // plain text (typowo: "An error occurred during processing...",
+  // "I cannot...", "I apologize..."). Inny failure mode niż malformed
+  // JSON — odmowa modelu / API-side error sneaking jako 200 OK z text.
+  // Nie próbujemy strategii — natychmiast throw AIInvalidResponseError
+  // żeby caller pokazał inny friendly message.
+  if (!trimmed.includes('{')) {
+    throw new AIInvalidResponseError(
+      `Gemini returned plain text instead of JSON (no '{' detected)`,
+      rawText,
+    )
+  }
+
   const attempts: string[] = []
 
   // Strategy 1: direct parse na trimmed text
-  const trimmed = rawText.trim()
   attempts.push(trimmed)
   try {
     return JSON.parse(trimmed) as T

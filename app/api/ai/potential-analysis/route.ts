@@ -5,10 +5,19 @@
 
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { callAI, extractJSON, AIParseError, type AIProvider } from "@/lib/ai-providers"
+import {
+  callAI,
+  extractJSON,
+  AIParseError,
+  AIInvalidResponseError,
+  type AIProvider,
+} from "@/lib/ai-providers"
 
 const FRIENDLY_PARSE_ERROR =
   "Nie udało się przetworzyć odpowiedzi AI dla tego klienta. Spróbuj ponownie za chwilę."
+
+const FRIENDLY_INVALID_RESPONSE =
+  "Gemini nie zwrócił prawidłowej odpowiedzi. To czasem zdarza się dla skomplikowanych klientów (35+ kodów PKD). Spróbuj ponownie lub uprość zapytanie."
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -57,7 +66,11 @@ KRYTYCZNE FORMATOWANIE JSON:
 - ZWRÓĆ TYLKO valid JSON. Zacznij od { i zakończ }.
 - BEZ markdown, BEZ \`\`\`json bloków, BEZ prozy przed/po.
 - W stringach używaj \\n dla nowych linii (NIE raw newlines).
-- Polskie znaki ą/ę/ć/ł zostaw jak są — UTF-8 OK.`
+- Polskie znaki ą/ę/ć/ł zostaw jak są — UTF-8 OK.
+- ZAWSZE zwróć valid JSON object {...}. NIGDY nie odpowiadaj plain tekstem.
+- Jeśli nie potrafisz wygenerować analizy (brak danych, klient niejasny,
+  PKD zbyt szerokie), zwróć: {"error": "insufficient_data", "reason": "krótki opis dlaczego"}
+  zamiast plain text błędu.`
 
 export async function POST(req: Request) {
   try {
@@ -164,9 +177,22 @@ export async function POST(req: Request) {
     try {
       parsed = extractJSON<any>(ai.text)
     } catch (e: any) {
-      // Log full raw response do server logs (Vercel) dla debugging.
-      // Frontend dostaje tylko friendly message — bez raw JSON żeby
-      // user nie widział walls of unparseable text.
+      // Differentiate failure modes:
+      //  - AIInvalidResponseError: Gemini zwrócił plain text (refusal /
+      //    hallucinated error). Specific friendly message.
+      //  - AIParseError: malformed JSON despite { detected. Generic msg.
+      //  - other: log + generic msg.
+      if (e instanceof AIInvalidResponseError) {
+        console.error("[AI_INVALID_RESPONSE] potential-analysis", {
+          message: e.message,
+          rawLength: e.rawText.length,
+          rawPreview: e.rawText.slice(0, 2000),
+        })
+        return NextResponse.json(
+          { ok: false, error: FRIENDLY_INVALID_RESPONSE },
+          { status: 502 }
+        )
+      }
       if (e instanceof AIParseError) {
         console.error("[AI_PARSE_ERROR] potential-analysis", {
           message: e.message,
@@ -175,11 +201,28 @@ export async function POST(req: Request) {
           cleanedPreview: e.cleaned?.slice(0, 2000),
         })
       } else {
-        console.error("[AI_PARSE_ERROR] potential-analysis (non-AIParseError)", e)
+        console.error("[AI_PARSE_ERROR] potential-analysis (unknown)", e)
       }
       return NextResponse.json(
         { ok: false, error: FRIENDLY_PARSE_ERROR },
         { status: 500 }
+      )
+    }
+
+    // Handle AI-generated insufficient_data signal — model explicit
+    // refused to score (per strengthened prompt). Return friendly
+    // message instead of writing garbage to potential_analysis JSONB.
+    if (parsed && typeof parsed === "object" && parsed.error === "insufficient_data") {
+      console.warn("[AI_INSUFFICIENT_DATA] potential-analysis", {
+        clientId,
+        reason: parsed.reason,
+      })
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Gemini nie ma dość danych aby ocenić tego klienta: ${parsed.reason || "brak szczegółów"}`,
+        },
+        { status: 422 }
       )
     }
 
