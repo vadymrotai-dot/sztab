@@ -85,6 +85,24 @@ export async function getOpenFoodFactsByBarcode(barcode: string): Promise<OFFPro
     throw new Error(`OFF network error: ${msg}`)
   }
 
+  // OFF returns 404 коли barcode не існує у DB. Treat як "not found"
+  // (а не error) — niche products (regional Polish brands, etc.) часто
+  // не cataloged upstream.
+  if (res.status === 404) {
+    return {
+      found: false,
+      raw: null,
+      brand: null,
+      categories: null,
+      ingredients_text: null,
+      allergens: null,
+      packaging: null,
+      nutriments: null,
+      image_url: null,
+      code: null,
+      quantity: null,
+    }
+  }
   if (!res.ok) {
     throw new Error(`OFF HTTP ${res.status} for barcode ${barcode}`)
   }

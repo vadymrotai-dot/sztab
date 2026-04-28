@@ -12,8 +12,10 @@
 // Returns: array of {sku_id, attributes: {key: value|null}, error?}.
 
 const GEMINI_MODELS = {
-  primary: 'gemini-2.0-flash-exp',
-  fallback: 'gemini-1.5-flash',
+  // Available models verified via ListModels 2026-04-28.
+  // Pick: 2.5-flash (cheap+fast, JSON mode); fallback 2.0-flash.
+  primary: 'gemini-2.5-flash',
+  fallback: 'gemini-2.0-flash',
 }
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
 const REQUEST_TIMEOUT_MS = 60_000
