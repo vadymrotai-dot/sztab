@@ -1,0 +1,12 @@
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS krs_number TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS krs_data JSONB;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS krs_full_name TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS krs_legal_form TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS krs_registration_date DATE;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS krs_management_board JSONB;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS krs_pkd_with_descriptions JSONB;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS krs_status TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS krs_last_checked TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS clients_krs_number_idx ON clients(krs_number) WHERE krs_number IS NOT NULL;
+CREATE INDEX IF NOT EXISTS clients_krs_status_idx ON clients(krs_status);
+CREATE INDEX IF NOT EXISTS clients_krs_last_checked_idx ON clients(krs_last_checked) WHERE krs_last_checked IS NOT NULL;

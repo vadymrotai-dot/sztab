@@ -1,0 +1,12 @@
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS krs_number TEXT;
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS krs_data JSONB;
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS krs_full_name TEXT;
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS krs_legal_form TEXT;
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS krs_registration_date DATE;
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS krs_management_board JSONB;
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS krs_pkd_with_descriptions JSONB;
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS krs_status TEXT;
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS krs_last_checked TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS ceidg_prospects_krs_number_idx ON ceidg_prospects(krs_number) WHERE krs_number IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ceidg_prospects_krs_status_idx ON ceidg_prospects(krs_status);
+CREATE INDEX IF NOT EXISTS ceidg_prospects_krs_last_checked_idx ON ceidg_prospects(krs_last_checked) WHERE krs_last_checked IS NOT NULL;

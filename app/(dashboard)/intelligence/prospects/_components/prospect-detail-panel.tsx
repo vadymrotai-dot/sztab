@@ -23,6 +23,7 @@ import {
 import { cn } from '@/lib/utils'
 import { VatSection } from '@/app/(dashboard)/_shared/vat-section'
 import { GusSection } from '@/app/(dashboard)/_shared/gus-section'
+import { KrsSection } from '@/app/(dashboard)/_shared/krs-section'
 import { StatusBadgesRow } from '@/app/(dashboard)/_shared/status-badges-row'
 
 import type { ProspectRow } from './prospects-table'
@@ -172,9 +173,11 @@ export function ProspectDetailPanel({
             vatStatus={prospect.vat_status ?? null}
             gusStatus={prospect.gus_status ?? null}
             employeeCountRange={prospect.employee_count_range ?? null}
+            krsStatus={prospect.krs_status ?? null}
+            krsLegalForm={prospect.krs_legal_form ?? null}
           />
 
-          {/* VAT + GUS enrichment sections */}
+          {/* VAT + GUS + KRS enrichment sections */}
           <VatSection
             targetType="prospect"
             targetId={prospect.id}
@@ -198,6 +201,20 @@ export function ProspectDetailPanel({
               employee_count_range: prospect.employee_count_range ?? null,
               pkd_codes: prospect.pkd_codes ?? null,
               gus_last_checked: prospect.gus_last_checked ?? null,
+            }}
+          />
+          <KrsSection
+            targetType="prospect"
+            targetId={prospect.id}
+            initial={{
+              krs_number: prospect.krs_number ?? null,
+              krs_full_name: prospect.krs_full_name ?? null,
+              krs_legal_form: prospect.krs_legal_form ?? null,
+              krs_registration_date: prospect.krs_registration_date ?? null,
+              krs_status: prospect.krs_status ?? null,
+              krs_management_board: prospect.krs_management_board ?? null,
+              krs_pkd_with_descriptions: prospect.krs_pkd_with_descriptions ?? null,
+              krs_last_checked: prospect.krs_last_checked ?? null,
             }}
           />
 

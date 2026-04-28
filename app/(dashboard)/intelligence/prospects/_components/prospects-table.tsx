@@ -81,6 +81,15 @@ export interface ProspectRow {
   employee_count_range?: string | null
   pkd_codes?: string[] | null
   gus_last_checked?: string | null
+  // KRS enrichment (migrations 021/022)
+  krs_number?: string | null
+  krs_full_name?: string | null
+  krs_legal_form?: string | null
+  krs_registration_date?: string | null
+  krs_status?: string | null
+  krs_management_board?: import('@/app/(dashboard)/_shared/krs-section').KrsBoardMember[] | null
+  krs_pkd_with_descriptions?: import('@/app/(dashboard)/_shared/krs-section').KrsPkdEntry[] | null
+  krs_last_checked?: string | null
 }
 
 type Channel = 'sklep' | 'restaurant' | 'catering' | 'cafe' | 'multi'

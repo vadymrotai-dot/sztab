@@ -16,6 +16,7 @@ import { PotentialAnalysisPanel } from '@/components/clients/potential-analysis-
 import { NewDealButton } from '@/components/clients/new-deal-button'
 import { VatSection } from '@/app/(dashboard)/_shared/vat-section'
 import { GusSection } from '@/app/(dashboard)/_shared/gus-section'
+import { KrsSection } from '@/app/(dashboard)/_shared/krs-section'
 import { StatusBadgesRow } from '@/app/(dashboard)/_shared/status-badges-row'
 
 const segmentColors: Record<string, string> = {
@@ -179,6 +180,8 @@ export default async function ClientDetailPage({
                   vatStatus={client.vat_status ?? null}
                   gusStatus={client.gus_status ?? null}
                   employeeCountRange={client.employee_count_range ?? null}
+                  krsStatus={client.krs_status ?? null}
+                  krsLegalForm={client.krs_legal_form ?? null}
                 />
               </div>
               {client.notes && (
@@ -215,7 +218,7 @@ export default async function ClientDetailPage({
           </Card>
         </div>
 
-        {/* Row 1.5: enrichment sections (VAT + GUS) */}
+        {/* Row 1.5: enrichment sections (VAT + GUS + KRS) */}
         <div className="grid gap-4 lg:grid-cols-2">
           <VatSection
             targetType="client"
@@ -243,6 +246,20 @@ export default async function ClientDetailPage({
             }}
           />
         </div>
+        <KrsSection
+          targetType="client"
+          targetId={id}
+          initial={{
+            krs_number: client.krs_number ?? null,
+            krs_full_name: client.krs_full_name ?? null,
+            krs_legal_form: client.krs_legal_form ?? null,
+            krs_registration_date: client.krs_registration_date ?? null,
+            krs_status: client.krs_status ?? null,
+            krs_management_board: client.krs_management_board ?? null,
+            krs_pkd_with_descriptions: client.krs_pkd_with_descriptions ?? null,
+            krs_last_checked: client.krs_last_checked ?? null,
+          }}
+        />
 
         {/* Row 2: AI panele - dane biznesowe + potencjal wspolpracy */}
         <div className="grid gap-6 lg:grid-cols-2">

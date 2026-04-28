@@ -8,9 +8,17 @@ interface Props {
   vatStatus: string | null
   gusStatus: string | null
   employeeCountRange: string | null
+  krsStatus?: string | null
+  krsLegalForm?: string | null
 }
 
-export function StatusBadgesRow({ vatStatus, gusStatus, employeeCountRange }: Props) {
+export function StatusBadgesRow({
+  vatStatus,
+  gusStatus,
+  employeeCountRange,
+  krsStatus,
+  krsLegalForm,
+}: Props) {
   const badges: Array<{ label: string; class: string }> = []
 
   if (vatStatus === 'Czynny') {
@@ -36,6 +44,23 @@ export function StatusBadgesRow({ vatStatus, gusStatus, employeeCountRange }: Pr
     badges.push({ label: 'Wykreślony GUS', class: 'bg-red-100 text-red-800' })
   } else if (gusStatus === 'liquidation') {
     badges.push({ label: 'W likwidacji', class: 'bg-orange-100 text-orange-800' })
+  }
+
+  if (krsLegalForm) {
+    // Compact legal form badge — strip "SPÓŁKA" prefixes for brevity
+    const compact = krsLegalForm
+      .replace(/SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ/i, 'sp. z o.o.')
+      .replace(/SPÓŁKA AKCYJNA/i, 'S.A.')
+      .replace(/SPÓŁKA KOMANDYTOWA/i, 'sp.k.')
+      .replace(/SPÓŁKA JAWNA/i, 'sp.j.')
+    badges.push({ label: compact, class: 'bg-purple-100 text-purple-800' })
+  }
+  if (krsStatus === 'likwidacja') {
+    badges.push({ label: 'KRS likwidacja', class: 'bg-amber-100 text-amber-800' })
+  } else if (krsStatus === 'upadlosc') {
+    badges.push({ label: 'Upadłość', class: 'bg-red-100 text-red-800' })
+  } else if (krsStatus === 'wykreslony') {
+    badges.push({ label: 'Wykreślony KRS', class: 'bg-slate-200 text-slate-800' })
   }
 
   if (badges.length === 0) return null
