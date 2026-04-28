@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Loader2Icon, RefreshCwIcon, SparklesIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { SalesSnippetButton, type SalesSnippetData } from './sales-snippet-button'
 
 interface MatchEntry {
   id: string
@@ -33,6 +34,7 @@ interface MatchEntry {
   product?: { name?: string; brand?: string; gramatura?: string } | null
   target?: { title?: string; name?: string; nip?: string; region?: string; wojewodztwo?: string } | null
   target_type?: 'client' | 'prospect'
+  sales_snippet?: SalesSnippetData | null
 }
 
 interface Props {
@@ -211,6 +213,13 @@ function MatchRow({ match, mode }: { match: MatchEntry; mode: 'product-side' | '
               {r}
             </Badge>
           ))}
+        </div>
+        <div className="pt-1">
+          <SalesSnippetButton
+            matchId={match.id}
+            initialSnippet={match.sales_snippet ?? null}
+            size="xs"
+          />
         </div>
         {/* Score progress bar */}
         <div className="h-1 w-full overflow-hidden rounded bg-muted">
