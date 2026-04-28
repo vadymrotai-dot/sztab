@@ -5,7 +5,10 @@
 
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { callAI, type AIProvider } from "@/lib/ai-providers"
+import { callAI, extractJSON, AIParseError, type AIProvider } from "@/lib/ai-providers"
+
+const FRIENDLY_PARSE_ERROR =
+  "Nie udało się przetworzyć odpowiedzi AI dla tego klienta. Spróbuj ponownie za chwilę."
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -48,7 +51,13 @@ Zwroc wynik TYLKO w JSON, bez markdown:
   "risks": "2-4 zdania jakie ryzyka, problemy lub znaki ostrzegawcze"
 }
 
-Jesli klient wyraznie nie pasuje (np. firma IT) - potential_score=0-2, recommended_segment="niesklasyfikowany", potential_summary napisz szczerze ze nie pasuje i DLACZEGO.`
+Jesli klient wyraznie nie pasuje (np. firma IT) - potential_score=0-2, recommended_segment="niesklasyfikowany", potential_summary napisz szczerze ze nie pasuje i DLACZEGO.
+
+KRYTYCZNE FORMATOWANIE JSON:
+- ZWRÓĆ TYLKO valid JSON. Zacznij od { i zakończ }.
+- BEZ markdown, BEZ \`\`\`json bloków, BEZ prozy przed/po.
+- W stringach używaj \\n dla nowych linii (NIE raw newlines).
+- Polskie znaki ą/ę/ć/ł zostaw jak są — UTF-8 OK.`
 
 export async function POST(req: Request) {
   try {
@@ -137,7 +146,10 @@ export async function POST(req: Request) {
       userPrompt,
       useGoogleSearch: true,
       model: "gemini-2.5-flash",
-      maxTokens: 1500,
+      // Bumped 1500→4096: wide-spectrum prospects (35+ PKD codes) + Google
+      // grounding metadata generated truncated JSON powodując "Unterminated
+      // string" parse errors. 4096 tokens daje bezpieczny bufor.
+      maxTokens: 4096,
       temperature: 0.4,
     })
 
@@ -150,19 +162,23 @@ export async function POST(req: Request) {
 
     let parsed: any = null
     try {
-      const cleaned = ai.text
-        .replace(/^```(?:json)?\s*/i, "")
-        .replace(/```\s*$/i, "")
-        .trim()
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
-      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned)
+      parsed = extractJSON<any>(ai.text)
     } catch (e: any) {
+      // Log full raw response do server logs (Vercel) dla debugging.
+      // Frontend dostaje tylko friendly message — bez raw JSON żeby
+      // user nie widział walls of unparseable text.
+      if (e instanceof AIParseError) {
+        console.error("[AI_PARSE_ERROR] potential-analysis", {
+          message: e.message,
+          rawLength: e.rawText.length,
+          rawPreview: e.rawText.slice(0, 2000),
+          cleanedPreview: e.cleaned?.slice(0, 2000),
+        })
+      } else {
+        console.error("[AI_PARSE_ERROR] potential-analysis (non-AIParseError)", e)
+      }
       return NextResponse.json(
-        {
-          ok: false,
-          error: `Nie udalo sie sparsowac odpowiedzi AI: ${e.message}`,
-          raw: ai.text.slice(0, 1000),
-        },
+        { ok: false, error: FRIENDLY_PARSE_ERROR },
         { status: 500 }
       )
     }

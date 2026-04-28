@@ -4,7 +4,10 @@
 
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { callAI, type AIProvider } from "@/lib/ai-providers"
+import { callAI, extractJSON, AIParseError, type AIProvider } from "@/lib/ai-providers"
+
+const FRIENDLY_PARSE_ERROR =
+  "Nie udało się przetworzyć komendy. Spróbuj ponownie."
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -137,22 +140,20 @@ export async function POST(req: Request) {
       )
     }
 
-    // Try to parse
     let parsed: any
     try {
-      // Strip code fences if any slipped through
-      const cleaned = ai.text
-        .replace(/^```(?:json)?\s*/i, "")
-        .replace(/```\s*$/i, "")
-        .trim()
-      parsed = JSON.parse(cleaned)
+      parsed = extractJSON<any>(ai.text)
     } catch (e: any) {
+      if (e instanceof AIParseError) {
+        console.error("[AI_PARSE_ERROR] parse-command", {
+          message: e.message,
+          rawPreview: e.rawText.slice(0, 1000),
+        })
+      } else {
+        console.error("[AI_PARSE_ERROR] parse-command (non-AIParseError)", e)
+      }
       return NextResponse.json(
-        {
-          ok: false,
-          error: `Nie udało się sparsować odpowiedzi AI jako JSON: ${e.message}`,
-          raw: ai.text,
-        },
+        { ok: false, error: FRIENDLY_PARSE_ERROR },
         { status: 500 }
       )
     }

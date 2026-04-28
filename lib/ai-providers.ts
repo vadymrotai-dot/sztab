@@ -12,6 +12,143 @@
 //     natychmiast z raw error (current behavior)
 //   - Logi prefiksowane [GEMINI] dla observability
 
+// ─────────────────────────────────────────────────────────────────
+// JSON extraction utility — robust parsing dla Gemini responses
+// gdy native JSON mode nie jest dostępny (np. useGoogleSearch=true,
+// gdzie responseMimeType jest niekompatybilny z google_search tool).
+//
+// Common Gemini failure modes:
+//   1. Markdown code fences (```json ... ```) wokół payloadu
+//   2. Prefix/suffix proza wokół { ... } block
+//   3. Raw newlines / control chars (0x00-0x1F) wewnątrz string values
+//      → JSON spec wymaga escape (\n, \r, \t lub \uXXXX). Gemini czasem
+//      emituje raw \n w polskich tekstach (potential_summary, description).
+//
+// extractJSON próbuje 4 strategii w kolejności fallback. Po wyczerpaniu
+// wszystkich rzuca AIParseError zawierający raw text + ostatnio próbowany
+// cleaned variant — caller loguje pod prefiksem [AI_PARSE_ERROR] i zwraca
+// friendly polski komunikat użytkownikowi.
+
+export class AIParseError extends Error {
+  constructor(
+    message: string,
+    public readonly rawText: string,
+    public readonly cleaned?: string,
+  ) {
+    super(message)
+    this.name = 'AIParseError'
+  }
+}
+
+/**
+ * Sanitize raw control chars within JSON string values. Naïve scanner
+ * (tracks in-string + escape state) — unescaped 0x00-0x1F inside a
+ * string literal is replaced with \n / \r / \t / \uXXXX.
+ *
+ * Doesn't handle nested structures perfectly but for typical Gemini
+ * structured output (flat key-value pairs with multiline string values)
+ * is sufficient.
+ */
+function sanitizeJsonStrings(text: string): string {
+  let out = ''
+  let inString = false
+  let escape = false
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]
+    const code = text.charCodeAt(i)
+    if (escape) {
+      out += ch
+      escape = false
+      continue
+    }
+    if (ch === '\\') {
+      out += ch
+      escape = true
+      continue
+    }
+    if (ch === '"') {
+      inString = !inString
+      out += ch
+      continue
+    }
+    if (inString && code < 0x20) {
+      if (ch === '\n') out += '\\n'
+      else if (ch === '\r') out += '\\r'
+      else if (ch === '\t') out += '\\t'
+      else out += '\\u' + code.toString(16).padStart(4, '0')
+      continue
+    }
+    out += ch
+  }
+  return out
+}
+
+export function extractJSON<T = unknown>(rawText: string): T {
+  if (typeof rawText !== 'string' || rawText.length === 0) {
+    throw new AIParseError('Empty AI response', rawText ?? '')
+  }
+
+  const attempts: string[] = []
+
+  // Strategy 1: direct parse na trimmed text
+  const trimmed = rawText.trim()
+  attempts.push(trimmed)
+  try {
+    return JSON.parse(trimmed) as T
+  } catch {
+    // continue
+  }
+
+  // Strategy 2: strip markdown code fences ```json ... ```
+  const noFences = trimmed
+    .replace(/^```(?:json|JSON)?\s*\n?/i, '')
+    .replace(/\n?```\s*$/i, '')
+    .trim()
+  if (noFences !== trimmed) {
+    attempts.push(noFences)
+    try {
+      return JSON.parse(noFences) as T
+    } catch {
+      // continue
+    }
+  }
+
+  // Strategy 3: extract first { ... last } block (greedy, w razie prozy
+  // przed/po payloadzie)
+  let block = noFences
+  const objStart = noFences.indexOf('{')
+  const objEnd = noFences.lastIndexOf('}')
+  if (objStart >= 0 && objEnd > objStart) {
+    block = noFences.slice(objStart, objEnd + 1)
+    if (block !== noFences) {
+      attempts.push(block)
+      try {
+        return JSON.parse(block) as T
+      } catch {
+        // continue
+      }
+    }
+  }
+
+  // Strategy 4: sanitize raw control chars within strings (typical
+  // Gemini issue z raw \n w polskich opisach)
+  const sanitized = sanitizeJsonStrings(block)
+  if (sanitized !== block) {
+    attempts.push(sanitized)
+    try {
+      return JSON.parse(sanitized) as T
+    } catch {
+      // continue
+    }
+  }
+
+  throw new AIParseError(
+    `JSON parse exhausted ${attempts.length} strategies (markdown strip, block extract, control-char sanitize)`,
+    rawText,
+    sanitized,
+  )
+}
+
 export class GeminiUnavailableError extends Error {
   constructor(
     message?: string,

@@ -4,7 +4,10 @@
 
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { callAI, type AIProvider } from "@/lib/ai-providers"
+import { callAI, extractJSON, AIParseError, type AIProvider } from "@/lib/ai-providers"
+
+const FRIENDLY_PARSE_ERROR =
+  "Nie udało się przetworzyć odpowiedzi AI dla tego klienta. Spróbuj ponownie za chwilę."
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -46,7 +49,11 @@ Wazne zasady:
   "description": "krotki opis dzialalnosci (2-3 zdania, konkret)"
 }
 
-Zwroc TYLKO JSON, bez markdown, bez tekstu przed lub po.`
+KRYTYCZNE FORMATOWANIE JSON:
+- ZWRÓĆ TYLKO valid JSON. Zacznij od { i zakończ }.
+- BEZ markdown, BEZ \`\`\`json bloków, BEZ prozy przed/po.
+- W stringach używaj \\n dla nowych linii (NIE raw newlines).
+- Polskie znaki ą/ę/ć/ł zostaw jak są — UTF-8 OK.`
 
 export async function POST(req: Request) {
   try {
@@ -133,7 +140,9 @@ export async function POST(req: Request) {
       userPrompt,
       useGoogleSearch: true,
       model: "gemini-2.5-flash",
-      maxTokens: 2000,
+      // Bumped 2000→4096: wide-spectrum prospects + Google grounding
+      // metadata mogły powodować truncation. 4096 daje bezpieczny bufor.
+      maxTokens: 4096,
       temperature: 0.3,
     })
 
@@ -144,23 +153,22 @@ export async function POST(req: Request) {
       )
     }
 
-    // Parse JSON from AI response (strip code fences if present)
     let parsed: any = null
     try {
-      const cleaned = ai.text
-        .replace(/^```(?:json)?\s*/i, "")
-        .replace(/```\s*$/i, "")
-        .trim()
-      // Extract JSON object if wrapped in other text
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
-      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned)
+      parsed = extractJSON<any>(ai.text)
     } catch (e: any) {
+      if (e instanceof AIParseError) {
+        console.error("[AI_PARSE_ERROR] business-data", {
+          message: e.message,
+          rawLength: e.rawText.length,
+          rawPreview: e.rawText.slice(0, 2000),
+          cleanedPreview: e.cleaned?.slice(0, 2000),
+        })
+      } else {
+        console.error("[AI_PARSE_ERROR] business-data (non-AIParseError)", e)
+      }
       return NextResponse.json(
-        {
-          ok: false,
-          error: `Nie udalo sie sparsowac odpowiedzi AI: ${e.message}`,
-          raw: ai.text.slice(0, 1000),
-        },
+        { ok: false, error: FRIENDLY_PARSE_ERROR },
         { status: 500 }
       )
     }
