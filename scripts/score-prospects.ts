@@ -2,14 +2,17 @@
 // Phase 2.6 / Step 3 runner: apply Layer 1 filters + Layer 2 scoring
 // na ceidg_prospects → upsert do ceidg_prospect_scores.
 //
+// Prereq: .env.local with SUPABASE_SERVICE_ROLE_KEY (run setup-env.ts).
+//
 // Run:
-//   $env:SUPABASE_SERVICE_ROLE_KEY="<key>"
 //   pnpm dlx tsx scripts/score-prospects.ts [--rescore] [--version=v2] [--max=N]
 //
 // Flags:
 //   --rescore       DELETE wszystkie scores dla podanej version, potem rescore
 //   --version=vX    scoring_version (default 'v1'); pozwala dual-writes A/B
 //   --max=N         cap N prospects do scoringu (dla testów)
+
+import 'dotenv/config'
 
 import { createClient } from '@supabase/supabase-js'
 

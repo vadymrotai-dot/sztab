@@ -1,8 +1,10 @@
 // scripts/test-ceidg-client.ts
-// Local smoke test dla CeidgClient. Run:
+// Local smoke test dla CeidgClient.
 //
-//   $env:CEIDG_API_KEY="<jwt>"
-//   pnpm tsx scripts/test-ceidg-client.ts
+// Prereq: .env.local with CEIDG_API_KEY (run setup-env.ts).
+//
+// Run:
+//   pnpm dlx tsx scripts/test-ceidg-client.ts
 //
 // Lub w bash:
 //   CEIDG_API_KEY=<jwt> pnpm tsx scripts/test-ceidg-client.ts
@@ -13,6 +15,8 @@
 //   3. Rate limiter timing dla 5 sekwencyjnych calls
 //
 // NIE woła getCeidgApiKey() (to wymaga Next.js cookies context).
+
+import 'dotenv/config'
 
 import { CeidgClient, normalizePkd } from '@/lib/ceidg/client'
 

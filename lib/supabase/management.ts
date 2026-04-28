@@ -1,14 +1,17 @@
 // lib/supabase/management.ts
 // Wrapper for Supabase Management API. NEVER pass tokens via shell
-// command-line — secrets traverse process.env or DB, never tool-call args.
+// command-line — secrets traverse process.env (loaded from .env.local
+// by dotenv/config) or DB, never tool-call args.
 //
 // Token resolution (preferred → fallback):
-//   1. process.env.SUPABASE_ACCESS_TOKEN — fastest, set by caller
+//   1. process.env.SUPABASE_ACCESS_TOKEN — set by .env.local (auto-loaded)
 //   2. params.supabase_access_token — requires SUPABASE_SERVICE_ROLE_KEY
 //      in env to read params row
 //
 // Returns QueryResult — never throws on HTTP errors (caller inspects .ok).
 // Network/parse errors do throw.
+
+import 'dotenv/config'
 
 import { createClient } from '@supabase/supabase-js'
 

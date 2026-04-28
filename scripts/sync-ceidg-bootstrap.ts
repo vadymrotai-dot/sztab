@@ -1,6 +1,9 @@
 // scripts/sync-ceidg-bootstrap.ts
 // Phase 2.6 Step 2: off-platform bootstrap CEIDG sync.
 //
+// Prereq: .env.local with CEIDG_API_KEY + SUPABASE_SERVICE_ROLE_KEY
+// (run setup-env.ts).
+//
 // Strategy A (Vadym): limit=25 + resumable + leave overnight.
 // Fixed scope (validation run): pkd=5610A × wojewodztwo=mazowieckie × status=AKTYWNY.
 //
@@ -22,6 +25,8 @@
 //   --dry-run         skip DB writes (no upsert, no sync_run row, no state save)
 //   --max-pages=N     stop after N pages (counts within current invocation)
 //   --reset           delete state file before start (fresh run)
+
+import 'dotenv/config'
 
 import fs from 'node:fs/promises'
 import path from 'node:path'

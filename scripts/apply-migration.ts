@@ -1,11 +1,14 @@
 // scripts/apply-migration.ts
-// Apply SQL file via Supabase Management API. Token comes from env
-// (SUPABASE_ACCESS_TOKEN or SUPABASE_SERVICE_ROLE_KEY → params fallback)
-// — never via command-line argument.
+// Apply SQL file via Supabase Management API. Token loaded from
+// .env.local automatically (dotenv/config). NEVER passed via command
+// arg or inline shell var — see feedback_secrets_handling.md.
+//
+// Prereq: .env.local exists з SUPABASE_ACCESS_TOKEN (run setup-env.ts first).
 //
 // Run:
-//   $env:SUPABASE_SERVICE_ROLE_KEY="..."   # OR SUPABASE_ACCESS_TOKEN
 //   pnpm dlx tsx scripts/apply-migration.ts scripts/017_vat_enrichment.sql
+
+import 'dotenv/config'
 
 import fs from 'node:fs/promises'
 import path from 'node:path'

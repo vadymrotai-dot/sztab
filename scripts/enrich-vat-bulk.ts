@@ -1,13 +1,16 @@
 // scripts/enrich-vat-bulk.ts
 // Bulk VAT enrichment dla ceidg_prospects + clients without vat_data.
 //
+// Prereq: .env.local with SUPABASE_SERVICE_ROLE_KEY (run setup-env.ts).
+//
 // Run:
-//   $env:SUPABASE_SERVICE_ROLE_KEY="..."
 //   pnpm dlx tsx scripts/enrich-vat-bulk.ts [--limit=N] [--target=prospects|clients|both]
 //
 // Resumable: czyta tylko rekordy z vat_last_checked IS NULL. Re-run
 // pomija już wzbogacone (idempotent). Use --refresh-stale=DAYS żeby
 // re-fetch starsze niż N dni (e.g. monthly refresh).
+
+import 'dotenv/config'
 
 import { createClient } from '@supabase/supabase-js'
 
