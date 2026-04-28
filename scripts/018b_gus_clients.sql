@@ -1,0 +1,11 @@
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS gus_data JSONB;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS employee_count_range TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS gus_status TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS registered_date DATE;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS pkd_codes TEXT[];
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS gus_legal_name TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS gus_regon TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS gus_last_checked TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS clients_employee_count_range_idx ON clients(employee_count_range);
+CREATE INDEX IF NOT EXISTS clients_gus_status_idx ON clients(gus_status);
+CREATE INDEX IF NOT EXISTS clients_gus_last_checked_idx ON clients(gus_last_checked) WHERE gus_last_checked IS NOT NULL;

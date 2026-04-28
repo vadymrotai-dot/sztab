@@ -1,0 +1,11 @@
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS gus_data JSONB;
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS employee_count_range TEXT;
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS gus_status TEXT;
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS registered_date DATE;
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS pkd_codes TEXT[];
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS gus_legal_name TEXT;
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS gus_regon TEXT;
+ALTER TABLE ceidg_prospects ADD COLUMN IF NOT EXISTS gus_last_checked TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS ceidg_prospects_employee_count_range_idx ON ceidg_prospects(employee_count_range);
+CREATE INDEX IF NOT EXISTS ceidg_prospects_gus_status_idx ON ceidg_prospects(gus_status);
+CREATE INDEX IF NOT EXISTS ceidg_prospects_gus_last_checked_idx ON ceidg_prospects(gus_last_checked) WHERE gus_last_checked IS NOT NULL;

@@ -102,6 +102,7 @@ async function fetchParamsSecrets(
     apify_api_token,
     krs_rejestr_api_token,
     gemini_key,
+    gus_api_key,
     supabase_access_token
   FROM params
   LIMIT 1`
@@ -185,6 +186,7 @@ async function main() {
     CEIDG_API_KEY: params.ceidg_api_key,
     APIFY_API_TOKEN: params.apify_api_token,
     KRS_REJESTR_API_TOKEN: params.krs_rejestr_api_token,
+    GUS_API_KEY: params.gus_api_key,
     GEMINI_API_KEY: params.gemini_key, // legacy, kept for backward compat
   })
 
