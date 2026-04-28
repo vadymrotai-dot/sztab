@@ -22,11 +22,17 @@ interface MatchRow {
   prospect_id: string | null
   product_id: string
   algo_score: number
+  ai_score: number | null
+  ai_reasoning: string | null
+  ai_confidence: number | null
+  ai_scored_at: string | null
+  combined_score: number
   subscore_breakdown: unknown
   reason_codes: string[]
   loyalty_multiplier: number
   computed_at: string
   expires_at: string
+  sales_snippet: unknown
 }
 
 export async function GET(req: Request) {
@@ -76,10 +82,10 @@ async function listForTarget(
   const { data, error } = await supabase
     .from('matches')
     .select(
-      'id, client_id, prospect_id, product_id, algo_score, subscore_breakdown, reason_codes, loyalty_multiplier, computed_at, expires_at',
+      'id, client_id, prospect_id, product_id, algo_score, ai_score, ai_reasoning, ai_confidence, ai_scored_at, combined_score, subscore_breakdown, reason_codes, loyalty_multiplier, computed_at, expires_at, sales_snippet',
     )
     .eq(filterCol, targetId)
-    .order('algo_score', { ascending: false })
+    .order('combined_score', { ascending: false })
     .limit(limit)
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
@@ -118,10 +124,10 @@ async function listForProduct(
   const { data, error } = await supabase
     .from('matches')
     .select(
-      'id, client_id, prospect_id, product_id, algo_score, subscore_breakdown, reason_codes, loyalty_multiplier, computed_at, expires_at',
+      'id, client_id, prospect_id, product_id, algo_score, ai_score, ai_reasoning, ai_confidence, ai_scored_at, combined_score, subscore_breakdown, reason_codes, loyalty_multiplier, computed_at, expires_at, sales_snippet',
     )
     .eq('product_id', productId)
-    .order('algo_score', { ascending: false })
+    .order('combined_score', { ascending: false })
     .limit(limit)
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 })

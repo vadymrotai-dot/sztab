@@ -21,6 +21,11 @@ interface MatchRow {
   prospect_id: string | null
   product_id: string
   algo_score: number
+  ai_score: number | null
+  ai_reasoning: string | null
+  ai_confidence: number | null
+  ai_scored_at: string | null
+  combined_score: number
   subscore_breakdown: unknown
   reason_codes: string[]
   loyalty_multiplier: number
@@ -44,20 +49,26 @@ export async function GET(req: Request) {
     Math.max(parseInt(url.searchParams.get('limit') ?? '', 10) || DEFAULT_LIMIT, 1),
     MAX_LIMIT,
   )
+  const aiOnly = url.searchParams.get('ai_only') === 'true'
 
+  // Sprint G — sort by combined_score (ai_score wins коли non-null, else algo_score)
   let query = supabase
     .from('matches')
     .select(
-      'id, client_id, prospect_id, product_id, algo_score, subscore_breakdown, reason_codes, loyalty_multiplier, computed_at, expires_at',
+      'id, client_id, prospect_id, product_id, algo_score, ai_score, ai_reasoning, ai_confidence, ai_scored_at, combined_score, subscore_breakdown, reason_codes, loyalty_multiplier, computed_at, expires_at',
     )
-    .gte('algo_score', minScore)
-    .order('algo_score', { ascending: false })
+    .gte('combined_score', minScore)
+    .order('combined_score', { ascending: false })
     .limit(limit)
 
   if (targetType === 'client') {
     query = query.not('client_id', 'is', null)
   } else if (targetType === 'prospect') {
     query = query.not('prospect_id', 'is', null)
+  }
+
+  if (aiOnly) {
+    query = query.not('ai_score', 'is', null)
   }
 
   const { data, error } = await query

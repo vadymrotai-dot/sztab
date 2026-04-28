@@ -20,6 +20,11 @@ interface MatchEntry {
   prospect_id: string | null
   product_id: string
   algo_score: number
+  ai_score: number | null
+  ai_reasoning: string | null
+  ai_confidence: number | null
+  ai_scored_at: string | null
+  combined_score: number
   subscore_breakdown: { pkd: number; activity: number; size: number; geo: number; recency: number }
   reason_codes: string[]
   loyalty_multiplier: number
@@ -135,7 +140,8 @@ export function MatchesPanel({ mode, keyType, keyValue, recomputePath, limit = 2
 }
 
 function MatchRow({ match, mode }: { match: MatchEntry; mode: 'product-side' | 'target-side' }) {
-  const score = match.algo_score
+  const score = match.combined_score ?? match.algo_score
+  const hasAi = match.ai_score !== null
   const scoreColor =
     score >= 70
       ? 'bg-green-600'
@@ -162,8 +168,16 @@ function MatchRow({ match, mode }: { match: MatchEntry; mode: 'product-side' | '
   return (
     <li className="flex items-start gap-3 py-3">
       {/* Score badge */}
-      <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-md text-white text-sm font-bold', scoreColor)}>
+      <div
+        className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-md text-white text-sm font-bold relative', scoreColor)}
+        title={hasAi ? `AI: ${match.ai_score} (algo: ${match.algo_score}, conf: ${match.ai_confidence ?? 0})\n${match.ai_reasoning ?? ''}` : `Algo only`}
+      >
         {score}
+        {hasAi && (
+          <span className="absolute -top-1 -right-1 size-3.5 rounded-full bg-purple-600 border border-white text-[8px] flex items-center justify-center text-white font-bold">
+            AI
+          </span>
+        )}
       </div>
       <div className="flex-1 min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
@@ -181,6 +195,11 @@ function MatchRow({ match, mode }: { match: MatchEntry; mode: 'product-side' | '
         </div>
         {displaySub && (
           <p className="text-xs text-muted-foreground truncate">{displaySub}</p>
+        )}
+        {hasAi && match.ai_reasoning && (
+          <p className="text-xs text-muted-foreground italic line-clamp-2">
+            🤖 {match.ai_reasoning}
+          </p>
         )}
         <div className="flex flex-wrap gap-1 pt-1">
           {match.reason_codes.map((r, idx) => (

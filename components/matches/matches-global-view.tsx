@@ -27,6 +27,11 @@ interface MatchEntry {
   prospect_id: string | null
   product_id: string
   algo_score: number
+  ai_score: number | null
+  ai_reasoning: string | null
+  ai_confidence: number | null
+  ai_scored_at: string | null
+  combined_score: number
   subscore_breakdown: { pkd: number; activity: number; size: number; geo: number; recency: number }
   reason_codes: string[]
   loyalty_multiplier: number
@@ -44,11 +49,13 @@ export function MatchesGlobalView() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [recomputing, setRecomputing] = useState(false)
+  const [airescoring, setAirescoring] = useState(false)
 
   // Filters
   const [targetType, setTargetType] = useState<FilterTargetType>('all')
   const [minScore, setMinScore] = useState(50)
   const [limit, setLimit] = useState(100)
+  const [aiOnly, setAiOnly] = useState(false)
 
   async function fetchMatches() {
     setLoading(true)
@@ -58,6 +65,7 @@ export function MatchesGlobalView() {
       if (targetType !== 'all') url.searchParams.set('target_type', targetType)
       url.searchParams.set('min_score', String(minScore))
       url.searchParams.set('limit', String(limit))
+      if (aiOnly) url.searchParams.set('ai_only', 'true')
       const res = await fetch(url.toString())
       const json = await res.json()
       if (!json.ok) throw new Error(json.error || 'Błąd ładowania')
@@ -90,10 +98,31 @@ export function MatchesGlobalView() {
     }
   }
 
+  async function handleAiBulk() {
+    setAirescoring(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/matching/ai-rescore-bulk', {
+        method: 'POST',
+      })
+      const json = await res.json()
+      if (!json.ok) {
+        setError(json.error ?? 'AI bulk failed')
+      } else if (json.result?.aborted_cost_guard) {
+        setError(`Cost guard aborted po $${json.result.total_cost_usd}`)
+      }
+      await fetchMatches()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAirescoring(false)
+    }
+  }
+
   useEffect(() => {
     fetchMatches()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetType, minScore, limit])
+  }, [targetType, minScore, limit, aiOnly])
 
   return (
     <div className="space-y-4">
@@ -135,18 +164,37 @@ export function MatchesGlobalView() {
               className="w-24"
             />
           </div>
+          <div className="space-y-1">
+            <Label className="text-xs flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={aiOnly}
+                onChange={(e) => setAiOnly(e.target.checked)}
+                className="size-3"
+              />
+              tylko AI-rescored
+            </Label>
+          </div>
           <div className="ml-auto flex gap-2">
             <Button variant="outline" size="sm" onClick={fetchMatches} disabled={loading}>
               <RefreshCwIcon className="size-4 mr-1" />
               Odśwież
             </Button>
-            <Button onClick={handleBulk} disabled={recomputing} size="sm">
+            <Button onClick={handleBulk} disabled={recomputing || airescoring} variant="outline" size="sm">
               {recomputing ? (
                 <Loader2Icon className="size-4 mr-1 animate-spin" />
               ) : (
                 <SparklesIcon className="size-4 mr-1" />
               )}
-              {recomputing ? 'Bulk run…' : 'Bulk recompute (clients + prospects)'}
+              {recomputing ? 'L5 algo…' : 'L5 algo bulk'}
+            </Button>
+            <Button onClick={handleAiBulk} disabled={airescoring || recomputing} size="sm">
+              {airescoring ? (
+                <Loader2Icon className="size-4 mr-1 animate-spin" />
+              ) : (
+                <SparklesIcon className="size-4 mr-1" />
+              )}
+              {airescoring ? 'L6 AI…' : 'L6 AI bulk re-score'}
             </Button>
           </div>
         </CardContent>
@@ -188,7 +236,8 @@ export function MatchesGlobalView() {
 }
 
 function GlobalMatchRow({ match, rank }: { match: MatchEntry; rank: number }) {
-  const score = match.algo_score
+  const score = match.combined_score ?? match.algo_score
+  const hasAi = match.ai_score !== null
   const scoreColor =
     score >= 70
       ? 'bg-green-600'
@@ -219,8 +268,16 @@ function GlobalMatchRow({ match, rank }: { match: MatchEntry; rank: number }) {
       <div className="col-span-1 text-xs font-mono text-muted-foreground pt-1">
         #{rank}
       </div>
-      <div className={cn('col-span-1 flex h-12 w-12 items-center justify-center rounded-md text-white text-sm font-bold', scoreColor)}>
+      <div
+        className={cn('col-span-1 flex h-12 w-12 items-center justify-center rounded-md text-white text-sm font-bold relative', scoreColor)}
+        title={hasAi ? `AI: ${match.ai_score} (algo: ${match.algo_score}, conf: ${match.ai_confidence ?? 0})\n${match.ai_reasoning ?? ''}` : 'Algo only'}
+      >
         {score}
+        {hasAi && (
+          <span className="absolute -top-1 -right-1 size-3.5 rounded-full bg-purple-600 border border-white text-[8px] flex items-center justify-center text-white font-bold">
+            AI
+          </span>
+        )}
       </div>
       <div className="col-span-5 min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
