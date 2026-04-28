@@ -7,5 +7,11 @@
     "app/(dashboard)/products/[id]/edit/page.tsx": {
       "maxDuration": 800
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/hygiene-scan",
+      "schedule": "0 1 * * *"
+    }
+  ]
 }
