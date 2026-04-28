@@ -6,8 +6,8 @@
 //   1. Resolve product → ean + family_id + required_attributes
 //   2. OFF: якщо EAN існує → fetch (skip if cached < 7 days unless force)
 //      → upsert product_attributes (source='off') WHERE override_locked=false
-//   3. Gemini fallback: для still-missing required → bulk attrs (1 batch =
-//      1 SKU) → upsert product_attributes (source='gemini')
+//   3. AI fallback (Claude Haiku 4.5): для still-missing required → bulk
+//      attrs (1 batch = 1 SKU) → upsert product_attributes (source='ai')
 //   4. Resolve final merged view + hygiene + return.
 //
 // Idempotent w sensie: re-run на already-enriched SKU не overwrite values
@@ -164,12 +164,20 @@ export async function POST(
     .filter((a) => a.missing_required)
     .map((a) => a.attr_key)
 
-  // 4. Gemini fallback if any required still missing
-  let geminiUsed = false
+  // 4. AI fallback if any required still missing — Claude Haiku 4.5 via callAI
+  let aiUsed = false
   if (stillMissing.length > 0) {
-    const geminiKey = process.env.GEMINI_API_KEY
-    if (!geminiKey) {
-      log.push(`Gemini: skipped — GEMINI_API_KEY not set (${stillMissing.length} still missing)`)
+    const { data: paramsRow } = await supabase
+      .from('params')
+      .select('anthropic_api_key')
+      .limit(1)
+      .maybeSingle()
+    const aiKey =
+      (paramsRow as { anthropic_api_key?: string } | null)?.anthropic_api_key ?? null
+    if (!aiKey) {
+      log.push(
+        `AI: skipped — params.anthropic_api_key not set (${stillMissing.length} still missing)`,
+      )
     } else {
       const skuInput: SkuInput = {
         sku_id: id,
@@ -180,11 +188,12 @@ export async function POST(
         required_attributes: stillMissing,
       }
       try {
-        const results = await generateSkuAttributesBulk(geminiKey, [skuInput])
+        const results = await generateSkuAttributesBulk(aiKey, [skuInput])
         const r = results[0]
         if (r && Object.keys(r.attributes).length > 0) {
-          geminiUsed = true
-          // Save raw response в product_external
+          aiUsed = true
+          // Save raw AI payload (column name "gemini_payload" zachowana —
+          // legacy schema; обмінено провайдер до Claude 2026-04-28)
           await supabase.from('product_external').upsert(
             {
               sku_id: id,
@@ -193,14 +202,14 @@ export async function POST(
             },
             { onConflict: 'sku_id' },
           )
-          await upsertAttrs(supabase, id, r.attributes, 'gemini')
-          log.push(`Gemini: filled ${Object.keys(r.attributes).length} attrs`)
+          await upsertAttrs(supabase, id, r.attributes, 'ai')
+          log.push(`AI: filled ${Object.keys(r.attributes).length} attrs`)
         } else {
-          log.push(`Gemini: no attrs generated (${r?.error ?? 'empty'})`)
+          log.push(`AI: no attrs generated (${r?.error ?? 'empty'})`)
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        log.push(`Gemini: error ${msg}`)
+        log.push(`AI: error ${msg}`)
       }
     }
   }
@@ -221,7 +230,7 @@ export async function POST(
   return NextResponse.json({
     ok: true,
     data: resolved,
-    meta: { off_used: offUsed, gemini_used: geminiUsed, log },
+    meta: { off_used: offUsed, ai_used: aiUsed, log },
   })
 }
 
@@ -230,7 +239,7 @@ async function upsertAttrs(
   supabase: Awaited<ReturnType<typeof createClient>>,
   skuId: string,
   attrs: Record<string, unknown>,
-  source: 'off' | 'gemini',
+  source: 'off' | 'ai',
 ) {
   // Read existing rows to check locked + don't overwrite manual/override
   const { data: existingRows } = await supabase

@@ -43,15 +43,22 @@ export async function POST() {
     return NextResponse.json({ ok: false, error: 'Nieautoryzowany' }, { status: 401 })
   }
 
-  const geminiKey = process.env.GEMINI_API_KEY
-  if (!geminiKey) {
+  // Read Anthropic key from params table (pattern jak inne /api/ai routes).
+  const { data: paramsRow } = await supabase
+    .from('params')
+    .select('anthropic_api_key')
+    .limit(1)
+    .maybeSingle()
+  const aiKey =
+    (paramsRow as { anthropic_api_key?: string } | null)?.anthropic_api_key ?? null
+  if (!aiKey) {
     return NextResponse.json(
-      { ok: false, error: 'GEMINI_API_KEY not set in .env.local' },
+      { ok: false, error: 'params.anthropic_api_key not set — patrz /settings → Klucze API' },
       { status: 500 },
     )
   }
 
-  const job = createJob<unknown>('gemini-bulk-attributes')
+  const job = createJob<unknown>('ai-bulk-attributes')
 
   try {
     // Load all classified products
@@ -114,7 +121,7 @@ export async function POST() {
       return NextResponse.json({ ok: true, job_id: job.id, summary })
     }
 
-    const results = await generateSkuAttributesBulk(geminiKey, skuInputs)
+    const results = await generateSkuAttributesBulk(aiKey, skuInputs)
 
     // Upsert results respecting locked + manual
     for (const r of results) {
@@ -126,7 +133,8 @@ export async function POST() {
         summary.per_sku.push({ sku_id: r.sku_id, filled: 0, error: r.error })
         continue
       }
-      // Save raw гemini payload
+      // Save raw AI payload (legacy column name "gemini_payload" zachowano —
+      // schema migration not needed, провайдер swap зроблено 2026-04-28)
       await supabase.from('product_external').upsert(
         {
           sku_id: r.sku_id,
@@ -163,7 +171,7 @@ export async function POST() {
           sku_id: r.sku_id,
           attr_key: k,
           value: v,
-          source: 'gemini',
+          source: 'ai',
           override_locked: false,
         })
       }
