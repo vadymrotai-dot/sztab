@@ -1,6 +1,34 @@
 // lib/ai-providers.ts
 // Universal AI provider interface with Gemini support.
 // Supports: text gen, structured JSON, Google Search grounding, grounding sources.
+//
+// Retry policy (callGemini):
+//   - 5 total attempts (1 initial + 4 retries) on 429 / 503 / 504
+//   - Exponential backoff 1s / 2s / 4s / 8s pomiędzy próbami
+//   - Po wyczerpaniu retries: throw GeminiUnavailableError (caught przez
+//     callAI outer try/catch → returns AIResult{ error: friendly_pl_msg }
+//     → existing API contract preserved, callers nie muszą się zmieniać)
+//   - Non-retryable statuses (400/401/403/422 itd.) — bail out
+//     natychmiast z raw error (current behavior)
+//   - Logi prefiksowane [GEMINI] dla observability
+
+export class GeminiUnavailableError extends Error {
+  constructor(
+    message?: string,
+    public readonly lastStatus?: number,
+    public readonly attempts?: number,
+  ) {
+    super(
+      message ??
+        'Gemini API tymczasowo niedostępne. Spróbuj ponownie za kilka minut.',
+    )
+    this.name = 'GeminiUnavailableError'
+  }
+}
+
+const GEMINI_RETRYABLE_STATUSES = new Set<number>([429, 503, 504])
+const GEMINI_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000] as const
+const GEMINI_MAX_ATTEMPTS = GEMINI_RETRY_DELAYS_MS.length + 1
 
 export type AIProvider = "gemini" | "anthropic" | "openrouter"
 
@@ -99,29 +127,70 @@ async function callGemini(params: AIParams): Promise<AIResult> {
     body.tools = [{ google_search: {} }]
   }
 
-  // Retry on 503 (overloaded) and 429 (rate limit) up to 3 times with exponential backoff
+  // Retry on 429/503/504 — see header comment for policy.
   let res: Response | null = null
-  let lastErr = ""
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) {
-      // Wait 1s, then 3s between retries
-      await new Promise((r) => setTimeout(r, attempt * 2000 + 1000))
-    }
+  let lastErrText = ""
+  let lastStatus = 0
+  let nonRetryableHit = false
+
+  for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt += 1) {
     res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
-    if (res.ok) break
-    if (res.status !== 503 && res.status !== 429) break // non-retryable
-    lastErr = await res.text()
+
+    if (res.ok) {
+      if (attempt > 1) {
+        console.log(
+          `[GEMINI] attempt ${attempt}/${GEMINI_MAX_ATTEMPTS} success (status 200)`,
+        )
+      }
+      break
+    }
+
+    lastStatus = res.status
+    lastErrText = await res.text().catch(() => "")
+
+    if (!GEMINI_RETRYABLE_STATUSES.has(res.status)) {
+      // 400 / 401 / 403 / 422 — bail out, current behavior
+      console.warn(
+        `[GEMINI] attempt ${attempt}/${GEMINI_MAX_ATTEMPTS} non-retryable status ${res.status}`,
+      )
+      nonRetryableHit = true
+      break
+    }
+
+    if (attempt === GEMINI_MAX_ATTEMPTS) {
+      console.error(
+        `[GEMINI] attempt ${attempt}/${GEMINI_MAX_ATTEMPTS} exhausted retries (last status ${res.status})`,
+      )
+      throw new GeminiUnavailableError(
+        `Gemini API tymczasowo niedostępne (${res.status} po ${GEMINI_MAX_ATTEMPTS} próbach). Spróbuj ponownie za kilka minut.`,
+        res.status,
+        attempt,
+      )
+    }
+
+    const delayMs = GEMINI_RETRY_DELAYS_MS[attempt - 1]
+    console.warn(
+      `[GEMINI] attempt ${attempt}/${GEMINI_MAX_ATTEMPTS}, status ${res.status}, retry in ${delayMs / 1000}s`,
+    )
+    await new Promise((r) => setTimeout(r, delayMs))
   }
 
-  if (!res || !res.ok) {
-    const errText = lastErr || (res ? await res.text() : "No response")
+  if (nonRetryableHit) {
     return {
       text: "",
-      error: `Gemini API ${res?.status || "ERR"}: ${errText.slice(0, 500)}`,
+      error: `Gemini API ${lastStatus}: ${lastErrText.slice(0, 500)}`,
+    }
+  }
+  if (!res || !res.ok) {
+    // Defensive — shouldn't reach here (retryable path throws above,
+    // non-retryable path returns above, success path breaks).
+    return {
+      text: "",
+      error: `Gemini API ${lastStatus || "ERR"}: ${lastErrText.slice(0, 500)}`,
     }
   }
 
