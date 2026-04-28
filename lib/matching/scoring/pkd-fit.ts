@@ -1,12 +1,17 @@
 // lib/matching/scoring/pkd-fit.ts
 // Subscore 0-40. Найважливіший компонент.
 //
-// Levels (top wins):
-//   • Exact match → 40
+// Levels (top wins) — Sprint G rebalance for tighter signal:
+//   • Exact match → 50  (was 40)
 //   • Parent/child match (one is prefix of other) → 25
-//   • Sector match (first 2 digits — division level) → 15
-//   • Same section letter (A-U per PKD-2007/2025 official) → 5
+//   • Sector match (first 2 digits — division level) → 10  (was 15)
+//   • Same section letter (A-U per PKD-2007/2025 official) → 0  (was 5)
 //   • No match → 0
+//
+// Rationale: section-letter matches were too generous (e.g. food retail vs.
+// dry-goods retail в section G could share +5, gave false positives at
+// neutral score 50). Rebalance pumps exact matches up, kills section
+// noise, gives AI re-score (L6) cleaner gradient on TOP-20.
 //
 // Format normalization: GUS returns compact ("4725Z"), reference tables
 // dotted ("47.25.Z"). Strip dots + uppercase before set comparison.
@@ -63,7 +68,7 @@ export function computePkdFit(
   // Exact
   for (const code of fNorm) {
     if (tNorm.has(code)) {
-      return { value: 40, reasons: [`pkd_exact_match:${formatCode(code)}`] }
+      return { value: 50, reasons: [`pkd_exact_match:${formatCode(code)}`] }
     }
   }
 
@@ -85,19 +90,15 @@ export function computePkdFit(
   const fDivs = new Set([...fNorm].map((c) => c.slice(0, 2)))
   for (const d of fDivs) {
     if (tDivs.has(d)) {
-      return { value: 15, reasons: [`pkd_sektor_match:${d}`] }
+      return { value: 10, reasons: [`pkd_sektor_match:${d}`] }
     }
   }
 
-  // Section letter
-  const tSecs = new Set([...tDivs].map(section))
-  const fSecs = new Set([...fDivs].map(section))
-  for (const s of fSecs) {
-    if (s !== '?' && tSecs.has(s)) {
-      return { value: 5, reasons: [`pkd_sekcja_match:${s}`] }
-    }
-  }
-
+  // Section-letter intentionally дispatched з 5 → 0 (Sprint G rebalance).
+  // Same letter section is too broad signal — too many cross-section ties.
+  // Section letter info still computed для potential future debug, але
+  // не contributes до score.
+  void section // keep helper exported / referenced
   return { value: 0, reasons: ['pkd_brak_dopasowania'] }
 }
 
