@@ -68,6 +68,19 @@ export interface ProspectRow {
   score_breakdown: unknown
   scoring_version: string | null
   has_contact: boolean | null
+  // VAT enrichment (migration 017)
+  vat_status?: string | null
+  vat_registered_date?: string | null
+  vat_bank_accounts?: string[] | null
+  vat_last_checked?: string | null
+  // GUS enrichment (migrations 018a/018b)
+  gus_legal_name?: string | null
+  gus_regon?: string | null
+  gus_status?: string | null
+  registered_date?: string | null
+  employee_count_range?: string | null
+  pkd_codes?: string[] | null
+  gus_last_checked?: string | null
 }
 
 type Channel = 'sklep' | 'restaurant' | 'catering' | 'cafe' | 'multi'

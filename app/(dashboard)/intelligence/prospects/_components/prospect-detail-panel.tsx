@@ -21,6 +21,9 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
+import { VatSection } from '@/app/(dashboard)/_shared/vat-section'
+import { GusSection } from '@/app/(dashboard)/_shared/gus-section'
+import { StatusBadgesRow } from '@/app/(dashboard)/_shared/status-badges-row'
 
 import type { ProspectRow } from './prospects-table'
 
@@ -163,6 +166,40 @@ export function ProspectDetailPanel({
               </p>
             </div>
           )}
+
+          {/* Quick-scan badges row */}
+          <StatusBadgesRow
+            vatStatus={prospect.vat_status ?? null}
+            gusStatus={prospect.gus_status ?? null}
+            employeeCountRange={prospect.employee_count_range ?? null}
+          />
+
+          {/* VAT + GUS enrichment sections */}
+          <VatSection
+            targetType="prospect"
+            targetId={prospect.id}
+            hasNip={Boolean(prospect.nip)}
+            initial={{
+              vat_status: prospect.vat_status ?? null,
+              vat_registered_date: prospect.vat_registered_date ?? null,
+              vat_bank_accounts: prospect.vat_bank_accounts ?? null,
+              vat_last_checked: prospect.vat_last_checked ?? null,
+            }}
+          />
+          <GusSection
+            targetType="prospect"
+            targetId={prospect.id}
+            hasNip={Boolean(prospect.nip)}
+            initial={{
+              gus_legal_name: prospect.gus_legal_name ?? null,
+              gus_regon: prospect.gus_regon ?? null,
+              gus_status: prospect.gus_status ?? null,
+              registered_date: prospect.registered_date ?? null,
+              employee_count_range: prospect.employee_count_range ?? null,
+              pkd_codes: prospect.pkd_codes ?? null,
+              gus_last_checked: prospect.gus_last_checked ?? null,
+            }}
+          />
 
           {/* Basic info */}
           <Section title="Podstawowe">

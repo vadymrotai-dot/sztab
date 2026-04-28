@@ -14,6 +14,9 @@ import { ClientTasks } from '@/components/clients/client-tasks'
 import { BusinessDataPanel } from '@/components/clients/business-data-panel'
 import { PotentialAnalysisPanel } from '@/components/clients/potential-analysis-panel'
 import { NewDealButton } from '@/components/clients/new-deal-button'
+import { VatSection } from '@/app/(dashboard)/_shared/vat-section'
+import { GusSection } from '@/app/(dashboard)/_shared/gus-section'
+import { StatusBadgesRow } from '@/app/(dashboard)/_shared/status-badges-row'
 
 const segmentColors: Record<string, string> = {
   maly_opt: 'bg-slate-500',
@@ -171,8 +174,15 @@ export default async function ClientDetailPage({
                   </div>
                 )}
               </div>
+              <div className="mt-6">
+                <StatusBadgesRow
+                  vatStatus={client.vat_status ?? null}
+                  gusStatus={client.gus_status ?? null}
+                  employeeCountRange={client.employee_count_range ?? null}
+                />
+              </div>
               {client.notes && (
-                <div className="mt-6">
+                <div className="mt-4">
                   <h4 className="mb-2 text-sm font-medium">Notatki</h4>
                   <p className="text-sm text-muted-foreground whitespace-pre-wrap">{client.notes}</p>
                 </div>
@@ -203,6 +213,35 @@ export default async function ClientDetailPage({
               </div>
             </CardContent>
           </Card>
+        </div>
+
+        {/* Row 1.5: enrichment sections (VAT + GUS) */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <VatSection
+            targetType="client"
+            targetId={id}
+            hasNip={Boolean(client.nip)}
+            initial={{
+              vat_status: client.vat_status ?? null,
+              vat_registered_date: client.vat_registered_date ?? null,
+              vat_bank_accounts: client.vat_bank_accounts ?? null,
+              vat_last_checked: client.vat_last_checked ?? null,
+            }}
+          />
+          <GusSection
+            targetType="client"
+            targetId={id}
+            hasNip={Boolean(client.nip)}
+            initial={{
+              gus_legal_name: client.gus_legal_name ?? null,
+              gus_regon: client.gus_regon ?? null,
+              gus_status: client.gus_status ?? null,
+              registered_date: client.registered_date ?? null,
+              employee_count_range: client.employee_count_range ?? null,
+              pkd_codes: client.pkd_codes ?? null,
+              gus_last_checked: client.gus_last_checked ?? null,
+            }}
+          />
         </div>
 
         {/* Row 2: AI panele - dane biznesowe + potencjal wspolpracy */}
