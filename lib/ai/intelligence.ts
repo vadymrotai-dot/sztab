@@ -10,7 +10,7 @@
 // retry/backoff). Caller musi dostarczyć apiKey i provider z params
 // row (settings).
 
-import { callAI, type AIProvider } from '@/lib/ai-providers'
+import { callAI, AI_MODELS, type AIProvider } from '@/lib/ai-providers'
 import { scrapePanoramaFirm, scrapeAleo } from '@/lib/integrations/apify'
 import { lookupKrsByNip } from '@/lib/integrations/krs-rejestr'
 
@@ -92,8 +92,10 @@ export async function runFastLookup(
     apiKey,
     provider,
     userPrompt: prompt,
-    useGoogleSearch: true,
-    model: 'gemini-2.5-flash',
+    // Sonnet 4.6 — heavy reasoning + JSON output. Note: useGoogleSearch
+    // legacy noop po Claude migration (Anthropic ma własny web search
+    // tool ale Vadym wyłączył dla tego sprintu).
+    model: AI_MODELS.BALANCED,
     maxTokens: 16384,
     temperature: 0.7,
   })
@@ -391,8 +393,8 @@ async function runStage1Segmentation(
     apiKey: input.geminiKey,
     provider: input.geminiProvider ?? 'gemini',
     userPrompt: buildStage1Prompt(input),
-    useGoogleSearch: false, // Stage 1 to czysto strategiczne, bez search
-    model: 'gemini-2.5-flash',
+    // Sonnet 4.6 — strategic segmentation, JSON output.
+    model: AI_MODELS.BALANCED,
     maxTokens: 4096,
     temperature: 0.7,
     responseFormat: 'json',
@@ -678,8 +680,8 @@ async function runStage4Ranking(
       apiKey: input.geminiKey,
       provider: input.geminiProvider ?? 'gemini',
       userPrompt: buildStage4Prompt(input, toRank),
-      useGoogleSearch: false,
-      model: 'gemini-2.5-flash',
+      // Sonnet 4.6 — entity ranking, JSON output, large response.
+      model: AI_MODELS.BALANCED,
       maxTokens: 16384,
       temperature: 0.5,
       responseFormat: 'json',

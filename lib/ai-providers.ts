@@ -1,33 +1,102 @@
 // lib/ai-providers.ts
-// Universal AI provider interface with Gemini support.
-// Supports: text gen, structured JSON, Google Search grounding, grounding sources.
+// Anthropic Claude API wrapper. Replaces Gemini after 2026-04-28
+// (free tier exhaustion + reliability issues). Strategy: "Claude only",
+// no Gemini fallback.
 //
-// Retry policy (callGemini):
-//   - 5 total attempts (1 initial + 4 retries) on 429 / 503 / 504
-//   - Exponential backoff 1s / 2s / 4s / 8s pomiędzy próbami
-//   - Po wyczerpaniu retries: throw GeminiUnavailableError (caught przez
-//     callAI outer try/catch → returns AIResult{ error: friendly_pl_msg }
-//     → existing API contract preserved, callers nie muszą się zmieniać)
-//   - Non-retryable statuses (400/401/403/422 itd.) — bail out
-//     natychmiast z raw error (current behavior)
-//   - Logi prefiksowane [GEMINI] dla observability
+// Reliability layer (preserved from Gemini-era hardening):
+//   - Retry on 429 / 500 / 529 / network errors with exp backoff
+//     (1s / 2s / 4s / 8s, 5 total attempts incl. initial)
+//   - 45s per-request timeout via SDK options.timeout
+//   - extractJSON 4-strategy fallback (markdown strip, prose extract,
+//     control-char sanitize) — safety net dla edge cases
+//   - AIInvalidResponseError dla plain-text refusals
+//   - AIParseError dla malformed JSON
+//   - Friendly polski error messages (caller-side via FRIENDLY_*)
+//   - [CLAUDE] log prefix + token usage / estimated cost per call
+//
+// Public interface callAI() preserved — all 4 routes + intelligence.ts
+// use it as before, just z model: AI_MODELS.X selection.
 
-// ─────────────────────────────────────────────────────────────────
-// JSON extraction utility — robust parsing dla Gemini responses
-// gdy native JSON mode nie jest dostępny (np. useGoogleSearch=true,
-// gdzie responseMimeType jest niekompatybilny z google_search tool).
-//
-// Common Gemini failure modes:
-//   1. Markdown code fences (```json ... ```) wokół payloadu
-//   2. Prefix/suffix proza wokół { ... } block
-//   3. Raw newlines / control chars (0x00-0x1F) wewnątrz string values
-//      → JSON spec wymaga escape (\n, \r, \t lub \uXXXX). Gemini czasem
-//      emituje raw \n w polskich tekstach (potential_summary, description).
-//
-// extractJSON próbuje 4 strategii w kolejności fallback. Po wyczerpaniu
-// wszystkich rzuca AIParseError zawierający raw text + ostatnio próbowany
-// cleaned variant — caller loguje pod prefiksem [AI_PARSE_ERROR] i zwraca
-// friendly polski komunikat użytkownikowi.
+import Anthropic from '@anthropic-ai/sdk'
+
+// ────────────────────────────────────────────────────────────
+// Models (per Vadym 2026-04-28 spec)
+// ────────────────────────────────────────────────────────────
+
+export const AI_MODELS = {
+  /** Claude Haiku 4.5 — cheapest, fastest. Use for parse-command,
+   * simple lookups, classification. $1/$5 per 1M tokens. */
+  FAST: 'claude-haiku-4-5-20251001',
+
+  /** Claude Sonnet 4.6 — balanced quality/speed. Use for
+   * potential-analysis, business-data, analyze-client, deep-discovery
+   * stages. Adaptive thinking + effort supported. $3/$15 per 1M. */
+  BALANCED: 'claude-sonnet-4-6',
+
+  /** Claude Opus 4.7 — premium. Reserve for AI Master Profile
+   * (Phase 2.7) or complex multi-step reasoning. $5/$25 per 1M. */
+  PREMIUM: 'claude-opus-4-7',
+} as const
+
+// Pricing per 1M tokens (input / output) — kept for cost monitoring.
+// Source: shared/models.md cached 2026-04-15.
+const PRICING_PER_M_TOKENS: Record<string, { input: number; output: number }> = {
+  'claude-haiku-4-5-20251001': { input: 1.0, output: 5.0 },
+  'claude-haiku-4-5': { input: 1.0, output: 5.0 },
+  'claude-sonnet-4-6': { input: 3.0, output: 15.0 },
+  'claude-opus-4-7': { input: 5.0, output: 25.0 },
+}
+
+const CLAUDE_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000] as const
+const CLAUDE_MAX_ATTEMPTS = CLAUDE_RETRY_DELAYS_MS.length + 1
+const CLAUDE_TIMEOUT_MS = 45_000
+
+// Models supporting adaptive thinking + effort param.
+// Per shared/model-migration.md: Sonnet 4.6, Opus 4.6+, Opus 4.7.
+// Haiku 4.5 NIE supports — must skip thinking config.
+function supportsAdaptiveThinking(model: string): boolean {
+  return model.includes('sonnet-4-6') || model.includes('opus-4-')
+}
+
+// ────────────────────────────────────────────────────────────
+// Public AIResult / AIParams (preserved interface)
+// ────────────────────────────────────────────────────────────
+
+// Legacy union — Gemini removed but type preserved dla backward compat
+// z callers which still pass `provider: 'gemini'`. Always routed do Claude.
+export type AIProvider = 'gemini' | 'anthropic' | 'openrouter'
+
+export interface AIParams {
+  apiKey: string
+  provider: AIProvider
+  systemPrompt?: string
+  userPrompt: string
+  responseFormat?: 'text' | 'json'
+  maxTokens?: number
+  temperature?: number
+  /** Legacy noop — Gemini grounding feature. Anthropic ma własny web
+   * search tool ale Vadym wyłączył dla tego sprintu. */
+  useGoogleSearch?: boolean
+  /** Pełny model ID (zalecane: użyj AI_MODELS.FAST/BALANCED/PREMIUM). */
+  model?: string
+}
+
+export interface GroundingSource {
+  title?: string
+  uri?: string
+}
+
+export interface AIResult {
+  text: string
+  tokensUsed?: number
+  model?: string
+  groundingSources?: GroundingSource[]
+  error?: string
+}
+
+// ────────────────────────────────────────────────────────────
+// Error classes (preserved)
+// ────────────────────────────────────────────────────────────
 
 export class AIParseError extends Error {
   constructor(
@@ -40,12 +109,6 @@ export class AIParseError extends Error {
   }
 }
 
-/**
- * Gemini zwrócił plain-text zamiast JSON (np. "An error occurred during
- * processing...", "I cannot...", "I apologize..."). Inny failure mode niż
- * AIParseError (malformed JSON) — to Gemini-side refusal/hallucination,
- * nie nasz parse bug. Caller pokazuje inną friendly message.
- */
 export class AIInvalidResponseError extends Error {
   constructor(
     message: string,
@@ -56,15 +119,30 @@ export class AIInvalidResponseError extends Error {
   }
 }
 
-/**
- * Sanitize raw control chars within JSON string values. Naïve scanner
- * (tracks in-string + escape state) — unescaped 0x00-0x1F inside a
- * string literal is replaced with \n / \r / \t / \uXXXX.
- *
- * Doesn't handle nested structures perfectly but for typical Gemini
- * structured output (flat key-value pairs with multiline string values)
- * is sufficient.
- */
+/** Renamed from GeminiUnavailableError but kept for backward compat —
+ * caller catches/checks instanceof, so renaming would break. Aliased. */
+export class ClaudeUnavailableError extends Error {
+  constructor(
+    message?: string,
+    public readonly lastStatus?: number,
+    public readonly attempts?: number,
+  ) {
+    super(
+      message ??
+        'Claude API tymczasowo niedostępne. Spróbuj ponownie za kilka minut.',
+    )
+    this.name = 'ClaudeUnavailableError'
+  }
+}
+
+/** Backward-compat alias — old callers catching GeminiUnavailableError
+ * keep working. New code should use ClaudeUnavailableError. */
+export const GeminiUnavailableError = ClaudeUnavailableError
+
+// ────────────────────────────────────────────────────────────
+// extractJSON safety net (preserved 4-strategy fallback)
+// ────────────────────────────────────────────────────────────
+
 function sanitizeJsonStrings(text: string): string {
   let out = ''
   let inString = false
@@ -106,22 +184,15 @@ export function extractJSON<T = unknown>(rawText: string): T {
 
   const trimmed = rawText.trim()
 
-  // Pre-check: response without any '{' to oznacza że Gemini zwrócił
-  // plain text (typowo: "An error occurred during processing...",
-  // "I cannot...", "I apologize..."). Inny failure mode niż malformed
-  // JSON — odmowa modelu / API-side error sneaking jako 200 OK z text.
-  // Nie próbujemy strategii — natychmiast throw AIInvalidResponseError
-  // żeby caller pokazał inny friendly message.
   if (!trimmed.includes('{')) {
     throw new AIInvalidResponseError(
-      `Gemini returned plain text instead of JSON (no '{' detected)`,
+      `Claude returned plain text instead of JSON (no '{' detected)`,
       rawText,
     )
   }
 
   const attempts: string[] = []
 
-  // Strategy 1: direct parse na trimmed text
   attempts.push(trimmed)
   try {
     return JSON.parse(trimmed) as T
@@ -129,7 +200,6 @@ export function extractJSON<T = unknown>(rawText: string): T {
     // continue
   }
 
-  // Strategy 2: strip markdown code fences ```json ... ```
   const noFences = trimmed
     .replace(/^```(?:json|JSON)?\s*\n?/i, '')
     .replace(/\n?```\s*$/i, '')
@@ -143,8 +213,6 @@ export function extractJSON<T = unknown>(rawText: string): T {
     }
   }
 
-  // Strategy 3: extract first { ... last } block (greedy, w razie prozy
-  // przed/po payloadzie)
   let block = noFences
   const objStart = noFences.indexOf('{')
   const objEnd = noFences.lastIndexOf('}')
@@ -160,8 +228,6 @@ export function extractJSON<T = unknown>(rawText: string): T {
     }
   }
 
-  // Strategy 4: sanitize raw control chars within strings (typical
-  // Gemini issue z raw \n w polskich opisach)
   const sanitized = sanitizeJsonStrings(block)
   if (sanitized !== block) {
     attempts.push(sanitized)
@@ -179,258 +245,214 @@ export function extractJSON<T = unknown>(rawText: string): T {
   )
 }
 
-export class GeminiUnavailableError extends Error {
-  constructor(
-    message?: string,
-    public readonly lastStatus?: number,
-    public readonly attempts?: number,
-  ) {
-    super(
-      message ??
-        'Gemini API tymczasowo niedostępne. Spróbuj ponownie za kilka minut.',
-    )
-    this.name = 'GeminiUnavailableError'
-  }
-}
-
-const GEMINI_RETRYABLE_STATUSES = new Set<number>([429, 503, 504])
-const GEMINI_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000] as const
-const GEMINI_MAX_ATTEMPTS = GEMINI_RETRY_DELAYS_MS.length + 1
-
-export type AIProvider = "gemini" | "anthropic" | "openrouter"
-
-export interface AIParams {
-  apiKey: string
-  provider: AIProvider
-  systemPrompt?: string
-  userPrompt: string
-  responseFormat?: "text" | "json"
-  maxTokens?: number
-  temperature?: number
-  /** Use Gemini Pro with Google Search tool enabled */
-  useGoogleSearch?: boolean
-  /** Preferred model id. If not provided, a sensible default is used. */
-  model?: string
-}
-
-export interface GroundingSource {
-  title?: string
-  uri?: string
-}
-
-export interface AIResult {
-  text: string
-  tokensUsed?: number
-  model?: string
-  groundingSources?: GroundingSource[]
-  error?: string
-}
+// ────────────────────────────────────────────────────────────
+// callAI — preserved public interface, internally uses Claude
+// ────────────────────────────────────────────────────────────
 
 export async function callAI(params: AIParams): Promise<AIResult> {
   try {
-    switch (params.provider) {
-      case "gemini":
-        return await callGemini(params)
-      case "anthropic":
-        return { text: "", error: "Anthropic support not yet implemented" }
-      case "openrouter":
-        return { text: "", error: "OpenRouter support not yet implemented" }
-      default:
-        return { text: "", error: `Unknown provider: ${params.provider}` }
+    return await callClaude(params)
+  } catch (err) {
+    return {
+      text: '',
+      error: err instanceof Error ? err.message : String(err),
     }
-  } catch (err: any) {
-    return { text: "", error: err?.message || String(err) }
   }
 }
 
-// ========== Gemini ==========
-// Models:
-//   gemini-2.5-pro        — best quality, supports grounding, 100 RPD free
-//   gemini-2.5-flash      — balanced, 250 RPD free
-//   gemini-2.5-flash-lite — fastest/cheapest, 1000 RPD free
+// ────────────────────────────────────────────────────────────
+// callClaude — internal implementation
+// ────────────────────────────────────────────────────────────
 
-async function callGemini(params: AIParams): Promise<AIResult> {
-  // Default model depends on whether grounding is requested.
-  // gemini-2.5-flash supports Google Search grounding and is available on free tier
-  // (250 RPD + 500 grounding RPD). Pro is not accessible on free tier in most regions.
-  const model =
-    params.model ||
-    (params.useGoogleSearch ? "gemini-2.5-flash" : "gemini-2.5-flash-lite")
+function estimateCost(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+  cacheRead: number,
+  cacheWrite: number,
+): number {
+  const prices = PRICING_PER_M_TOKENS[model] ?? PRICING_PER_M_TOKENS['claude-haiku-4-5-20251001']
+  // input_tokens jest uncached remainder (skill: prompt-caching.md).
+  // Cache read ~0.1×, cache write ~1.25× (default 5min TTL).
+  const inputCost =
+    (inputTokens * prices.input +
+      cacheRead * prices.input * 0.1 +
+      cacheWrite * prices.input * 1.25) /
+    1_000_000
+  const outputCost = (outputTokens * prices.output) / 1_000_000
+  return inputCost + outputCost
+}
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(params.apiKey)}`
-
-  const contents: any[] = []
-  if (params.systemPrompt) {
-    contents.push({
-      role: "user",
-      parts: [{ text: params.systemPrompt }],
-    })
-    contents.push({
-      role: "model",
-      parts: [{ text: "Rozumiem. Wykonam zadanie zgodnie z instrukcjami." }],
-    })
-  }
-  contents.push({
-    role: "user",
-    parts: [{ text: params.userPrompt }],
-  })
-
-  const body: any = {
-    contents,
-    generationConfig: {
-      temperature: params.temperature ?? 0.6,
-      maxOutputTokens: params.maxTokens ?? 2048,
-    },
+async function callClaude(params: AIParams): Promise<AIResult> {
+  if (!params.apiKey) {
+    return { text: '', error: 'Brak klucza Claude API' }
   }
 
-  // Structured JSON output
-  // NOTE: responseMimeType is NOT compatible with tools like google_search
-  if (params.responseFormat === "json" && !params.useGoogleSearch) {
-    body.generationConfig.responseMimeType = "application/json"
+  const model = params.model || AI_MODELS.FAST
+  const client = new Anthropic({ apiKey: params.apiKey })
+
+  const messages: Anthropic.MessageParam[] = [
+    { role: 'user', content: params.userPrompt },
+  ]
+
+  // System prompt jako text block. Prompt caching pominięty bo nasze
+  // system prompts (~500-1500 tokens) są poniżej minimum cacheable
+  // (Sonnet 2048, Haiku 4096 per shared/prompt-caching.md). Dodaj
+  // cache_control kiedy prompty urosną.
+  const system: Anthropic.TextBlockParam[] | undefined = params.systemPrompt
+    ? [{ type: 'text', text: params.systemPrompt }]
+    : undefined
+
+  // max_tokens default — Vadym spec said 4096; bumped from 2048 dla
+  // wide-spectrum prospects podczas Gemini era, zachowane.
+  const maxTokens = params.maxTokens ?? 4096
+
+  const requestBody: Anthropic.MessageCreateParamsNonStreaming = {
+    model,
+    max_tokens: maxTokens,
+    messages,
+    ...(system && { system }),
   }
 
-  // Google Search grounding (only on Pro / 2.5+ models)
-  if (params.useGoogleSearch) {
-    body.tools = [{ google_search: {} }]
+  // Adaptive thinking — only Sonnet 4.6 / Opus 4.x (NOT Haiku 4.5).
+  // Pomaga z reasoning-heavy zadaniami (potential-analysis, deep-discovery).
+  if (supportsAdaptiveThinking(model)) {
+    requestBody.thinking = { type: 'adaptive' }
   }
 
-  // Retry on 429/503/504 — see header comment for policy.
-  let res: Response | null = null
-  let lastErrText = ""
-  let lastStatus = 0
-  let nonRetryableHit = false
+  // Note: temperature ignorowane na Opus 4.7 (removed parameter), ale
+  // safe na Sonnet 4.6 / Haiku 4.5. Skip żeby uniknąć Opus 400 jeśli
+  // ktoś przeleci PREMIUM model.
+  // Vadym może chcieć temperature kontrolę później — wtedy gate by model.
 
-  for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt += 1) {
+  const startedAt = Date.now()
+  let lastError: unknown = null
+
+  for (let attempt = 1; attempt <= CLAUDE_MAX_ATTEMPTS; attempt += 1) {
     try {
-      res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        // 45s per-request timeout. Vercel function maxDuration=60s, so
-        // 5 attempts × ~45s wouldn't fit — but in praktyce timeout fires
-        // tylko gdy Google nie odpowiada wcale (network hang). Normalne
-        // odpowiedzi <5s. Mirror lib/ceidg/client.ts pattern (60s tam,
-        // 45s tutaj — Gemini latencja niższa niż CEIDG combo filters).
-        signal: AbortSignal.timeout(45_000),
+      const response = await client.messages.create(requestBody, {
+        timeout: CLAUDE_TIMEOUT_MS,
       })
+
+      // Extract concatenated text from content blocks
+      const textBlocks = response.content.filter(
+        (b): b is Anthropic.TextBlock => b.type === 'text',
+      )
+      const text = textBlocks.map((b) => b.text).join('')
+
+      // Cost monitoring
+      const inputTokens = response.usage.input_tokens
+      const outputTokens = response.usage.output_tokens
+      const cacheRead = response.usage.cache_read_input_tokens ?? 0
+      const cacheWrite = response.usage.cache_creation_input_tokens ?? 0
+      const cost = estimateCost(model, inputTokens, outputTokens, cacheRead, cacheWrite)
+      const durationMs = Date.now() - startedAt
+      console.log(
+        `[CLAUDE] model=${model} in=${inputTokens} out=${outputTokens} ` +
+          `cache_r=${cacheRead} cache_w=${cacheWrite} ` +
+          `cost=$${cost.toFixed(4)} duration=${durationMs}ms attempt=${attempt}`,
+      )
+
+      if (!text) {
+        return {
+          text: '',
+          error: `Claude zwrócił pustą odpowiedź. Stop reason: ${response.stop_reason ?? 'unknown'}`,
+        }
+      }
+
+      return {
+        text,
+        tokensUsed: inputTokens + outputTokens,
+        model: response.model,
+      }
     } catch (err) {
-      // Network-level failure: timeout, DNS, connection refused, etc.
+      lastError = err
+
+      // Typed exceptions per skill recommendation — instanceof checks
+      // od najbardziej specific do najbardziej general.
+
+      if (err instanceof Anthropic.AuthenticationError) {
+        // 401 — bad API key, no retry
+        console.error(`[CLAUDE] auth failed (401):`, err.message)
+        return {
+          text: '',
+          error:
+            'Klucz Claude API niepoprawny lub wygasł. Zaktualizuj w params.anthropic_api_key.',
+        }
+      }
+
+      if (err instanceof Anthropic.PermissionDeniedError) {
+        // 403
+        console.error(`[CLAUDE] permission denied (403):`, err.message)
+        return {
+          text: '',
+          error: `Claude API: brak uprawnień (403). ${err.message.slice(0, 200)}`,
+        }
+      }
+
+      if (err instanceof Anthropic.NotFoundError) {
+        // 404 — bad model ID
+        console.error(`[CLAUDE] model not found (404): ${model}`, err.message)
+        return {
+          text: '',
+          error: `Claude API: nieprawidłowy model "${model}" (404).`,
+        }
+      }
+
+      if (err instanceof Anthropic.BadRequestError) {
+        // 400 — request shape issue (bad params, etc.)
+        console.error(`[CLAUDE] bad request (400):`, err.message)
+        return {
+          text: '',
+          error: `Claude API 400: ${err.message.slice(0, 300)}`,
+        }
+      }
+
+      // Determine if retryable
       const isAbort =
         err instanceof Error &&
-        (err.name === "TimeoutError" || err.name === "AbortError")
-      lastStatus = isAbort ? 0 : -1
-      lastErrText = err instanceof Error ? err.message : String(err)
+        (err.name === 'TimeoutError' || err.name === 'AbortError')
+      const isRetryable =
+        err instanceof Anthropic.RateLimitError ||
+        err instanceof Anthropic.InternalServerError ||
+        (err instanceof Anthropic.APIError && err.status === 529) ||
+        isAbort
 
-      if (attempt === GEMINI_MAX_ATTEMPTS) {
+      if (!isRetryable) {
+        const message = err instanceof Error ? err.message : String(err)
         console.error(
-          `[GEMINI] attempt ${attempt}/${GEMINI_MAX_ATTEMPTS} fetch failed (${lastErrText}) — exhausted`,
+          `[CLAUDE] attempt ${attempt}/${CLAUDE_MAX_ATTEMPTS} non-retryable:`,
+          message,
         )
-        throw new GeminiUnavailableError(
+        return { text: '', error: `Claude API błąd: ${message.slice(0, 300)}` }
+      }
+
+      if (attempt === CLAUDE_MAX_ATTEMPTS) {
+        const status = err instanceof Anthropic.APIError ? err.status : 0
+        console.error(
+          `[CLAUDE] attempt ${attempt}/${CLAUDE_MAX_ATTEMPTS} exhausted retries (last status ${status})`,
+        )
+        throw new ClaudeUnavailableError(
           isAbort
-            ? "Gemini API nie odpowiada. Spróbuj ponownie za chwilę."
-            : `Gemini API błąd sieci: ${lastErrText.slice(0, 200)}. Spróbuj ponownie za chwilę.`,
-          lastStatus,
+            ? 'Claude API nie odpowiada. Spróbuj ponownie za chwilę.'
+            : `Claude API tymczasowo niedostępne (${status} po ${CLAUDE_MAX_ATTEMPTS} próbach). Spróbuj ponownie za kilka minut.`,
+          status,
           attempt,
         )
       }
 
-      const delayMs = GEMINI_RETRY_DELAYS_MS[attempt - 1]
+      const delayMs = CLAUDE_RETRY_DELAYS_MS[attempt - 1]
+      const status =
+        err instanceof Anthropic.APIError ? err.status : isAbort ? 'timeout' : 'network'
       console.warn(
-        `[GEMINI] attempt ${attempt}/${GEMINI_MAX_ATTEMPTS} fetch failed (${lastErrText}), retry in ${delayMs / 1000}s`,
+        `[CLAUDE] attempt ${attempt}/${CLAUDE_MAX_ATTEMPTS}, status ${status}, retry in ${delayMs / 1000}s`,
       )
       await new Promise((r) => setTimeout(r, delayMs))
-      continue
-    }
-
-    if (res.ok) {
-      if (attempt > 1) {
-        console.log(
-          `[GEMINI] attempt ${attempt}/${GEMINI_MAX_ATTEMPTS} success (status 200)`,
-        )
-      }
-      break
-    }
-
-    lastStatus = res.status
-    lastErrText = await res.text().catch(() => "")
-
-    if (!GEMINI_RETRYABLE_STATUSES.has(res.status)) {
-      // 400 / 401 / 403 / 422 — bail out, current behavior
-      console.warn(
-        `[GEMINI] attempt ${attempt}/${GEMINI_MAX_ATTEMPTS} non-retryable status ${res.status}`,
-      )
-      nonRetryableHit = true
-      break
-    }
-
-    if (attempt === GEMINI_MAX_ATTEMPTS) {
-      console.error(
-        `[GEMINI] attempt ${attempt}/${GEMINI_MAX_ATTEMPTS} exhausted retries (last status ${res.status})`,
-      )
-      throw new GeminiUnavailableError(
-        `Gemini API tymczasowo niedostępne (${res.status} po ${GEMINI_MAX_ATTEMPTS} próbach). Spróbuj ponownie za kilka minut.`,
-        res.status,
-        attempt,
-      )
-    }
-
-    const delayMs = GEMINI_RETRY_DELAYS_MS[attempt - 1]
-    console.warn(
-      `[GEMINI] attempt ${attempt}/${GEMINI_MAX_ATTEMPTS}, status ${res.status}, retry in ${delayMs / 1000}s`,
-    )
-    await new Promise((r) => setTimeout(r, delayMs))
-  }
-
-  if (nonRetryableHit) {
-    return {
-      text: "",
-      error: `Gemini API ${lastStatus}: ${lastErrText.slice(0, 500)}`,
-    }
-  }
-  if (!res || !res.ok) {
-    // Defensive — shouldn't reach here (retryable path throws above,
-    // non-retryable path returns above, success path breaks).
-    return {
-      text: "",
-      error: `Gemini API ${lastStatus || "ERR"}: ${lastErrText.slice(0, 500)}`,
     }
   }
 
-  const data = await res.json()
-  const candidate = data?.candidates?.[0]
-  const text =
-    candidate?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") ||
-    ""
-  const tokens = data?.usageMetadata?.totalTokenCount
-
-  // Collect grounding sources (web chunks from Google Search)
-  const groundingSources: GroundingSource[] = []
-  const chunks = candidate?.groundingMetadata?.groundingChunks
-  if (Array.isArray(chunks)) {
-    for (const ch of chunks) {
-      const web = ch?.web
-      if (web?.uri) {
-        groundingSources.push({
-          uri: web.uri,
-          title: web.title || "",
-        })
-      }
-    }
-  }
-
-  if (!text) {
-    return {
-      text: "",
-      error: `Gemini returned empty response. Finish reason: ${
-        candidate?.finishReason || "unknown"
-      }`,
-    }
-  }
-
-  return {
-    text,
-    tokensUsed: tokens,
-    model,
-    groundingSources: groundingSources.length ? groundingSources : undefined,
-  }
+  // Defensive — shouldn't reach (loop either returns or throws)
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('Claude call failed: unknown')
 }

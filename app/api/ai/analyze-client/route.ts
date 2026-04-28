@@ -4,7 +4,7 @@
 
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { callAI, type AIProvider } from "@/lib/ai-providers"
+import { callAI, AI_MODELS, type AIProvider } from "@/lib/ai-providers"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -50,29 +50,20 @@ export async function POST(req: Request) {
       )
     }
 
-    // Load API key from params
+    // Load Claude API key from params
     const { data: params } = await supabase
       .from("params")
-      .select("gemini_key, anthropic_key, openrouter_key")
+      .select("anthropic_api_key")
       .single()
 
-    const provider: AIProvider = params?.gemini_key
-      ? "gemini"
-      : params?.anthropic_key
-        ? "anthropic"
-        : "openrouter"
-    const apiKey =
-      (provider === "gemini" && params?.gemini_key) ||
-      (provider === "anthropic" && params?.anthropic_key) ||
-      (provider === "openrouter" && params?.openrouter_key) ||
-      ""
+    const provider: AIProvider = "anthropic"
+    const apiKey = params?.anthropic_api_key ?? ""
 
     if (!apiKey) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            "Brak klucza API. Dodaj klucz Gemini / Anthropic / OpenRouter w Ustawieniach.",
+          error: "Brak klucza Claude API. Dodaj go w Supabase Dashboard (params.anthropic_api_key).",
         },
         { status: 400 }
       )
@@ -101,6 +92,8 @@ export async function POST(req: Request) {
       provider,
       systemPrompt: SYSTEM_PROMPT,
       userPrompt,
+      // Sonnet 4.6 — text profile generation, benefits z reasoning.
+      model: AI_MODELS.BALANCED,
       maxTokens: 1500,
       temperature: 0.5,
     })

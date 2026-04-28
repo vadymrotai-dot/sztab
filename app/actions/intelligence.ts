@@ -287,16 +287,18 @@ export async function startDeepDiscoveryForProduct(
   } = await supabase.auth.getUser()
   if (!user) throw new Error('Sesja wygasła. Zaloguj się ponownie.')
 
-  // Read tokens z params (fallback na ENV jeśli params puste — ENV
-  // przewidziane dla seedowanego setup, ale UI w /settings → tab
-  // "Klucze API" jest preferowanym kanałem).
+  // Read tokens z params (fallback na ENV jeśli params puste). Migration
+  // 2026-04-28: gemini_key → anthropic_api_key (Claude). Var name
+  // 'geminiKey' wewnątrz lib/ai/intelligence.ts zostawiona — to internal
+  // naming które będę przemianowane w przyszłym refactorze, ale teraz
+  // ważne że value to Claude API key.
   const { data: paramsRow } = await supabase
     .from('params')
-    .select('gemini_key, apify_api_token, krs_rejestr_api_token')
+    .select('anthropic_api_key, apify_api_token, krs_rejestr_api_token')
     .single()
 
   const geminiKey =
-    paramsRow?.gemini_key || process.env.GEMINI_API_KEY || ''
+    paramsRow?.anthropic_api_key || process.env.ANTHROPIC_API_KEY || ''
   const apifyToken =
     paramsRow?.apify_api_token || process.env.APIFY_API_TOKEN || ''
   const krsToken =
@@ -305,7 +307,7 @@ export async function startDeepDiscoveryForProduct(
     ''
 
   if (!geminiKey) {
-    throw new Error('Brak klucza Gemini API. Dodaj go w Ustawieniach → Klucze API.')
+    throw new Error('Brak klucza Claude API. Dodaj go w Supabase Dashboard (params.anthropic_api_key).')
   }
   if (!apifyToken) {
     throw new Error('Brak Apify API token. Dodaj go w Ustawieniach → Klucze API.')

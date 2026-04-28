@@ -9,6 +9,7 @@ import {
   extractJSON,
   AIParseError,
   AIInvalidResponseError,
+  AI_MODELS,
   type AIProvider,
 } from "@/lib/ai-providers"
 import {
@@ -109,25 +110,17 @@ export async function POST(req: Request) {
 
     const { data: params } = await supabase
       .from("params")
-      .select("gemini_key, anthropic_key, openrouter_key")
+      .select("anthropic_api_key")
       .single()
 
-    const provider: AIProvider = params?.gemini_key
-      ? "gemini"
-      : params?.anthropic_key
-        ? "anthropic"
-        : "openrouter"
-    const apiKey =
-      (provider === "gemini" && params?.gemini_key) ||
-      (provider === "anthropic" && params?.anthropic_key) ||
-      (provider === "openrouter" && params?.openrouter_key) ||
-      ""
+    const provider: AIProvider = "anthropic"
+    const apiKey = params?.anthropic_api_key ?? ""
 
     if (!apiKey) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Brak klucza API. Dodaj klucz Gemini w Ustawieniach.",
+          error: "Brak klucza Claude API. Dodaj go w Supabase Dashboard (params.anthropic_api_key).",
         },
         { status: 400 }
       )
@@ -155,10 +148,8 @@ export async function POST(req: Request) {
       provider,
       systemPrompt: SYSTEM_PROMPT,
       userPrompt,
-      useGoogleSearch: true,
-      model: "gemini-2.5-flash",
-      // Bumped 2000→4096: wide-spectrum prospects + Google grounding
-      // metadata mogły powodować truncation. 4096 daje bezpieczny bufor.
+      // Sonnet 4.6 — research-y task, benefits z reasoning power.
+      model: AI_MODELS.BALANCED,
       maxTokens: 4096,
       temperature: 0.3,
     })

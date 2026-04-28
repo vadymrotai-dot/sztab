@@ -9,6 +9,7 @@ import {
   extractJSON,
   AIParseError,
   AIInvalidResponseError,
+  AI_MODELS,
   type AIProvider,
 } from "@/lib/ai-providers"
 import {
@@ -111,25 +112,17 @@ export async function POST(req: Request) {
 
     const { data: params } = await supabase
       .from("params")
-      .select("gemini_key, anthropic_key, openrouter_key")
+      .select("anthropic_api_key")
       .single()
 
-    const provider: AIProvider = params?.gemini_key
-      ? "gemini"
-      : params?.anthropic_key
-        ? "anthropic"
-        : "openrouter"
-    const apiKey =
-      (provider === "gemini" && params?.gemini_key) ||
-      (provider === "anthropic" && params?.anthropic_key) ||
-      (provider === "openrouter" && params?.openrouter_key) ||
-      ""
+    const provider: AIProvider = "anthropic"
+    const apiKey = params?.anthropic_api_key ?? ""
 
     if (!apiKey) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Brak klucza API. Dodaj w Ustawieniach.",
+          error: "Brak klucza Claude API. Dodaj go w Supabase Dashboard (params.anthropic_api_key).",
         },
         { status: 400 }
       )
@@ -146,6 +139,8 @@ export async function POST(req: Request) {
       systemPrompt: SYSTEM_PROMPT,
       userPrompt,
       responseFormat: "json",
+      // Haiku 4.5 — cheap+fast, parse-command jest deterministic mapping.
+      model: AI_MODELS.FAST,
       maxTokens: 500,
       temperature: 0.2,
     })

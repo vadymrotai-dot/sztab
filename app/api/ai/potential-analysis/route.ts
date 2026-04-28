@@ -10,6 +10,7 @@ import {
   extractJSON,
   AIParseError,
   AIInvalidResponseError,
+  AI_MODELS,
   type AIProvider,
 } from "@/lib/ai-providers"
 import {
@@ -118,23 +119,17 @@ export async function POST(req: Request) {
 
     const { data: params } = await supabase
       .from("params")
-      .select("gemini_key, anthropic_key, openrouter_key")
+      .select("anthropic_api_key")
       .single()
 
-    const provider: AIProvider = params?.gemini_key
-      ? "gemini"
-      : params?.anthropic_key
-        ? "anthropic"
-        : "openrouter"
-    const apiKey =
-      (provider === "gemini" && params?.gemini_key) ||
-      (provider === "anthropic" && params?.anthropic_key) ||
-      (provider === "openrouter" && params?.openrouter_key) ||
-      ""
+    // Migration 2026-04-28: Gemini → Claude. provider field zachowany
+    // dla backward-compat z callAI() interface (legacy, value unused).
+    const provider: AIProvider = "anthropic"
+    const apiKey = params?.anthropic_api_key ?? ""
 
     if (!apiKey) {
       return NextResponse.json(
-        { ok: false, error: "Brak klucza API. Dodaj klucz Gemini w Ustawieniach." },
+        { ok: false, error: "Brak klucza Claude API. Dodaj go w Ustawieniach → Klucze API (lub przez Supabase Dashboard, params.anthropic_api_key)." },
         { status: 400 }
       )
     }
@@ -166,11 +161,9 @@ export async function POST(req: Request) {
       provider,
       systemPrompt: SYSTEM_PROMPT,
       userPrompt,
-      useGoogleSearch: true,
-      model: "gemini-2.5-flash",
-      // Bumped 1500→4096: wide-spectrum prospects (35+ PKD codes) + Google
-      // grounding metadata generated truncated JSON powodując "Unterminated
-      // string" parse errors. 4096 tokens daje bezpieczny bufor.
+      // Sonnet 4.6 — balanced model dla strategic analysis. Adaptive
+      // thinking aktywowane automatycznie w callClaude() dla Sonnet/Opus.
+      model: AI_MODELS.BALANCED,
       maxTokens: 4096,
       temperature: 0.4,
     })
