@@ -16,7 +16,7 @@
 //
 // NIE woła getCeidgApiKey() (to wymaga Next.js cookies context).
 
-import 'dotenv/config'
+import '@/lib/env'
 
 import { CeidgClient, normalizePkd } from '@/lib/ceidg/client'
 

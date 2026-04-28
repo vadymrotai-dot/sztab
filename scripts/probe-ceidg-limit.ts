@@ -8,7 +8,7 @@
 //   $env:CEIDG_API_KEY="<jwt>"
 //   pnpm dlx tsx scripts/probe-ceidg-limit.ts
 
-import 'dotenv/config'
+import '@/lib/env'
 
 import { CeidgClient } from '@/lib/ceidg/client'
 

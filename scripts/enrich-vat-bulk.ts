@@ -10,7 +10,7 @@
 // pomija już wzbogacone (idempotent). Use --refresh-stale=DAYS żeby
 // re-fetch starsze niż N dni (e.g. monthly refresh).
 
-import 'dotenv/config'
+import '@/lib/env'
 
 import { createClient } from '@supabase/supabase-js'
 

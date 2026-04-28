@@ -26,7 +26,7 @@
 //   --max-pages=N     stop after N pages (counts within current invocation)
 //   --reset           delete state file before start (fresh run)
 
-import 'dotenv/config'
+import '@/lib/env'
 
 import fs from 'node:fs/promises'
 import path from 'node:path'

@@ -10,7 +10,7 @@
 // After bootstrap, all rotations refresh via single `pnpm dlx tsx
 // scripts/setup-env.ts` re-run.
 
-import 'dotenv/config'
+import '@/lib/env'
 
 import fs from 'node:fs/promises'
 import path from 'node:path'

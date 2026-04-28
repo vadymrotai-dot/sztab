@@ -11,7 +11,7 @@
 // Returns QueryResult — never throws on HTTP errors (caller inspects .ok).
 // Network/parse errors do throw.
 
-import 'dotenv/config'
+import '@/lib/env'
 
 import { createClient } from '@supabase/supabase-js'
 

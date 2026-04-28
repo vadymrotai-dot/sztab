@@ -12,7 +12,7 @@
 //   --version=vX    scoring_version (default 'v1'); pozwala dual-writes A/B
 //   --max=N         cap N prospects do scoringu (dla testów)
 
-import 'dotenv/config'
+import '@/lib/env'
 
 import { createClient } from '@supabase/supabase-js'
 

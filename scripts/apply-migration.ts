@@ -8,7 +8,7 @@
 // Run:
 //   pnpm dlx tsx scripts/apply-migration.ts scripts/017_vat_enrichment.sql
 
-import 'dotenv/config'
+import '@/lib/env'
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
