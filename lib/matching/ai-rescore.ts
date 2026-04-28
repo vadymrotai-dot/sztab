@@ -258,7 +258,7 @@ export async function rescoreTop20(
     model: AI_MODELS.FAST,
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
-    maxTokens: 2000,
+    maxTokens: 3000, // Sprint G smoke: 2000 was sometimes hit на 20 candidates
     temperature: 0.2,
   })
 
