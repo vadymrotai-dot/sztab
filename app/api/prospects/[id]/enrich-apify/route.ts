@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { enrichContactsApify } from '@/lib/enrichment/apify'
+import { findExistingContact } from '@/lib/enrichment/contact-preflight'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -47,6 +48,18 @@ export async function POST(
       { ok: false, error: 'params.apify_api_token not set' },
       { status: 500 },
     )
+  }
+
+  // Sprint J: pre-flight — skip Apify якщо вже є contact data
+  const existing = await findExistingContact(supabase, 'prospect', p.id)
+  if (existing) {
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: 'already_enriched',
+      existing,
+      result: null,
+    })
   }
 
   const result = await enrichContactsApify(apifyKey, {

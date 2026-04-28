@@ -41,6 +41,12 @@ interface QueueItem {
   apify_review_status: 'pending' | 'approved' | 'skipped'
   apify_reviewed_at: string | null
   apify_reviewed_by: string | null
+  existing_contact: {
+    phone: string | null
+    email: string | null
+    website: string | null
+    source: 'clients' | 'ceidg_prospects' | 'contact_enrichment'
+  } | null
 }
 
 interface QueueCounts {
@@ -48,6 +54,7 @@ interface QueueCounts {
   pending: number
   approved: number
   skipped: number
+  already_enriched: number
 }
 
 const PER_NIP_COST_USD = 0.021
@@ -59,6 +66,7 @@ export function ReviewQueueView() {
     pending: 0,
     approved: 0,
     skipped: 0,
+    already_enriched: 0,
   })
   const [loading, setLoading] = useState(true)
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set())
@@ -76,7 +84,15 @@ export function ReviewQueueView() {
       const json = await res.json()
       if (!json.ok) throw new Error(json.error || 'Błąd ładowania')
       setData((json.data ?? []) as QueueItem[])
-      setCounts(json.counts ?? { eligible: 0, pending: 0, approved: 0, skipped: 0 })
+      setCounts(
+        json.counts ?? {
+          eligible: 0,
+          pending: 0,
+          approved: 0,
+          skipped: 0,
+          already_enriched: 0,
+        },
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -185,7 +201,12 @@ export function ReviewQueueView() {
 
   const allVisibleIds = useMemo(() => data.map((d) => d.match_id), [data])
   const allSelected = selected.size > 0 && selected.size === data.length
-  const estimatedCost = (counts.approved * PER_NIP_COST_USD).toFixed(2)
+  // Sprint J: estimated cost considers тільки approved which are NOT
+  // already-enriched (pre-flight skip free).
+  const approvedNeedingApify = data.filter(
+    (d) => d.apify_review_status === 'approved' && d.existing_contact === null,
+  ).length
+  const estimatedCost = (approvedNeedingApify * PER_NIP_COST_USD).toFixed(2)
 
   return (
     <div className="space-y-4">
@@ -204,8 +225,14 @@ export function ReviewQueueView() {
           <Badge className="h-7 bg-amber-500 text-white px-3">
             Pending: {counts.pending}
           </Badge>
+          {counts.already_enriched > 0 && (
+            <Badge className="h-7 bg-purple-600 text-white px-3" title="Кандидати з уже існуючими контактами (Bitrix/CEIDG/cached) — pre-flight skip">
+              Już z kontaktami: {counts.already_enriched}
+            </Badge>
+          )}
           <span className="text-xs text-muted-foreground">
-            Est. Apify cost: ${estimatedCost} (max — NIP dedup zmniejsza)
+            Est. Apify cost: ${estimatedCost} ({approvedNeedingApify} approved × $0.021,
+            pre-flight skipping {counts.already_enriched} z кontaktami)
           </span>
           <div className="ml-auto flex gap-2">
             <Button variant="outline" size="sm" onClick={fetchQueue} disabled={loading}>
@@ -480,32 +507,55 @@ function ReviewRow({
         </div>
       </div>
       <div className="col-span-2 flex flex-col items-end gap-1">
-        <div className="flex gap-1">
-          <Button
-            size="sm"
-            variant={row.apify_review_status === 'approved' ? 'default' : 'outline'}
-            onClick={() => onSetStatus('approved')}
-            disabled={updating}
-            className="h-7 px-2"
-            title="Approve"
-          >
-            {updating ? (
-              <Loader2Icon className="size-3 animate-spin" />
-            ) : (
-              <CheckIcon className="size-3" />
+        {row.existing_contact ? (
+          <div className="space-y-1 rounded border border-purple-300 bg-purple-50/40 p-1.5 text-[10px]">
+            <Badge className="bg-purple-600 text-white text-[9px]" title={`Source: ${row.existing_contact.source}`}>
+              ✓ Контакти є
+            </Badge>
+            {row.existing_contact.phone && (
+              <div className="font-mono text-purple-900 truncate" title={row.existing_contact.phone}>
+                📞 {row.existing_contact.phone}
+              </div>
             )}
-          </Button>
-          <Button
-            size="sm"
-            variant={row.apify_review_status === 'skipped' ? 'default' : 'outline'}
-            onClick={() => onSetStatus('skipped')}
-            disabled={updating}
-            className="h-7 px-2"
-            title="Skip"
-          >
-            <XIcon className="size-3" />
-          </Button>
-        </div>
+            {row.existing_contact.email && (
+              <div className="font-mono text-purple-900 truncate" title={row.existing_contact.email}>
+                ✉ {row.existing_contact.email.slice(0, 22)}
+              </div>
+            )}
+            {row.existing_contact.website && (
+              <div className="font-mono text-purple-900 truncate" title={row.existing_contact.website}>
+                🌐 {row.existing_contact.website.slice(0, 22)}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant={row.apify_review_status === 'approved' ? 'default' : 'outline'}
+              onClick={() => onSetStatus('approved')}
+              disabled={updating}
+              className="h-7 px-2"
+              title="Approve"
+            >
+              {updating ? (
+                <Loader2Icon className="size-3 animate-spin" />
+              ) : (
+                <CheckIcon className="size-3" />
+              )}
+            </Button>
+            <Button
+              size="sm"
+              variant={row.apify_review_status === 'skipped' ? 'default' : 'outline'}
+              onClick={() => onSetStatus('skipped')}
+              disabled={updating}
+              className="h-7 px-2"
+              title="Skip"
+            >
+              <XIcon className="size-3" />
+            </Button>
+          </div>
+        )}
         {row.ai_reasoning && (
           <button
             onClick={onToggleExpand}

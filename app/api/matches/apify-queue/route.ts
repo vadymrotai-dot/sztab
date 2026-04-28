@@ -18,6 +18,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { findExistingContact } from '@/lib/enrichment/contact-preflight'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -199,6 +200,12 @@ export async function GET(req: Request) {
     apify_review_status: 'pending' | 'approved' | 'skipped'
     apify_reviewed_at: string | null
     apify_reviewed_by: string | null
+    existing_contact: {
+      phone: string | null
+      email: string | null
+      website: string | null
+      source: 'clients' | 'ceidg_prospects' | 'contact_enrichment'
+    } | null
   }> = []
 
   for (const m of matches) {
@@ -206,7 +213,9 @@ export async function GET(req: Request) {
       const c = clientMap.get(m.client_id)
       if (!c || !passesEligibility({ type: 'client', client: c })) continue
       const cleanNip = (c.nip ?? '').replace(/\D/g, '')
+      const existingContact = await findExistingContact(supabase, 'client', c.id)
       eligible.push({
+        existing_contact: existingContact,
         match_id: m.id,
         target_type: 'client',
         target_id: c.id,
@@ -233,7 +242,9 @@ export async function GET(req: Request) {
       const pkd = new Set<string>()
       if (p.pkd_main) pkd.add(p.pkd_main)
       if (p.pkd_all) for (const c of p.pkd_all) if (c) pkd.add(c)
+      const existingContact = await findExistingContact(supabase, 'prospect', p.id)
       eligible.push({
+        existing_contact: existingContact,
         match_id: m.id,
         target_type: 'prospect',
         target_id: p.id,
@@ -262,6 +273,7 @@ export async function GET(req: Request) {
     pending: eligible.filter((e) => e.apify_review_status === 'pending').length,
     approved: eligible.filter((e) => e.apify_review_status === 'approved').length,
     skipped: eligible.filter((e) => e.apify_review_status === 'skipped').length,
+    already_enriched: eligible.filter((e) => e.existing_contact !== null).length,
   }
 
   return NextResponse.json({ ok: true, data: eligible, counts })

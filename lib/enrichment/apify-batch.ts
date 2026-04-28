@@ -15,6 +15,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { enrichContactsApify, type ApifyEnrichResult } from './apify'
+import { findExistingContact } from './contact-preflight'
 
 const COST_BUDGET_USD_DEFAULT = 5.0
 const COST_PER_NIP_ESTIMATE = 0.021 // worst case 3 results
@@ -50,12 +51,15 @@ export interface ApifyBatchSummary {
   partial_nips: number
   no_match_nips: number
   error_nips: number
+  /** Sprint J: NIPs skipped via pre-flight (target вже had contact data
+   *  у clients/prospects/contact_enrichment — no Apify call made). */
+  skipped_already_enriched_nips: number
   total_cost_usd: number
   duration_ms: number
   per_nip: Array<{
     nip: string
     name: string
-    status: ApifyEnrichResult['status']
+    status: ApifyEnrichResult['status'] | 'skipped_already_enriched'
     targets_written: number
     cost_usd: number
     error?: string
@@ -270,12 +274,37 @@ export async function executeBatch(
     partial_nips: 0,
     no_match_nips: 0,
     error_nips: 0,
+    skipped_already_enriched_nips: 0,
     total_cost_usd: 0,
     duration_ms: 0,
     per_nip: [],
   }
 
   for (const item of plan.items) {
+    // Sprint J / Issue 2: pre-flight check — skip Apify якщо ANY target_id
+    // sharing this NIP уже має contact data (Bitrix import, CEIDG, або
+    // fresh contact_enrichment). 254/260 clients у Sztab DB had contacts
+    // з Bitrix → массивне savings.
+    let alreadyEnriched = false
+    for (const t of item.target_ids) {
+      const existing = await findExistingContact(supabase, t.target_type, t.target_id)
+      if (existing) {
+        alreadyEnriched = true
+        break
+      }
+    }
+    if (alreadyEnriched) {
+      summary.skipped_already_enriched_nips++
+      summary.per_nip.push({
+        nip: item.nip,
+        name: item.name,
+        status: 'skipped_already_enriched',
+        targets_written: 0,
+        cost_usd: 0,
+      })
+      continue
+    }
+
     const r = await enrichContactsApify(apifyKey, {
       name: item.name,
       city: item.city,
