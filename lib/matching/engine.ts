@@ -227,7 +227,13 @@ export async function computeMatchesForClient(
   const del = await deleteExistingMatches(supabase, 'client', [clientId])
   if (!del.ok) return { ok: false, count: 0, error: del.error }
   const ins = await insertMatchRows(supabase, rows)
-  return { ok: ins.ok, count: rows.length, error: ins.error }
+  if (!ins.ok) return { ok: false, count: rows.length, error: ins.error }
+  // Sprint J: refresh is_primary_for_target flags для цього target
+  await supabase.rpc('refresh_primary_match_flags', {
+    p_target_type: 'client',
+    p_target_id: clientId,
+  })
+  return { ok: true, count: rows.length }
 }
 
 export async function computeMatchesForProspect(
@@ -253,7 +259,13 @@ export async function computeMatchesForProspect(
   const del = await deleteExistingMatches(supabase, 'prospect', [prospectId])
   if (!del.ok) return { ok: false, count: 0, error: del.error }
   const ins = await insertMatchRows(supabase, rows)
-  return { ok: ins.ok, count: rows.length, error: ins.error }
+  if (!ins.ok) return { ok: false, count: rows.length, error: ins.error }
+  // Sprint J: refresh is_primary_for_target flags для цього prospect
+  await supabase.rpc('refresh_primary_match_flags', {
+    p_target_type: 'prospect',
+    p_target_id: prospectId,
+  })
+  return { ok: true, count: rows.length }
 }
 
 /** Recompute matches keyed by single product. Iterates all clients + prospects. */
@@ -468,6 +480,11 @@ export async function bulkRecomputeAll(
       }
     }
   }
+
+  // Sprint J: refresh is_primary_for_target flags across whole table
+  // (no scope = global recompute). Run after всі INSERTs complete.
+  const { error: rpcErr } = await supabase.rpc('refresh_primary_match_flags')
+  if (rpcErr) summary.errors.push(`refresh_primary_match_flags: ${rpcErr.message}`)
 
   summary.duration_ms = Date.now() - startedAt
   return summary

@@ -115,9 +115,10 @@ export async function GET(req: Request) {
   const { data: matchRows, error: mErr } = await supabase
     .from('matches')
     .select(
-      'id, client_id, prospect_id, product_id, combined_score, algo_score, ai_score, ai_reasoning, reason_codes, apify_review_status, apify_reviewed_at, apify_reviewed_by',
+      'id, client_id, prospect_id, product_id, combined_score, algo_score, ai_score, ai_reasoning, reason_codes, apify_review_status, apify_reviewed_at, apify_reviewed_by, is_primary_for_target',
     )
     .gte('combined_score', 70)
+    .eq('is_primary_for_target', true) // Sprint J: dedup за target
     .order('combined_score', { ascending: false })
     .limit(limit * POOL_MULTIPLIER)
   if (mErr) {

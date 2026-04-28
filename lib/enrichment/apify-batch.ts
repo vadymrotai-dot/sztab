@@ -88,16 +88,19 @@ export async function buildBatchPlan(
   const safeLimit = Math.max(1, Math.min(opts.limit ?? 50, 200))
 
   // Pull score-ordered match rows з denormalized target info.
-  // Sprint I: filter by apify_review_status='approved' (Vadym pre-vetted).
+  // Sprint I: filter by apify_review_status='approved'.
+  // Sprint J: also require is_primary_for_target=true (one row per унікальна
+  // firma; downstream NIP dedup залишається як safety net).
   const { data: matchRows, error: mErr } = await supabase
     .from('matches')
     .select(
-      'id, combined_score, product_id, client_id, prospect_id, apify_review_status',
+      'id, combined_score, product_id, client_id, prospect_id, apify_review_status, is_primary_for_target',
     )
     .gte('combined_score', minScore)
     .eq('apify_review_status', 'approved')
+    .eq('is_primary_for_target', true)
     .order('combined_score', { ascending: false })
-    .limit(safeLimit * 6) // fetch wider pool, then dedup
+    .limit(safeLimit * 6) // fetch wider pool, then dedup by NIP
   if (mErr) throw new Error(`build plan: ${mErr.message}`)
   const matches = (matchRows ?? []) as Array<{
     id: string
