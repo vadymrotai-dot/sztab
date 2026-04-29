@@ -24,6 +24,7 @@ import { PeopleSection } from '@/components/clients/people-section'
 import { ProfileFieldsTable } from '@/components/clients/profile-fields-table'
 import { MsigChangesSection } from '@/components/clients/msig-changes-section'
 import { EnrichmentProgressBanner } from '@/components/clients/enrichment-progress-banner'
+import { MetricsRow } from '@/components/clients/metrics-row'
 
 const segmentColors: Record<string, string> = {
   maly_opt: 'bg-slate-500',
@@ -64,6 +65,7 @@ export default async function ClientDetailPage({
     { data: profileFields },
     { data: personLinks },
     { data: lastFinancialRun },
+    { data: topMatch },
   ] = await Promise.all([
     supabase.from('clients').select('*').eq('id', id).single(),
     supabase
@@ -127,6 +129,14 @@ export default async function ClientDetailPage({
       .eq('target_id', id)
       .eq('source', 'sprawozdania_KRS')
       .order('run_started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    // Sprint M FIX 5: top match score дla Metrics card
+    supabase
+      .from('matches')
+      .select('algo_score')
+      .eq('client_id', id)
+      .order('algo_score', { ascending: false })
       .limit(1)
       .maybeSingle(),
   ])
@@ -274,7 +284,42 @@ export default async function ClientDetailPage({
           </Card>
         </div>
 
-        {/* Row 1.5: enrichment sections (VAT + GUS + KRS) */}
+        {/* Sprint M FIX 5: 4 metric cards row */}
+        <MetricsRow
+          bzpCount={bzpTenders?.length ?? 0}
+          latestRevenuePln={
+            (financials as Array<{ przychody_pln: number | null }> | null)?.[0]?.przychody_pln ?? null
+          }
+          employeeRange={client.employee_count_range ?? null}
+          topMatchScore={(topMatch as { algo_score: number } | null)?.algo_score ?? null}
+        />
+
+        {/* ═══ PRIORITY SECTIONS (orange left border) ═══ */}
+        <BuyingSignalsSection tenders={(bzpTenders ?? []) as never} />
+        <FinancialsSection
+          data={(financials ?? []) as never}
+          fallbackCtx={{
+            forma_prawna: client.krs_legal_form ?? null,
+            lastRunStatus: lastFinancialRun
+              ? ((lastFinancialRun as { status: 'success' | 'partial' | 'error' }).status)
+              : 'never',
+            lastRunError: lastFinancialRun
+              ? ((lastFinancialRun as { error_message: string | null }).error_message)
+              : null,
+          }}
+        />
+        <BusinessProfileSection clientId={id} profile={client.business_profile ?? null} />
+        <PeopleSection
+          links={(personLinks ?? []) as never}
+          title={
+            (client.krs_legal_form ?? '').toLowerCase().includes('akcyjna') ||
+            (client.krs_legal_form ?? '').toLowerCase().includes('z o.o.')
+              ? 'Osoby decyzyjne'
+              : 'Właściciel / kontakty'
+          }
+        />
+
+        {/* ═══ SECONDARY SECTIONS (no border) ═══ */}
         <div className="grid gap-4 lg:grid-cols-2">
           <VatSection
             targetType="client"
@@ -302,9 +347,6 @@ export default async function ClientDetailPage({
             }}
           />
         </div>
-        {/* Sprint L Phase 3 / Sprint M FIX 4 — single unified AI block */}
-        <BusinessProfileSection clientId={id} profile={client.business_profile ?? null} />
-
         <KrsSection
           targetType="client"
           targetId={id}
@@ -320,45 +362,20 @@ export default async function ClientDetailPage({
           }}
         />
 
-        {/* Sprint K — Priority sections (signals → financials → people) */}
-        <BuyingSignalsSection tenders={(bzpTenders ?? []) as never} />
-        <FinancialsSection
-          data={(financials ?? []) as never}
-          fallbackCtx={{
-            forma_prawna: client.krs_legal_form ?? null,
-            lastRunStatus: lastFinancialRun
-              ? ((lastFinancialRun as { status: 'success' | 'partial' | 'error' }).status)
-              : 'never',
-            lastRunError: lastFinancialRun
-              ? ((lastFinancialRun as { error_message: string | null }).error_message)
-              : null,
-          }}
-        />
-        <PeopleSection
-          links={(personLinks ?? []) as never}
-          title={
-            (client.krs_legal_form ?? '').toLowerCase().includes('akcyjna') ||
-            (client.krs_legal_form ?? '').toLowerCase().includes('z o.o.')
-              ? 'Osoby decyzyjne'
-              : 'Właściciel / kontakty'
-          }
-        />
-        <MsigChangesSection changes={(msigChanges ?? []) as never} />
-        <ProfileFieldsTable fields={(profileFields ?? []) as never} />
-
-        {/* Sprint M FIX 4: BusinessDataPanel + PotentialAnalysisPanel removed —
-             functionality merged into <BusinessProfileSection> above */}
-
         {/* L5 algo matching */}
         <MatchesPanel
           mode="product-side"
           keyType="client_id"
           keyValue={id}
           recomputePath="/api/admin/matching/recompute-client"
-          title="Dopasowane produkty"
+          title="Dopasowane produkty Sztab"
         />
 
-        {/* Row 3: zakladki */}
+        {/* History — bottom of page */}
+        <MsigChangesSection changes={(msigChanges ?? []) as never} />
+        <ProfileFieldsTable fields={(profileFields ?? []) as never} />
+
+        {/* Tabs */}
         <Tabs defaultValue="contacts">
           <TabsList>
             <TabsTrigger value="contacts">Kontakty ({contacts?.length || 0})</TabsTrigger>

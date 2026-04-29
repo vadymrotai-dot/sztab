@@ -73,7 +73,7 @@ export function BusinessProfileSection({
 
   if (!profile || !profile.business_format) {
     return (
-      <Card className="border-l-4 border-l-purple-400">
+      <Card className="border-l-4 border-l-orange-400">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <CardTitle className="flex items-center gap-2 text-base">
             <SparklesIcon className="size-5 text-purple-500" />
@@ -99,7 +99,7 @@ export function BusinessProfileSection({
     strength >= 70 ? 'bg-green-600' : strength >= 40 ? 'bg-amber-500' : 'bg-gray-400'
 
   return (
-    <Card className="border-l-4 border-l-purple-400 bg-purple-50/20">
+    <Card className="border-l-4 border-l-orange-400 bg-orange-50/10">
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <CardTitle className="flex items-center gap-2 text-base">
           <SparklesIcon className="size-5 text-purple-500" />
