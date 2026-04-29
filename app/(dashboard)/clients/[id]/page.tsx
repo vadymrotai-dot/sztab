@@ -172,11 +172,13 @@ export default async function ClientDetailPage({
           </div>
         }
       />
+      {/* Sprint O Phase 7 / Sprint P FIX 2 — sticky anchor navigation
+           outside .gap-6 inner container так sticky top:0 nie przyłącza
+           się do flex item і остается visible przez cały scroll. */}
+      <AnchorNav />
       <div className="flex flex-1 flex-col gap-6 p-6">
         {/* Sprint M FIX 3 — async enrichment progress indicator */}
         <EnrichmentProgressBanner clientId={id} />
-        {/* Sprint O Phase 7 — sticky anchor navigation */}
-        <AnchorNav />
         {/* #profil section: hero + summary */}
         <section id="profil" className="scroll-mt-20 grid gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-2">

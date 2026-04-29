@@ -52,8 +52,11 @@ export function AnchorNav() {
   }, [])
 
   return (
-    <div className="sticky top-0 z-30 -mx-6 border-b bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-      <nav className="flex gap-1 -mb-px overflow-x-auto">
+    <div
+      className="sticky top-0 z-40 border-b bg-background shadow-sm"
+      style={{ position: 'sticky', top: 0 }}
+    >
+      <nav className="flex gap-1 -mb-px overflow-x-auto px-6">
         {SECTIONS.map((s) => {
           const isActive = active === s.id
           return (
