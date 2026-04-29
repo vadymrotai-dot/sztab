@@ -26,6 +26,7 @@ import { MsigChangesSection } from '@/components/clients/msig-changes-section'
 import { EnrichmentProgressBanner } from '@/components/clients/enrichment-progress-banner'
 import { MetricsRow } from '@/components/clients/metrics-row'
 import { AnchorNav } from '@/components/clients/anchor-nav'
+import { ClientActionBar } from '@/components/clients/client-action-bar'
 
 const segmentColors: Record<string, string> = {
   maly_opt: 'bg-slate-500',
@@ -172,9 +173,13 @@ export default async function ClientDetailPage({
           </div>
         }
       />
-      {/* Sprint O Phase 7 / Sprint P FIX 2 — sticky anchor navigation
-           outside .gap-6 inner container так sticky top:0 nie przyłącza
-           się do flex item і остается visible przez cały scroll. */}
+      {/* Sprint P FIX 5 — 5-action sticky bar */}
+      <ClientActionBar
+        clientId={id}
+        nip={client.nip ?? null}
+        topProductName={null}
+      />
+      {/* Sprint O Phase 7 / Sprint P FIX 2 — sticky anchor navigation */}
       <AnchorNav />
       <div className="flex flex-1 flex-col gap-6 p-6">
         {/* Sprint M FIX 3 — async enrichment progress indicator */}
