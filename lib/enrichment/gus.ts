@@ -237,6 +237,7 @@ export interface GusEnrichedData {
   registered_date: string | null
   employee_count_range: '0' | '1-9' | '10-49' | '50-249' | '250+' | null
   pkd_codes: string[]
+  pkd_main: string | null
   raw: unknown
   checked_at: string
 }
@@ -283,6 +284,7 @@ export async function enrichWithGUS(
       registered_date: null,
       employee_count_range: null,
       pkd_codes: [],
+      pkd_main: null,
       raw: { search: null, report: null, pkd: null },
       checked_at: checkedAt,
     }
@@ -326,24 +328,41 @@ export async function enrichWithGUS(
     reportFlat.fiz_dataPowstania ??
     null
 
-  // PKD codes from pkd report — actual field is fiz_pkd_Kod / praw_pkd_Kod
-  // (з underscore між pkd і Kod, NIE pkdKod jak myślałem)
+  // PKD codes from pkd report — Sprint L Phase 1C: GUS uses BOTH naming
+  // conventions. Real data inspected:
+  //   • osoba prawna (sp.z o.o./S.A.): praw_pkdKod (no underscore)
+  //     + praw_pkdNazwa + praw_pkdPrzewazajace ('1' = main)
+  //   • osoba fizyczna (JDG): fiz_pkdKod (no underscore)
+  // Earlier extractor used praw_pkd_Kod (з underscore) — WRONG. Most
+  // entities had 0 PKD codes through canonical merge despite raw payload
+  // having them. Now reads both shapes для backward compat.
   const pkdData =
     ((pkdReport as { root?: { dane?: Record<string, string> | Record<string, string>[] } })?.root
       ?.dane) ?? []
   const pkdArr = Array.isArray(pkdData) ? pkdData : [pkdData]
   const pkd_codes: string[] = []
+  let pkd_main: string | null = null
   for (const p of pkdArr) {
     if (!p) continue
+    // Try all known field names (current preferred → legacy fallback)
     const code =
+      p.praw_pkdKod ??
+      p.fiz_pkdKod ??
       p.praw_pkd_Kod ??
       p.fiz_pkd_Kod ??
       p.lp_pkd_Kod ??
       p.pkdKod ??
       p.kod ??
       null
-    if (typeof code === 'string' && code.length > 0) pkd_codes.push(code)
+    if (typeof code === 'string' && code.length > 0) {
+      pkd_codes.push(code)
+      // Track main PKD (Przewazajace = '1' marks the dominant code)
+      const main = p.praw_pkdPrzewazajace ?? p.fiz_pkdPrzewazajace
+      if (main === '1' && !pkd_main) pkd_main = code
+    }
   }
+  // Fallback: якщо нема marked main, take first code
+  if (!pkd_main && pkd_codes.length > 0) pkd_main = pkd_codes[0] ?? null
 
   return {
     found: true,
@@ -353,6 +372,7 @@ export async function enrichWithGUS(
     registered_date,
     employee_count_range,
     pkd_codes,
+    pkd_main,
     raw: { search, report, pkd: pkdReport },
     checked_at: checkedAt,
   }

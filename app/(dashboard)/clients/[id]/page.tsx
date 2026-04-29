@@ -63,6 +63,7 @@ export default async function ClientDetailPage({
     { data: msigChanges },
     { data: profileFields },
     { data: personLinks },
+    { data: lastFinancialRun },
   ] = await Promise.all([
     supabase.from('clients').select('*').eq('id', id).single(),
     supabase
@@ -120,6 +121,14 @@ export default async function ClientDetailPage({
       .eq('client_id', id)
       .is('data_do', null)
       .order('jest_decyzyjny', { ascending: false }),
+    supabase
+      .from('enrichment_log')
+      .select('status, error_message, run_completed_at')
+      .eq('target_id', id)
+      .eq('source', 'sprawozdania_KRS')
+      .order('run_started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ])
 
   if (!client) {
@@ -308,7 +317,18 @@ export default async function ClientDetailPage({
 
         {/* Sprint K — Priority sections (signals → financials → people) */}
         <BuyingSignalsSection tenders={(bzpTenders ?? []) as never} />
-        <FinancialsSection data={(financials ?? []) as never} />
+        <FinancialsSection
+          data={(financials ?? []) as never}
+          fallbackCtx={{
+            forma_prawna: client.krs_legal_form ?? null,
+            lastRunStatus: lastFinancialRun
+              ? ((lastFinancialRun as { status: 'success' | 'partial' | 'error' }).status)
+              : 'never',
+            lastRunError: lastFinancialRun
+              ? ((lastFinancialRun as { error_message: string | null }).error_message)
+              : null,
+          }}
+        />
         <PeopleSection
           links={(personLinks ?? []) as never}
           title={

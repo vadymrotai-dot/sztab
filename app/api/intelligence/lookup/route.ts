@@ -22,6 +22,8 @@ import { fetchSprawozdania } from '@/lib/enrichment/krs-financials'
 import { fetchMsigChanges } from '@/lib/enrichment/msig'
 import { extractFromWebsite } from '@/lib/enrichment/website'
 import { upsertField, upsertFields } from '@/lib/profile/merge'
+import { findExistingContact } from '@/lib/enrichment/contact-preflight'
+import { enrichContactsApify } from '@/lib/enrichment/apify'
 import { startEnrichmentRun, finishEnrichmentRun } from '@/lib/profile/enrichment-log'
 import { computeMatchesForClient } from '@/lib/matching/engine'
 
@@ -352,14 +354,93 @@ export async function POST(req: Request) {
   response.persons_created = personsCreated
 
   // ─── STEP 5: Apify Google Maps ───
-  // Best-effort, sync execution (Apify може зайняти 1-4 min). We skip коли
-  // entity already has contact (pre-flight з Sprint J).
-  // Defer to per-row UI button — too slow для inline lookup.
-  response.sources_completed.push({
-    source: 'Apify_GMaps',
-    status: 'skipped',
-    note: 'available via /matches/review — not run inline (pre-flight savings)',
-  })
+  // Sprint L Phase 1D fix: actually invoke Apify if entity має no existing
+  // contact (Sprint J pre-flight check). Earlier orchestrator unconditionally
+  // skipped — bug.
+  if (params.apify_api_token) {
+    const existing = await findExistingContact(supabase, 'client', clientId)
+    if (existing) {
+      response.sources_completed.push({
+        source: 'Apify_GMaps',
+        status: 'skipped',
+        note: `pre-flight: contact already у ${existing.source}`,
+      })
+    } else {
+      const runId = await startEnrichmentRun(supabase, {
+        target_type: 'company',
+        target_id: clientId,
+        source: 'Apify_GMaps',
+      })
+      try {
+        // Resolve target metadata для Apify call
+        const { data: targetRow } = await supabase
+          .from('clients')
+          .select('title, city, region')
+          .eq('id', clientId)
+          .single()
+        const t = targetRow as { title: string; city: string | null; region: string | null } | null
+        if (t) {
+          const result = await enrichContactsApify(params.apify_api_token, {
+            name: t.title,
+            city: t.city,
+            voivodeship: t.region,
+            nip,
+          })
+          // Upsert contact_enrichment
+          await supabase.from('contact_enrichment').upsert(
+            {
+              target_type: 'client',
+              target_id: clientId,
+              source: 'apify_gmaps',
+              phone: result.phone,
+              email: result.email,
+              website: result.website,
+              gmaps_url: result.gmaps_url,
+              gmaps_rating: result.gmaps_rating,
+              gmaps_reviews_count: result.gmaps_reviews_count,
+              raw_payload: result.raw_payload,
+              status: result.status,
+              error_message: result.error_message ?? null,
+              cost_usd: result.cost_usd,
+              enriched_at: new Date().toISOString(),
+              expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
+            },
+            { onConflict: 'target_type,target_id,source' },
+          )
+          // Write to canonical (when found)
+          if (result.status === 'success' || result.status === 'partial') {
+            const fields = []
+            if (result.phone) fields.push({ field_key: 'phone', value: { value_text: result.phone } })
+            if (result.email) fields.push({ field_key: 'email', value: { value_text: result.email } })
+            if (result.website) fields.push({ field_key: 'website', value: { value_text: result.website } })
+            if (fields.length > 0) await upsertFields(supabase, { type: 'client', id: clientId }, fields, 'Apify_GMaps')
+          }
+          response.sources_completed.push({
+            source: 'Apify_GMaps',
+            status: result.status === 'success' || result.status === 'partial' ? 'success' : 'partial',
+            note: `${result.status} (cost $${result.cost_usd})`,
+          })
+          await finishEnrichmentRun(supabase, runId, {
+            status: result.status === 'success' ? 'success' : 'partial',
+            raw_payload: result.raw_payload,
+            cost_usd: result.cost_usd,
+            error_message: result.error_message,
+          })
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        response.errors.push(`Apify: ${msg}`)
+        response.sources_completed.push({ source: 'Apify_GMaps', status: 'error', error: msg })
+        await finishEnrichmentRun(supabase, runId, { status: 'error', error_message: msg })
+      }
+    }
+  } else {
+    response.sources_completed.push({
+      source: 'Apify_GMaps',
+      status: 'skipped',
+      note: 'apify_api_token missing у params',
+    })
+  }
 
   // ─── STEP 6: Sztab match intelligence ───
   try {
