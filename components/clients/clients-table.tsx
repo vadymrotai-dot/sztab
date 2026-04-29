@@ -76,9 +76,18 @@ const PAGE_SIZE = 50
 
 interface ClientsTableProps {
   clients: Client[]
+  /** Sprint P FIX 4 — bulk selection passed from ClientsHub. */
+  selected?: Set<string>
+  onToggleSelect?: (id: string) => void
+  onToggleSelectAll?: (ids: string[]) => void
 }
 
-export function ClientsTable({ clients }: ClientsTableProps) {
+export function ClientsTable({
+  clients,
+  selected,
+  onToggleSelect,
+  onToggleSelectAll,
+}: ClientsTableProps) {
   const router = useRouter()
   const supabase = createClient()
   const [search, setSearch] = useState('')
@@ -217,7 +226,13 @@ export function ClientsTable({ clients }: ClientsTableProps) {
         </div>
       ) : toolbar.groupBy === 'none' ? (
         <>
-          <FlatTable clients={visibleSlice} onDelete={handleDelete} />
+          <FlatTable
+            clients={visibleSlice}
+            onDelete={handleDelete}
+            selected={selected}
+            onToggleSelect={onToggleSelect}
+            onToggleSelectAll={onToggleSelectAll}
+          />
           {pageCount > 1 && (
             <Pagination
               page={currentPage}
@@ -304,15 +319,33 @@ function FilterMultiSelect({
 function FlatTable({
   clients,
   onDelete,
+  selected,
+  onToggleSelect,
+  onToggleSelectAll,
 }: {
   clients: Client[]
   onDelete: (id: string) => void
+  selected?: Set<string>
+  onToggleSelect?: (id: string) => void
+  onToggleSelectAll?: (ids: string[]) => void
 }) {
+  const bulkEnabled = Boolean(selected && onToggleSelect)
+  const visibleIds = clients.map((c) => c.id)
+  const allChecked = bulkEnabled && visibleIds.every((id) => selected!.has(id))
+  const someChecked = bulkEnabled && !allChecked && visibleIds.some((id) => selected!.has(id))
   return (
     <div className="rounded-md border overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
+            {bulkEnabled && (
+              <TableHead className="w-[42px]">
+                <Checkbox
+                  checked={allChecked || (someChecked ? 'indeterminate' : false)}
+                  onCheckedChange={() => onToggleSelectAll?.(visibleIds)}
+                />
+              </TableHead>
+            )}
             <TableHead>Nazwa</TableHead>
             <TableHead>NIP</TableHead>
             <TableHead>Miasto</TableHead>
@@ -326,7 +359,13 @@ function FlatTable({
         </TableHeader>
         <TableBody>
           {clients.map((c) => (
-            <ClientRow key={c.id} client={c} onDelete={onDelete} />
+            <ClientRow
+              key={c.id}
+              client={c}
+              onDelete={onDelete}
+              selected={bulkEnabled && selected!.has(c.id)}
+              onToggleSelect={bulkEnabled ? onToggleSelect : undefined}
+            />
           ))}
         </TableBody>
       </Table>
@@ -337,19 +376,31 @@ function FlatTable({
 function ClientRow({
   client,
   onDelete,
+  selected,
+  onToggleSelect,
 }: {
   client: Client
   onDelete: (id: string) => void
+  selected?: boolean
+  onToggleSelect?: (id: string) => void
 }) {
   const router = useRouter()
   return (
     <TableRow
       className="cursor-pointer hover:bg-muted/50"
-      onClick={() => router.push(`/clients/${client.id}/edit`)}
+      onClick={() => router.push(`/clients/${client.id}`)}
     >
+      {onToggleSelect && (
+        <TableCell onClick={(e) => e.stopPropagation()}>
+          <Checkbox
+            checked={selected ?? false}
+            onCheckedChange={() => onToggleSelect(client.id)}
+          />
+        </TableCell>
+      )}
       <TableCell className="font-medium">
         <Link
-          href={`/clients/${client.id}/edit`}
+          href={`/clients/${client.id}`}
           className="hover:underline"
           onClick={(e) => e.stopPropagation()}
         >

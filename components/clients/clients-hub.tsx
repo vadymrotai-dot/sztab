@@ -146,6 +146,34 @@ export function ClientsHub({ clients, unifiedRows }: Props) {
     else alert(json.error ?? 'Błąd eksportu')
   }
 
+  async function bulkUpdate(field: 'size_tier' | 'status', value: string) {
+    if (selectedCount === 0) return
+    const ids = Array.from(selected)
+    if (!confirm(`Zmienić ${field} dla ${ids.length} firm na "${value}"?`)) return
+    const res = await fetch('/api/clients/bulk-update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, field, value }),
+    })
+    const json = (await res.json()) as { ok: boolean; updated?: number; error?: string }
+    if (json.ok) {
+      alert(`Zaktualizowano ${json.updated ?? ids.length} firm`)
+      router.refresh()
+      clearSelection()
+    } else {
+      alert(json.error ?? 'Błąd aktualizacji')
+    }
+  }
+
+  async function changeTier() {
+    const value = prompt('Nowy tier (mały/średni/duży/strategic_partner):')
+    if (value) await bulkUpdate('size_tier', value)
+  }
+  async function changeStatus() {
+    const value = prompt('Nowy status (nowy/aktywny/nieaktywny/lost):')
+    if (value) await bulkUpdate('status', value)
+  }
+
   return (
     <div className="flex flex-col">
       {/* Tabs + Add CTA */}
@@ -241,6 +269,12 @@ export function ClientsHub({ clients, unifiedRows }: Props) {
                     <BriefcaseIcon className="mr-2 size-4" />
                     Eksport jako kohorta Pikniko
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={changeTier}>
+                    Zmień tier
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={changeStatus}>
+                    Zmień status
+                  </DropdownMenuItem>
                   <DropdownMenuItem disabled>
                     Wzbogać kontakty (Apify) — soon
                   </DropdownMenuItem>
@@ -261,7 +295,20 @@ export function ClientsHub({ clients, unifiedRows }: Props) {
       {/* Tab content */}
       <div className="flex-1 overflow-auto">
         {tab === 'klienci' && (
-          <ClientsTable clients={onlyClients} />
+          <ClientsTable
+            clients={onlyClients}
+            selected={selected}
+            onToggleSelect={toggleOne}
+            onToggleSelectAll={(ids) => {
+              setSelected((prev) => {
+                const next = new Set(prev)
+                const all = ids.every((id) => next.has(id))
+                if (all) ids.forEach((id) => next.delete(id))
+                else ids.forEach((id) => next.add(id))
+                return next
+              })
+            }}
+          />
         )}
         {tab === 'prospекti' && (
           <UnifiedTable
