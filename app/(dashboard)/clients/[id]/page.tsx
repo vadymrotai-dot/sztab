@@ -19,6 +19,11 @@ import { GusSection } from '@/app/(dashboard)/_shared/gus-section'
 import { KrsSection } from '@/app/(dashboard)/_shared/krs-section'
 import { StatusBadgesRow } from '@/app/(dashboard)/_shared/status-badges-row'
 import { MatchesPanel } from '@/components/matches/matches-panel'
+import { BuyingSignalsSection } from '@/components/clients/buying-signals-section'
+import { FinancialsSection } from '@/components/clients/financials-section'
+import { PeopleSection } from '@/components/clients/people-section'
+import { ProfileFieldsTable } from '@/components/clients/profile-fields-table'
+import { MsigChangesSection } from '@/components/clients/msig-changes-section'
 
 const segmentColors: Record<string, string> = {
   maly_opt: 'bg-slate-500',
@@ -52,6 +57,12 @@ export default async function ClientDetailPage({
     { data: products },
     { data: people },
     { data: suppliers },
+    // Sprint K — new sources
+    { data: bzpTenders },
+    { data: financials },
+    { data: msigChanges },
+    { data: profileFields },
+    { data: personLinks },
   ] = await Promise.all([
     supabase.from('clients').select('*').eq('id', id).single(),
     supabase
@@ -76,6 +87,39 @@ export default async function ClientDetailPage({
       .select('id, name, client_id')
       .order('name', { ascending: true }),
     supabase.from('suppliers').select('id, name').order('name', { ascending: true }),
+    // Sprint K
+    supabase
+      .from('bzp_tenders')
+      .select('id, bzp_notice_id, ordering_party, ordering_party_type, cpv_codes, subject, award_value_pln, award_date')
+      .eq('client_id', id)
+      .order('award_date', { ascending: false, nullsFirst: false })
+      .limit(20),
+    supabase
+      .from('company_financials')
+      .select('rok, przychody_pln, zysk_netto_pln, marza_netto, aktywa_pln, kapital_wlasny_pln, zatrudnienie, source_url')
+      .eq('client_id', id)
+      .order('rok', { ascending: false })
+      .limit(5),
+    supabase
+      .from('msig_changes')
+      .select('id, msig_number, publication_date, change_type, description')
+      .eq('client_id', id)
+      .order('publication_date', { ascending: false, nullsFirst: false })
+      .limit(20),
+    supabase
+      .from('company_profile_fields')
+      .select('field_key, value_text, value_number, value_json, source, source_priority, confidence, last_verified_at')
+      .eq('client_id', id)
+      .is('superseded_at', null)
+      .order('source_priority', { ascending: false }),
+    supabase
+      .from('person_company_links')
+      .select(
+        'id, rola, jest_decyzyjny, sila_relacji, zrodlo, data_od, data_do, person:persons(id, imie, nazwisko, email_glowny, telefon_komorkowy, linkedin_url)',
+      )
+      .eq('client_id', id)
+      .is('data_do', null)
+      .order('jest_decyzyjny', { ascending: false }),
   ])
 
   if (!client) {
@@ -261,6 +305,21 @@ export default async function ClientDetailPage({
             krs_last_checked: client.krs_last_checked ?? null,
           }}
         />
+
+        {/* Sprint K — Priority sections (signals → financials → people) */}
+        <BuyingSignalsSection tenders={(bzpTenders ?? []) as never} />
+        <FinancialsSection data={(financials ?? []) as never} />
+        <PeopleSection
+          links={(personLinks ?? []) as never}
+          title={
+            (client.krs_legal_form ?? '').toLowerCase().includes('akcyjna') ||
+            (client.krs_legal_form ?? '').toLowerCase().includes('z o.o.')
+              ? 'Osoby decyzyjne'
+              : 'Właściciel / kontakty'
+          }
+        />
+        <MsigChangesSection changes={(msigChanges ?? []) as never} />
+        <ProfileFieldsTable fields={(profileFields ?? []) as never} />
 
         {/* Row 2: AI panele - dane biznesowe + potencjal wspolpracy */}
         <div className="grid gap-6 lg:grid-cols-2">
