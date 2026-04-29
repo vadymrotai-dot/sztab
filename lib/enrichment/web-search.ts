@@ -15,6 +15,37 @@ const TAVILY_BASE = 'https://api.tavily.com'
 const REQUEST_TIMEOUT_MS = 25_000
 const COST_PER_BASIC_SEARCH_USD = 0.005
 
+/** Sprint M FIX 6 — PL business directory / aggregator domains.
+ *  Tavily rangiert їх highly bo content quality, але це не company website.
+ *  Match tested via host.includes() — handle subdomains та variations. */
+const AGGREGATOR_BLOCKLIST = [
+  'krs-pobierz.pl',
+  'panoramafirm.pl',
+  'aleo.com',
+  'biznesfinder.pl',
+  'mojepanstwo.pl',
+  'bisnode.pl',
+  'rzetelnafirma.pl',
+  'msig.pl',
+  'imsig.pl',
+  'rejestrio.pl',
+  'rejestr.io',
+  'krs.pl',
+  'bzp.uzp.gov.pl',
+  'ezamowienia.gov.pl',
+  'ceidg.gov.pl',
+  'gov.pl',
+  'aleobiznes.pl',
+  'firmy.net',
+  'pkt.pl',
+  'biznesradar.pl',
+]
+
+function isAggregator(host: string): boolean {
+  const h = host.toLowerCase().replace(/^www\./, '')
+  return AGGREGATOR_BLOCKLIST.some((b) => h === b || h.endsWith('.' + b) || h.includes(b))
+}
+
 export interface NewsMention {
   title: string
   url: string
@@ -81,13 +112,15 @@ async function tavilySearch(
 function categorizeUrl(
   url: string,
   ownDomain: string | null,
-): { kind: 'website' | 'facebook' | 'instagram' | 'gmaps' | 'news' | 'other' } {
+): { kind: 'website' | 'facebook' | 'instagram' | 'gmaps' | 'news' | 'other' | 'aggregator' } {
   let host: string
   try {
     host = new URL(url).hostname.toLowerCase()
   } catch {
     return { kind: 'other' }
   }
+  // Sprint M FIX 6: aggregator filter applied перш ніж anything else
+  if (isAggregator(host)) return { kind: 'aggregator' }
   if (host.includes('facebook.com')) return { kind: 'facebook' }
   if (host.includes('instagram.com')) return { kind: 'instagram' }
   if (host.includes('maps.google') || host === 'goo.gl' || host.includes('google.com/maps'))
@@ -108,7 +141,7 @@ function categorizeUrl(
 }
 
 function guessOwnDomain(name: string, results: TavilyResult[]): string | null {
-  // Heuristic: domain mentioned 2+ times across results (skip social/maps)
+  // Heuristic: domain mentioned 2+ times across results (skip social/maps/aggregators)
   const counts = new Map<string, number>()
   for (const r of results) {
     try {
@@ -116,6 +149,8 @@ function guessOwnDomain(name: string, results: TavilyResult[]): string | null {
       if (host.includes('facebook') || host.includes('instagram') || host.includes('google'))
         continue
       if (host.includes('linkedin') || host.includes('youtube')) continue
+      // Sprint M FIX 6 — aggregators rank high but never represent company.
+      if (isAggregator(host)) continue
       counts.set(host, (counts.get(host) ?? 0) + 1)
     } catch {}
   }
@@ -208,8 +243,9 @@ export async function searchCompanyOnline(
     }
   }
 
-  // Fallback website detection: no explicit category match але own domain detected
-  if (!out.website_url && ownDomain) {
+  // Fallback website detection: no explicit category match але own domain detected.
+  // Sprint M FIX 6 — defensive double-check, ownDomain already excludes aggregators.
+  if (!out.website_url && ownDomain && !isAggregator(ownDomain)) {
     out.website_url = `https://${ownDomain}`
   }
 
