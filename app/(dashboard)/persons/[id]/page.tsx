@@ -16,6 +16,8 @@ import {
   StarIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { PersonEditPanel } from '@/components/persons/person-edit-panel'
+import { AddEventModal } from '@/components/persons/add-event-modal'
 
 export const dynamic = 'force-dynamic'
 
@@ -215,8 +217,9 @@ export default async function PersonProfilePage({
 
         {/* Wydarzenia osobiste */}
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base">Wydarzenia osobiste</CardTitle>
+            <AddEventModal personId={id} />
           </CardHeader>
           <CardContent>
             {events.length === 0 ? (
@@ -357,6 +360,25 @@ export default async function PersonProfilePage({
             </CardContent>
           </Card>
         )}
+
+        {/* Sprint K / Phase 7 — manual edit */}
+        <PersonEditPanel
+          person={{
+            id,
+            imie: person.imie,
+            nazwisko: person.nazwisko,
+            email_glowny: person.email_glowny,
+            email_prywatny: person.email_prywatny,
+            telefon_komorkowy: person.telefon_komorkowy,
+            linkedin_url: person.linkedin_url,
+            data_urodzenia: person.data_urodzenia,
+            miesiac_urodzenia: person.miesiac_urodzenia,
+            dzien_urodzenia: person.dzien_urodzenia,
+            zainteresowania: person.zainteresowania ?? [],
+            mocne_strony: person.mocne_strony ?? [],
+            notatki_wewnetrzne: person.notatki_wewnetrzne,
+          }}
+        />
       </div>
     </div>
   )
