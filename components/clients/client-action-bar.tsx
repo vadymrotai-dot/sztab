@@ -85,7 +85,7 @@ export function ClientActionBar({ clientId, nip, topProductName }: Props) {
   }
 
   return (
-    <div className="sticky top-12 z-30 flex flex-wrap items-center gap-2 border-b bg-background px-6 py-2.5">
+    <div className="flex flex-wrap items-center gap-2 border-b bg-background px-6 py-2.5">
       <Button
         size="sm"
         onClick={rerunLookup}

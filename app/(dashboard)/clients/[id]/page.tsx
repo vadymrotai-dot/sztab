@@ -173,14 +173,17 @@ export default async function ClientDetailPage({
           </div>
         }
       />
-      {/* Sprint P FIX 5 — 5-action sticky bar */}
-      <ClientActionBar
-        clientId={id}
-        nip={client.nip ?? null}
-        topProductName={null}
-      />
-      {/* Sprint O Phase 7 / Sprint P FIX 2 — sticky anchor navigation */}
-      <AnchorNav />
+      {/* Sprint Q FIX A — combined sticky toolbar (ActionBar + AnchorNav).
+           Single sticky container avoids DOM-order stacking conflict (which
+           caused AnchorNav to disappear у Sprint P browser test). */}
+      <div className="sticky top-0 z-40 bg-background border-b shadow-sm">
+        <ClientActionBar
+          clientId={id}
+          nip={client.nip ?? null}
+          topProductName={null}
+        />
+        <AnchorNav />
+      </div>
       <div className="flex flex-1 flex-col gap-6 p-6">
         {/* Sprint M FIX 3 — async enrichment progress indicator */}
         <EnrichmentProgressBanner clientId={id} />
