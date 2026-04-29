@@ -10,9 +10,17 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 interface CandidatePayload {
-  type: 'existing_client' | 'existing_prospect' | 'gus_fresh' | 'manual'
+  type: 'existing_client' | 'ceidg_to_client' | 'gus_fresh' | 'manual'
   id?: string
+  ceidg_id?: string
   nip?: string
+  name?: string
+  city?: string | null
+  region?: string | null
+  legal_form?: string | null
+  telefon?: string | null
+  email?: string | null
+  www?: string | null
   raw?: { legal_name?: string | null }
 }
 
@@ -45,9 +53,71 @@ export async function POST(req: Request) {
   if (c.payload.type === 'existing_client' && c.payload.id) {
     return NextResponse.json({ ok: true, redirect: `/clients/${c.payload.id}` })
   }
-  // Existing prospect → redirect до prospect detail
-  if (c.payload.type === 'existing_prospect' && c.payload.id) {
-    return NextResponse.json({ ok: true, redirect: `/prospects/${c.payload.id}` })
+
+  // CEIDG cache → upsert до clients з entity_type='prospect' + base fields
+  if (c.payload.type === 'ceidg_to_client') {
+    const nip = c.payload.nip ?? c.nip ?? null
+    const title = c.payload.name ?? c.name ?? `Firma ${nip ?? '?'}`
+
+    // Idempotency: check existing client з тим NIP
+    if (nip) {
+      const { data: existing } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('nip', nip)
+        .maybeSingle()
+      if (existing) {
+        return NextResponse.json({
+          ok: true,
+          redirect: `/clients/${(existing as { id: string }).id}`,
+        })
+      }
+    }
+
+    const { data: ins } = await supabase
+      .from('clients')
+      .insert({
+        title,
+        nip,
+        entity_type: 'prospect',
+        status: 'nowy',
+        segment: 'niesklasyfikowany',
+        owner_id: user.id,
+        city: c.payload.city ?? null,
+        region: c.payload.region ?? null,
+        krs_legal_form: c.payload.legal_form ?? null,
+        phone: c.payload.telefon ?? null,
+        email: c.payload.email ?? null,
+        website: c.payload.www ?? null,
+      })
+      .select('id')
+      .single()
+    const newRow = ins as { id: string } | null
+    if (!newRow?.id) {
+      return NextResponse.json(
+        { ok: false, error: 'Nie udało się utworzyć klienta з CEIDG cache' },
+        { status: 500 },
+      )
+    }
+
+    // Trigger background lookup для full enrichment
+    if (nip) {
+      after(async () => {
+        try {
+          const origin =
+            req.headers.get('origin') ?? `https://${req.headers.get('host') ?? 'localhost'}`
+          await fetch(`${origin}/api/intelligence/lookup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', cookie: req.headers.get('cookie') ?? '' },
+            body: JSON.stringify({ nip }),
+          })
+        } catch (err) {
+          console.error('[adopt] background lookup failed:', err)
+        }
+      })
+    }
+
+    return NextResponse.json({ ok: true, redirect: `/clients/${newRow.id}` })
   }
 
   // GUS fresh / manual → create new client row
@@ -60,6 +130,7 @@ export async function POST(req: Request) {
       .insert({
         title,
         nip,
+        entity_type: 'client',
         status: 'nowy',
         segment: 'niesklasyfikowany',
         owner_id: user.id,

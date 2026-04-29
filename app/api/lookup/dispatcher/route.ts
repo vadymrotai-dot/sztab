@@ -27,9 +27,17 @@ interface Candidate {
   city: string | null
   legal_form: string | null
   payload: {
-    type: 'existing_client' | 'existing_prospect' | 'gus_fresh' | 'manual'
+    type: 'existing_client' | 'ceidg_to_client' | 'gus_fresh' | 'manual'
     id?: string
+    ceidg_id?: string
     nip?: string
+    name?: string
+    city?: string | null
+    region?: string | null
+    legal_form?: string | null
+    telefon?: string | null
+    email?: string | null
+    www?: string | null
     raw?: unknown
   }
 }
@@ -80,10 +88,11 @@ export async function POST(req: Request) {
       })
     }
 
-    // Existing prospect?
+    // Sprint P FIX 1: CEIDG prospects → upsert до clients з entity_type='prospect'
+    // (unified routing — tylko clients są user-visible). adopt() handles INSERT.
     const { data: existingProspect } = await supabase
       .from('ceidg_prospects')
-      .select('id, name, nip, miejscowosc, krs_legal_form')
+      .select('id, name, nip, miejscowosc, wojewodztwo, krs_legal_form, telefon, email, www')
       .eq('nip', cleanNip)
       .maybeSingle()
     if (existingProspect) {
@@ -92,15 +101,30 @@ export async function POST(req: Request) {
         name: string
         nip: string
         miejscowosc: string | null
+        wojewodztwo: string | null
         krs_legal_form: string | null
+        telefon: string | null
+        email: string | null
+        www: string | null
       }
       candidates.push({
-        source: 'CEIDG (prospect existing)',
+        source: 'CEIDG cache',
         name: p.name,
         nip: p.nip,
         city: p.miejscowosc,
         legal_form: p.krs_legal_form,
-        payload: { type: 'existing_prospect', id: p.id, nip: p.nip },
+        payload: {
+          type: 'ceidg_to_client',
+          ceidg_id: p.id,
+          nip: p.nip,
+          name: p.name,
+          city: p.miejscowosc,
+          region: p.wojewodztwo,
+          legal_form: p.krs_legal_form,
+          telefon: p.telefon,
+          email: p.email,
+          www: p.www,
+        },
       })
     }
 
@@ -170,11 +194,11 @@ export async function POST(req: Request) {
         })
       }
     }
-    // prospects matching
+    // prospects matching — Sprint P FIX 1: surface як ceidg_to_client candidate
     for (const f of prospectFields) {
       const { data } = await supabase
         .from('ceidg_prospects')
-        .select(`id, name, nip, miejscowosc, krs_legal_form, ${f}`)
+        .select(`id, name, nip, miejscowosc, wojewodztwo, krs_legal_form, telefon, email, www, ${f}`)
         .ilike(f, `%${value}%`)
         .limit(20)
       for (const r of ((data ?? []) as unknown) as Array<{
@@ -182,15 +206,39 @@ export async function POST(req: Request) {
         name: string
         nip: string | null
         miejscowosc: string | null
+        wojewodztwo: string | null
         krs_legal_form: string | null
+        telefon: string | null
+        email: string | null
+        www: string | null
       }>) {
+        // Skip if client з тim NIP вже existeje (avoid dup candidate)
+        if (r.nip) {
+          const { data: existing } = await supabase
+            .from('clients')
+            .select('id')
+            .eq('nip', r.nip)
+            .maybeSingle()
+          if (existing) continue
+        }
         candidates.push({
-          source: `prospects (${f})`,
+          source: 'CEIDG cache',
           name: r.name,
           nip: r.nip,
           city: r.miejscowosc,
           legal_form: r.krs_legal_form,
-          payload: { type: 'existing_prospect', id: r.id },
+          payload: {
+            type: 'ceidg_to_client',
+            ceidg_id: r.id,
+            nip: r.nip ?? '',
+            name: r.name,
+            city: r.miejscowosc,
+            region: r.wojewodztwo,
+            legal_form: r.krs_legal_form,
+            telefon: r.telefon,
+            email: r.email,
+            www: r.www,
+          },
         })
       }
     }
@@ -226,7 +274,7 @@ export async function POST(req: Request) {
   }
   const { data: prospectMatches } = await supabase
     .from('ceidg_prospects')
-    .select('id, name, nip, miejscowosc, krs_legal_form')
+    .select('id, name, nip, miejscowosc, wojewodztwo, krs_legal_form, telefon, email, www')
     .ilike('name', `%${input}%`)
     .limit(20)
   for (const r of (prospectMatches ?? []) as Array<{
@@ -234,26 +282,47 @@ export async function POST(req: Request) {
     name: string
     nip: string | null
     miejscowosc: string | null
+    wojewodztwo: string | null
     krs_legal_form: string | null
+    telefon: string | null
+    email: string | null
+    www: string | null
   }>) {
+    // Skip якщо client з тим NIP вже existeje (Sprint P FIX 1 — avoid dup candidate)
+    if (r.nip) {
+      const { data: existing } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('nip', r.nip)
+        .maybeSingle()
+      if (existing) continue
+    }
     candidates.push({
-      source: 'CEIDG prospects',
+      source: 'CEIDG cache',
       name: r.name,
       nip: r.nip,
       city: r.miejscowosc,
       legal_form: r.krs_legal_form,
-      payload: { type: 'existing_prospect', id: r.id },
+      payload: {
+        type: 'ceidg_to_client',
+        ceidg_id: r.id,
+        nip: r.nip ?? '',
+        name: r.name,
+        city: r.miejscowosc,
+        region: r.wojewodztwo,
+        legal_form: r.krs_legal_form,
+        telefon: r.telefon,
+        email: r.email,
+        www: r.www,
+      },
     })
   }
 
-  // Auto-redirect якщо exact unique match
+  // Auto-redirect якщо exact unique match (only existing client — never CEIDG)
   if (candidates.length === 1) {
     const c = candidates[0]!
     if (c.payload.type === 'existing_client') {
       return NextResponse.json({ ok: true, type, redirect: `/clients/${c.payload.id}` })
-    }
-    if (c.payload.type === 'existing_prospect') {
-      return NextResponse.json({ ok: true, type, redirect: `/prospects/${c.payload.id}` })
     }
   }
 

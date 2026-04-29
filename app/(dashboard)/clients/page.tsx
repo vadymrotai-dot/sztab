@@ -1,25 +1,19 @@
 // app/(dashboard)/clients/page.tsx
-// Sprint O Phase 5 — Klienci hub з tabs (Klienci/Prospекti/Wszystko),
-// chip filters, bulk select, "Akcje grupowe" + "+Dodaj firmę" CTA.
+// Sprint O Phase 5 + Sprint P FIX 1 — Klienci hub з tabs.
+// Sprint P: clients table тепер єдиним user-visible store; entity_type
+// column distinguishes 'client' vs 'prospect'. CEIDG cache pozostaje
+// read-only via dispatcher.
 
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/page-header'
-import {
-  ClientsHub,
-  type ProspectRow,
-  type UnifiedRow,
-} from '@/components/clients/clients-hub'
+import { ClientsHub, type UnifiedRow } from '@/components/clients/clients-hub'
 import type { Client } from '@/lib/types'
 
 export default async function ClientsPage() {
   const supabase = await createClient()
 
-  const [{ data: clients }, { data: prospects }, { data: topMatches }] = await Promise.all([
+  const [{ data: clients }, { data: topMatches }] = await Promise.all([
     supabase.from('clients').select('*').order('title', { ascending: true }),
-    supabase
-      .from('ceidg_prospects')
-      .select('id, name, nip, miejscowosc, wojewodztwo, pkd_main, status, vat_status, telefon, email, www')
-      .order('name', { ascending: true }),
     supabase
       .from('matches')
       .select('client_id, prospect_id, combined_score')
@@ -39,42 +33,27 @@ export default async function ClientsPage() {
     }
   }
 
-  const clientsList = (clients ?? []) as Client[]
-  const prospectsList = ((prospects ?? []) as unknown) as Array<
-    ProspectRow & { telefon: string | null; email: string | null; www: string | null }
+  const clientsList = ((clients ?? []) as Client[]) as Array<
+    Client & { entity_type?: 'client' | 'prospect' }
   >
 
-  const unifiedRows: UnifiedRow[] = [
-    ...clientsList.map((c) => ({
-      type: 'client' as const,
-      id: c.id,
-      name: c.title,
-      nip: c.nip ?? null,
-      city: c.city ?? null,
-      region: c.region ?? null,
-      industry: c.industry ?? null,
-      status: c.status ?? null,
-      has_contact: Boolean(c.phone || c.email || c.website),
-      top_match_score: topByEntity.get(c.id) ?? null,
-    })),
-    ...prospectsList.map((p) => ({
-      type: 'prospect' as const,
-      id: p.id,
-      name: p.name,
-      nip: p.nip,
-      city: p.miejscowosc,
-      region: p.wojewodztwo,
-      industry: p.pkd_main,
-      status: p.status,
-      has_contact: Boolean(p.telefon || p.email || p.www),
-      top_match_score: topByEntity.get(p.id) ?? null,
-    })),
-  ]
+  const unifiedRows: UnifiedRow[] = clientsList.map((c) => ({
+    type: (c.entity_type ?? 'client') as 'client' | 'prospect',
+    id: c.id,
+    name: c.title,
+    nip: c.nip ?? null,
+    city: c.city ?? null,
+    region: c.region ?? null,
+    industry: c.industry ?? null,
+    status: c.status ?? null,
+    has_contact: Boolean(c.phone || c.email || c.website),
+    top_match_score: topByEntity.get(c.id) ?? null,
+  }))
 
   return (
     <div className="flex flex-col h-full">
       <PageHeader title="Klienci" />
-      <ClientsHub clients={clientsList} prospects={prospectsList} unifiedRows={unifiedRows} />
+      <ClientsHub clients={clientsList} unifiedRows={unifiedRows} />
     </div>
   )
 }

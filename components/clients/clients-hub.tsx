@@ -28,17 +28,6 @@ import { ClientsTable } from '@/components/clients/clients-table'
 import { AddCompanyButton } from '@/components/clients/add-company-button'
 import type { Client } from '@/lib/types'
 
-export interface ProspectRow {
-  id: string
-  name: string
-  nip: string | null
-  miejscowosc: string | null
-  wojewodztwo: string | null
-  pkd_main: string | null
-  status: string | null
-  vat_status: string | null
-}
-
 export interface UnifiedRow {
   type: 'client' | 'prospect'
   id: string
@@ -53,8 +42,7 @@ export interface UnifiedRow {
 }
 
 interface Props {
-  clients: Client[]
-  prospects: ProspectRow[]
+  clients: Array<Client & { entity_type?: 'client' | 'prospect' }>
   unifiedRows: UnifiedRow[]
 }
 
@@ -64,7 +52,11 @@ const TABS = [
   { value: 'wszystko', label: 'Wszystko' },
 ]
 
-export function ClientsHub({ clients, prospects, unifiedRows }: Props) {
+export function ClientsHub({ clients, unifiedRows }: Props) {
+  const clientCount = unifiedRows.filter((r) => r.type === 'client').length
+  const prospectCount = unifiedRows.filter((r) => r.type === 'prospect').length
+  // Subset of clients[] with entity_type='client' для existing ClientsTable
+  const onlyClients = clients.filter((c) => (c.entity_type ?? 'client') === 'client')
   const router = useRouter()
   const params = useSearchParams()
   const tab = params.get('tab') ?? 'klienci'
@@ -136,10 +128,10 @@ export function ClientsHub({ clients, prospects, unifiedRows }: Props) {
             const active = t.value === tab
             const count =
               t.value === 'klienci'
-                ? clients.length
+                ? clientCount
                 : t.value === 'prospекti'
-                  ? prospects.length
-                  : clients.length + prospects.length
+                  ? prospectCount
+                  : unifiedRows.length
             return (
               <button
                 key={t.value}
@@ -219,7 +211,7 @@ export function ClientsHub({ clients, prospects, unifiedRows }: Props) {
       {/* Tab content */}
       <div className="flex-1 overflow-auto">
         {tab === 'klienci' && (
-          <ClientsTable clients={clients} />
+          <ClientsTable clients={onlyClients} />
         )}
         {tab === 'prospекti' && (
           <UnifiedTable
@@ -332,7 +324,7 @@ function UnifiedTable({
                 </TableCell>
                 <TableCell>
                   <Link
-                    href={r.type === 'client' ? `/clients/${r.id}` : `/prospects/${r.id}`}
+                    href={`/clients/${r.id}`}
                     className="font-medium hover:underline"
                   >
                     {r.name}
