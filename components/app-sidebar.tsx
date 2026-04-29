@@ -62,6 +62,7 @@ interface AppSidebarProps {
 export function AppSidebar({ user, prospectHotCount = 0 }: AppSidebarProps) {
   const navigation: NavItem[] = [
     { name: 'Dzis', href: '/dashboard', icon: LayoutDashboardIcon },
+    { name: 'Pulpit (dziś)', href: '/pulpit/dzisiaj', icon: CalendarCheckIcon },
     { name: 'Klienci', href: '/clients', icon: UsersIcon },
     { name: 'Umowy', href: '/deals', icon: KanbanIcon },
     { name: 'Generator KP', href: '/kp-generator', icon: FileTextIcon },
