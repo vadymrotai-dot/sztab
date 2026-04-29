@@ -16,6 +16,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
   Table,
   TableBody,
   TableCell,
@@ -68,11 +73,12 @@ export function ClientsHub({ clients, unifiedRows }: Props) {
   const [activeIndustries, setActiveIndustries] = useState<Set<string>>(new Set())
   const [sortBy, setSortBy] = useState<'score' | 'name' | 'created'>('score')
 
-  // Industry options derived from clients data
+  // Industry options derived from clients data (Sprint Q FIX C — moved
+  // от 8 inline chips → popover, no need to cap at 20 anymore)
   const industryOptions = useMemo(() => {
     const set = new Set<string>()
     for (const r of unifiedRows) if (r.industry?.trim()) set.add(r.industry)
-    return Array.from(set).sort().slice(0, 20)
+    return Array.from(set).sort()
   }, [unifiedRows])
 
   // Bulk selection (across all rows у aktywny tab)
@@ -227,17 +233,54 @@ export function ClientsHub({ clients, unifiedRows }: Props) {
           onChange={() => setOnlyNeedsReview((v) => !v)}
         />
         {industryOptions.length > 0 && (
-          <>
-            <span className="ml-2 text-xs text-muted-foreground">Branża:</span>
-            {industryOptions.map((ind) => (
-              <ChipToggle
-                key={ind}
-                label={ind}
-                active={activeIndustries.has(ind)}
-                onChange={() => toggleIndustry(ind)}
-              />
-            ))}
-          </>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className={`rounded-full border px-3 py-1 text-xs transition flex items-center gap-1 ${
+                  activeIndustries.size > 0
+                    ? 'border-orange-400 bg-orange-50 text-orange-700'
+                    : 'border-muted-foreground/30 hover:bg-muted'
+                }`}
+              >
+                Branża
+                {activeIndustries.size > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-4 min-w-[18px] px-1.5 text-[10px]">
+                    {activeIndustries.size}
+                  </Badge>
+                )}
+                <ChevronDownIcon className="size-3" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[260px] p-2" align="start">
+              <div className="max-h-[280px] space-y-1 overflow-auto">
+                {industryOptions.map((ind) => {
+                  const checked = activeIndustries.has(ind)
+                  return (
+                    <label
+                      key={ind}
+                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={() => toggleIndustry(ind)}
+                      />
+                      <span className="flex-1 truncate">{ind}</span>
+                    </label>
+                  )
+                })}
+              </div>
+              {activeIndustries.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveIndustries(new Set())}
+                  className="mt-1 w-full rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+                >
+                  Wyczyść wybór ({activeIndustries.size})
+                </button>
+              )}
+            </PopoverContent>
+          </Popover>
         )}
         <span className="ml-2 text-xs text-muted-foreground">Sort:</span>
         <select
