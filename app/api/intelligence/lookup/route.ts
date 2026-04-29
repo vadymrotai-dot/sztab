@@ -471,7 +471,7 @@ async function runSprawozdaniaStep(
       await finishEnrichmentRun(supabase, runId, { status: 'partial', error_message: 'no API key' })
       return
     }
-    const sprawozdania = await fetchSprawozdania(apiKey, krsNumber)
+    const sprawozdania = await fetchSprawozdania(apiKey, { krs: krsNumber })
     let inserted = 0
     for (const s of sprawozdania) {
       const { error } = await supabase.from('company_financials').upsert(
@@ -528,7 +528,7 @@ async function runMsigStep(
       await finishEnrichmentRun(supabase, runId, { status: 'partial', error_message: 'no API key' })
       return
     }
-    const changes = await fetchMsigChanges(apiKey, krsNumber)
+    const changes = await fetchMsigChanges(apiKey, { krs: krsNumber })
     let inserted = 0
     for (const c of changes) {
       const { error } = await supabase.from('msig_changes').insert({

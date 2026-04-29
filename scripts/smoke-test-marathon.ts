@@ -100,7 +100,7 @@ async function main() {
   // 2b. Sprawozdania — CD PROJEKT KRS 0000006865
   if (krsRejestr) {
     try {
-      const sprawozdania = await fetchSprawozdania(krsRejestr, '0000006865')
+      const sprawozdania = await fetchSprawozdania(krsRejestr, { krs: '0000006865' })
       checks.push({
         name: 'Phase 2b — sprawozdania (CD PROJEKT)',
         status: sprawozdania.length > 0 ? '✅' : '⚠️',
@@ -125,7 +125,7 @@ async function main() {
   // 2c. MSiG
   if (krsRejestr) {
     try {
-      const msig = await fetchMsigChanges(krsRejestr, '0000006865')
+      const msig = await fetchMsigChanges(krsRejestr, { krs: '0000006865' })
       checks.push({
         name: 'Phase 2c — MSiG',
         status: '✅',

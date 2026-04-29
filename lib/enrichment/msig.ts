@@ -1,34 +1,34 @@
 // lib/enrichment/msig.ts
-// Sprint K / Phase 2C — Monitor Sądowy i Gospodarczy scraper.
+// Sprint L Phase 1A — rejestr.io v2 migration.
 //
-// Source: imsig.pl text search by KRS or NIP. Site requires HTML scraping —
-// no public JSON API. rejestr.io API also exposes /msig endpoint (preferred
-// when token present).
-//
-// Status: PARTIAL — uses rejestr.io endpoint якщо available; otherwise
-// returns empty з documented TODO. Full HTML scraping імsig.pl deferred
-// до Sprint L якщо потрібно (requires careful selector maintenance).
+// v2 не має dedicated /msig endpoint, але /org/{id}/krs-wpisy дає повну
+// historię KRS wpisów (kожen wpis is published у MSiG за definition).
+// Wpisy include change types (zarząd/kapitał/etc.) у opis_zmian field.
 
-const REJESTR_BASE = 'https://rejestr.io/api/v1'
+import { resolveOrgIdByKrs, resolveOrgIdByNip } from './krs-financials'
+
+const REJESTR_BASE = 'https://rejestr.io/api/v2'
 const REQUEST_TIMEOUT_MS = 30_000
 
 export interface MsigChange {
   msig_number: string | null
   publication_date: string | null
-  change_type: string | null // 'zarząd' / 'kapitał' / 'adres' / 'forma' / etc.
+  change_type: string | null
   description: string | null
   raw: unknown
 }
 
-interface RejestrMsigEntry {
-  numer?: string
+interface KrsWpis {
+  id?: number
   data?: string
-  rodzaj_zmiany?: string
-  opis?: string
+  numer_wpisu?: string
+  msig?: { numer?: string; data?: string }
+  opis_zmian?: string
+  rodzaj_wpisu?: string
 }
 
-interface RejestrMsigResponse {
-  results?: RejestrMsigEntry[]
+interface KrsWpisyResponse {
+  results?: KrsWpis[]
 }
 
 function parseChangeType(opis: string): string | null {
@@ -43,44 +43,56 @@ function parseChangeType(opis: string): string | null {
   return null
 }
 
-/** Fetch MSiG changes for a KRS number via rejestr.io. */
+/** Fetch MSiG-equivalent KRS wpisy via rejestr.io v2. */
 export async function fetchMsigChanges(
   apiKey: string,
-  krsNumber: string,
+  identifier: { nip?: string; krs?: string },
 ): Promise<MsigChange[]> {
   if (!apiKey) {
     console.warn('[msig] rejestr.io token missing — returning empty')
     return []
   }
-  if (!krsNumber || !/^\d{1,10}$/.test(krsNumber)) return []
-  const padded = krsNumber.padStart(10, '0')
 
-  const url = `${REJESTR_BASE}/krs/${padded}/msig`
+  // Resolve org id
+  let orgId: string | null = null
+  try {
+    if (identifier.krs) orgId = await resolveOrgIdByKrs(apiKey, identifier.krs)
+    if (!orgId && identifier.nip) orgId = await resolveOrgIdByNip(apiKey, identifier.nip)
+  } catch (err) {
+    console.warn('[msig] org resolve failed:', err instanceof Error ? err.message : err)
+    return []
+  }
+  if (!orgId) return []
+
+  const url = `${REJESTR_BASE}/org/${orgId}/krs-wpisy`
   let res: Response
   try {
     res = await fetch(url, {
       method: 'GET',
-      headers: { Authorization: `Token ${apiKey}`, Accept: 'application/json' },
+      headers: {
+        Authorization: apiKey,
+        Accept: 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Sztab/1.0; +mailto:vadymrotai@gmail.com)',
+      },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
   } catch (err) {
     console.error('[msig] network error:', err instanceof Error ? err.message : err)
     return []
   }
-
   if (res.status === 404) return []
   if (!res.ok) {
     console.error(`[msig] HTTP ${res.status}`)
     return []
   }
 
-  const data = (await res.json()) as RejestrMsigResponse
+  const data = (await res.json()) as KrsWpisyResponse
   const items = data.results ?? []
-  return items.map((r) => ({
-    msig_number: r.numer ?? null,
-    publication_date: r.data ?? null,
-    change_type: r.rodzaj_zmiany ?? (r.opis ? parseChangeType(r.opis) : null),
-    description: r.opis ?? null,
+  return items.map((r): MsigChange => ({
+    msig_number: r.msig?.numer ?? r.numer_wpisu ?? null,
+    publication_date: r.msig?.data ?? r.data ?? null,
+    change_type: r.rodzaj_wpisu ?? (r.opis_zmian ? parseChangeType(r.opis_zmian) : null),
+    description: r.opis_zmian ?? null,
     raw: r,
   }))
 }

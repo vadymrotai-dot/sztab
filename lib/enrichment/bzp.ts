@@ -1,29 +1,33 @@
 // lib/enrichment/bzp.ts
-// Sprint K / Phase 2A — BZP (Biuletyn Zamówień Publicznych) integration.
+// Sprint L Phase 1B — BZP API endpoint fix.
 //
-// Endpoint: https://ezamowienia.gov.pl/mo-client-board/bzp/api/notice
-// Free, no auth.
+// Working endpoint discovered: https://ezamowienia.gov.pl/mo-board/api/v1/notice
+// Free, no auth (public). Earlier mo-client-board path returned SPA HTML —
+// that's the frontend, not API.
 //
-// Use cases:
-//   1. Search by winner NIP — на demand при /api/intelligence/lookup
-//      (returns historical wins for known target)
-//   2. Daily monitor — bzp-monitor cron pulls new notices з last 24h,
-//      filters HoReCa CPV, links by NIP до existing entities
+// Required params per validation errors:
+//   PageSize           (>0)
+//   NoticeType         (enum: ContractNotice|TenderResultNotice|ContractPerformingNotice)
+//   PublicationDateFrom + PublicationDateTo
 //
-// HoReCa-relevant CPV codes (food-related):
-//   15xxxxxx = food/beverages
-//   55xxxxxx = catering services
-//   55300000 = food services
-//   55400000 = catering for events
+// Filter `OrderingNip` (orderingParty) recognized; winnerNip filter ignored
+// at API level — winner data is inside htmlBody (HTML notice text). Winner
+// matching by NIP requires app-side htmlBody parsing.
+//
+// Returned shape (per real response):
+//   { noticeNumber, bzpNumber, publicationDate, orderObject, cpvCode,
+//     organizationName, organizationCity, organizationProvince,
+//     organizationNationalId (= ordering party NIP), htmlBody, ... }
 
-const BZP_BASE = 'https://ezamowienia.gov.pl/mo-client-board/bzp/api'
+const BZP_BASE = 'https://ezamowienia.gov.pl/mo-board/api/v1'
 const REQUEST_TIMEOUT_MS = 30_000
+const UA = 'Mozilla/5.0 (Sztab/1.0; +mailto:vadymrotai@gmail.com)'
 
 /** HoReCa-relevant CPV first-2-digits prefixes. */
 export const HORECA_CPV_PREFIXES = ['15', '55']
 
 export interface BzpNotice {
-  noticeId: string // 'BZP 2025/BZP-00184237'
+  noticeId: string
   publicationDate: string | null
   awardDate: string | null
   subject: string | null
@@ -33,7 +37,7 @@ export interface BzpNotice {
   orderingParty: {
     name: string | null
     nip: string | null
-    type: string | null // 'szpital'/'gmina'/'szkoła'/'inny'
+    type: string | null
   }
   winner: {
     name: string | null
@@ -44,117 +48,164 @@ export interface BzpNotice {
 }
 
 interface BzpApiItem {
-  noticeId?: string
+  noticeNumber?: string
+  bzpNumber?: string
   noticeType?: string
-  publishingDate?: string
-  awardingDate?: string
-  contractAwardSection?: {
-    contractAwardDate?: string
-    awardedTo?: Array<{ name?: string; identifier?: string; nip?: string }>
-    valueOfContractAward?: { amount?: number; currency?: string }
-  }
-  scopeSection?: {
-    cpvCodesAdditional?: string[]
-    cpvCodeMain?: string
-    title?: string
-  }
-  contractingAuthoritySection?: {
-    name?: string
-    nip?: string
-    type?: string
-  }
-  contractDuration?: string
+  publicationDate?: string
+  submittingOffersDate?: string | null
+  procedureResult?: string | null
+  orderObject?: string
+  cpvCode?: string
+  organizationName?: string
+  organizationCity?: string
+  organizationProvince?: string
+  organizationCountry?: string
+  organizationNationalId?: string
+  organizationId?: string
+  tenderId?: string
+  htmlBody?: string
+  isTenderAmountBelowEU?: boolean
+  clientType?: string
+  orderType?: string
+  tenderType?: string
 }
+
+const NOTICE_TYPE_AWARDED = 'TenderResultNotice'
+const NOTICE_TYPE_ANNOUNCEMENT = 'ContractNotice'
 
 function isHorecaRelevant(cpv: string[]): boolean {
   return cpv.some((code) => HORECA_CPV_PREFIXES.some((p) => code.startsWith(p)))
 }
 
+/** Parse "45233140-2 (Roboty drogowe)" → just "45233140-2" */
+function parseCpvField(raw: string | undefined): string[] {
+  if (!raw) return []
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .map((s) => {
+      const m = s.match(/^([\d-]+)/)
+      return m && m[1] ? m[1] : s
+    })
+    .filter(Boolean)
+}
+
+/** Naive winner extraction from htmlBody (sufficient для POC; refine later). */
+function extractWinnerFromHtml(html: string | undefined): { name: string | null; nip: string | null } | null {
+  if (!html) return null
+  const winnerNameMatch = html.match(/(?:Wykonawca|Nazwa wykonawcy)[^<]*<[^>]*>([^<]+)</i)
+  const nipMatch = html.match(/NIP[^0-9]{0,10}(\d{10})/)
+  const name = winnerNameMatch && winnerNameMatch[1] ? winnerNameMatch[1].trim() : null
+  const nip = nipMatch && nipMatch[1] ? nipMatch[1] : null
+  if (!name && !nip) return null
+  return { name: name ?? null, nip: nip ?? null }
+}
+
 function parseBzpItem(raw: BzpApiItem): BzpNotice | null {
-  const noticeId = raw.noticeId
+  const noticeId = raw.noticeNumber ?? raw.bzpNumber
   if (!noticeId) return null
-
-  const cpvAll: string[] = []
-  if (raw.scopeSection?.cpvCodeMain) cpvAll.push(raw.scopeSection.cpvCodeMain)
-  if (Array.isArray(raw.scopeSection?.cpvCodesAdditional))
-    cpvAll.push(...raw.scopeSection.cpvCodesAdditional)
-  const cpv = Array.from(new Set(cpvAll.filter(Boolean)))
-
-  const award = raw.contractAwardSection
-  const winnerEntries = Array.isArray(award?.awardedTo) ? award!.awardedTo : []
-  const winner = winnerEntries[0] ?? null
-
+  const cpvCodes = parseCpvField(raw.cpvCode)
+  const winner = raw.noticeType === NOTICE_TYPE_AWARDED ? extractWinnerFromHtml(raw.htmlBody) : null
   return {
     noticeId,
-    publicationDate: raw.publishingDate ?? null,
-    awardDate: award?.contractAwardDate ?? raw.awardingDate ?? null,
-    subject: raw.scopeSection?.title ?? null,
-    contractValue: award?.valueOfContractAward?.amount ?? null,
-    currency: award?.valueOfContractAward?.currency ?? 'PLN',
-    cpvCodes: cpv,
+    publicationDate: raw.publicationDate ?? null,
+    awardDate: raw.noticeType === NOTICE_TYPE_AWARDED ? raw.publicationDate ?? null : null,
+    subject: raw.orderObject ?? null,
+    contractValue: null,
+    currency: 'PLN',
+    cpvCodes,
     orderingParty: {
-      name: raw.contractingAuthoritySection?.name ?? null,
-      nip: raw.contractingAuthoritySection?.nip ?? null,
-      type: raw.contractingAuthoritySection?.type ?? null,
+      name: raw.organizationName ?? null,
+      nip: raw.organizationNationalId ?? null,
+      type: raw.clientType ?? null,
     },
-    winner: winner
-      ? {
-          name: winner.name ?? null,
-          nip: winner.nip ?? winner.identifier ?? null,
-        }
-      : null,
-    contractPeriod: raw.contractDuration ?? null,
+    winner,
+    contractPeriod: null,
     raw,
   }
 }
 
-/** Search BZP by winner NIP. Returns matching contract award notices. */
+interface SearchOpts {
+  noticeType?: string
+  fromDate?: string
+  toDate?: string
+  orderingNip?: string
+  cpvCode?: string
+  pageSize?: number
+}
+
+async function bzpSearch(opts: SearchOpts): Promise<BzpNotice[]> {
+  const params = new URLSearchParams({
+    PageSize: String(opts.pageSize ?? 50),
+    NoticeType: opts.noticeType ?? NOTICE_TYPE_AWARDED,
+    PublicationDateFrom: opts.fromDate ?? defaultFromDate(),
+    PublicationDateTo: opts.toDate ?? defaultToDate(),
+  })
+  if (opts.orderingNip) params.set('OrderingNip', opts.orderingNip)
+  if (opts.cpvCode) params.set('CpvCode', opts.cpvCode)
+
+  const url = `${BZP_BASE}/notice?${params.toString()}`
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json', 'User-Agent': UA },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+  } catch (err) {
+    throw new Error(`BZP network: ${err instanceof Error ? err.message : err}`)
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`BZP HTTP ${res.status}: ${body.slice(0, 200)}`)
+  }
+  const items = (await res.json()) as BzpApiItem[]
+  return (items ?? []).map(parseBzpItem).filter((x): x is BzpNotice => x !== null)
+}
+
+function defaultFromDate(): string {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() - 1)
+  return d.toISOString().slice(0, 10)
+}
+function defaultToDate(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
 export async function searchBzpByWinnerNip(nip: string): Promise<BzpNotice[]> {
   const cleanNip = nip.replace(/\D/g, '')
   if (cleanNip.length !== 10) return []
-
-  // BZP API search params per public docs
-  const url = `${BZP_BASE}/notice?winnerNip=${cleanNip}&size=50&sort=publishingDate,desc`
-  let res: Response
+  // Try OrderingNip — for buyer-side (hospitals/schools/gov)
   try {
-    res = await fetch(url, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    return await bzpSearch({
+      noticeType: NOTICE_TYPE_AWARDED,
+      orderingNip: cleanNip,
+      pageSize: 100,
     })
   } catch (err) {
-    throw new Error(`BZP network: ${err instanceof Error ? err.message : err}`)
+    console.warn('[BZP] OrderingNip search failed:', err instanceof Error ? err.message : err)
+    return []
   }
-  if (!res.ok) {
-    throw new Error(`BZP HTTP ${res.status}`)
-  }
-  const data = (await res.json()) as { content?: BzpApiItem[]; items?: BzpApiItem[] }
-  const items = (data.content ?? data.items ?? []) as BzpApiItem[]
-  return items.map(parseBzpItem).filter((x): x is BzpNotice => x !== null)
 }
 
-/** Daily monitor — pull notices з last 24h, filter HoReCa CPV. */
 export async function fetchRecentHorecaNotices(sinceHours = 24): Promise<BzpNotice[]> {
-  const sinceDate = new Date(Date.now() - sinceHours * 3_600_000)
-    .toISOString()
-    .slice(0, 10)
-  const url = `${BZP_BASE}/notice?fromDate=${sinceDate}&size=200&sort=publishingDate,desc`
-  let res: Response
-  try {
-    res = await fetch(url, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    })
-  } catch (err) {
-    throw new Error(`BZP network: ${err instanceof Error ? err.message : err}`)
-  }
-  if (!res.ok) {
-    throw new Error(`BZP HTTP ${res.status}`)
-  }
-  const data = (await res.json()) as { content?: BzpApiItem[]; items?: BzpApiItem[] }
-  const items = (data.content ?? data.items ?? []) as BzpApiItem[]
-  return items
-    .map(parseBzpItem)
-    .filter((x): x is BzpNotice => x !== null && isHorecaRelevant(x.cpvCodes))
+  const sinceDate = new Date(Date.now() - sinceHours * 3_600_000).toISOString().slice(0, 10)
+  const today = new Date().toISOString().slice(0, 10)
+  const notices = await bzpSearch({
+    noticeType: NOTICE_TYPE_AWARDED,
+    fromDate: sinceDate,
+    toDate: today,
+    pageSize: 200,
+  })
+  return notices.filter((n) => isHorecaRelevant(n.cpvCodes))
+}
+
+export async function searchBzpByOrderingNip(nip: string): Promise<BzpNotice[]> {
+  const cleanNip = nip.replace(/\D/g, '')
+  if (cleanNip.length !== 10) return []
+  return bzpSearch({
+    noticeType: NOTICE_TYPE_ANNOUNCEMENT,
+    orderingNip: cleanNip,
+    pageSize: 100,
+  })
 }
