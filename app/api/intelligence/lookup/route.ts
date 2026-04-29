@@ -240,8 +240,12 @@ export async function POST(req: Request) {
   response.client_id = clientId
   response.entity_type = entityType
 
-  // 1b. KRS lookup (если sp.z o.o./S.A. з extracted krs_number)
-  if (krsNumber && (entityType === 'sp.z o.o.' || entityType === 'S.A.' || entityType === 'inne')) {
+  // 1b. KRS lookup — Sprint M FIX 8: відкинуто entityType gating. KRS number
+  // alone proves це legal entity (sp.z o.o./S.A./S.K.). GUS sometimes returns
+  // null praw_formaPrawnaNazwa попри valid KRS — у тому випадку KRS step
+  // sam determines legal_form. Раніше блок skipped → no krs_management_board
+  // → no persons auto-created.
+  if (krsNumber && entityType !== 'JDG') {
     const runId = await startEnrichmentRun(supabase, {
       target_type: 'company',
       target_id: clientId,
@@ -843,7 +847,12 @@ async function extractAndCreatePersons(
 ): Promise<number> {
   let created = 0
 
-  // From KRS zarząd (already stored у company_profile_fields.krs_management_board)
+  // From KRS zarząd (already stored у company_profile_fields.krs_management_board).
+  // Sprint M FIX 8: KRS API anonymizes names per RODO. Members come як
+  // { function, index } з lib/enrichment/krs.ts:extractBoard. We create
+  // placeholder persons keyed на role, name placeholder "(KRS anon)",
+  // щоб PeopleSection показала existing zarząd structure. User edytuje
+  // imię/nazwisko вручну or after Apify/website scrape adds them.
   const { data: boardField } = await supabase
     .from('company_profile_fields')
     .select('value_json')
@@ -852,27 +861,47 @@ async function extractAndCreatePersons(
     .is('superseded_at', null)
     .maybeSingle()
   const board =
-    (boardField as { value_json: Array<{ name?: string; surname?: string; functionName?: string; funkcjaWOrganie?: string }> } | null)
-      ?.value_json
+    (boardField as {
+      value_json: Array<{
+        function?: string | null
+        index?: number
+        name?: string
+        surname?: string
+        functionName?: string
+        funkcjaWOrganie?: string
+      }>
+    } | null)?.value_json
   if (Array.isArray(board)) {
     for (const member of board) {
-      const fullName = [member.name, member.surname].filter(Boolean).join(' ')
-      if (!fullName) continue
-      const parts = fullName.split(/\s+/)
-      const imie = parts[0] ?? ''
-      const nazwisko = parts.slice(1).join(' ') || '?'
-      const rola = member.funkcjaWOrganie ?? member.functionName ?? 'Członek Zarządu'
+      const rola =
+        member.funkcjaWOrganie ??
+        member.functionName ??
+        member.function ??
+        'Członek Zarządu'
+      const explicitName = [member.name, member.surname].filter(Boolean).join(' ').trim()
 
-      // Dedup by (imie, nazwisko, link на цей client)
+      // Use explicit name if present (older API shape); otherwise anonymized
+      // placeholder з role + index.
+      let imie: string
+      let nazwisko: string
+      if (explicitName) {
+        const parts = explicitName.split(/\s+/)
+        imie = parts[0] ?? ''
+        nazwisko = parts.slice(1).join(' ') || '?'
+      } else {
+        imie = '(KRS anon)'
+        nazwisko = `${rola} ${member.index ?? ''}`.trim()
+      }
+
+      // Dedup by (client_id, rola) — skip if a link з cим rola вже existeje
       const { data: existingLink } = await supabase
         .from('person_company_links')
-        .select('id, person_id, persons!inner(imie, nazwisko)')
+        .select('id, person_id')
         .eq('client_id', clientId)
         .ilike('rola', rola)
         .limit(1)
       if (existingLink && existingLink.length > 0) continue
 
-      // Insert person + link
       const { data: ins } = await supabase
         .from('persons')
         .insert({
@@ -887,7 +916,8 @@ async function extractAndCreatePersons(
           person_id: (ins as { id: string }).id,
           client_id: clientId,
           rola,
-          jest_decyzyjny: rola.toLowerCase().includes('prezes') || rola.toLowerCase().includes('zarząd'),
+          jest_decyzyjny:
+            rola.toLowerCase().includes('prezes') || rola.toLowerCase().includes('zarząd'),
           zrodlo: 'KRS',
         })
         created++
