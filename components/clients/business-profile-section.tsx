@@ -1,9 +1,16 @@
+'use client'
+
 // components/clients/business-profile-section.tsx
 // Sprint L Phase 3 — UI для business_profile JSONB на /clients/[id].
+// Sprint M FIX 4 — added "Re-analyze" button; consolidates BusinessDataPanel
+// + PotentialAnalysisPanel (oba removed).
 
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { SparklesIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { SparklesIcon, RefreshCwIcon, Loader2Icon } from 'lucide-react'
 
 interface BusinessProfile {
   business_format?: string
@@ -31,20 +38,57 @@ const FORMAT_LABELS: Record<string, string> = {
   other: 'Inne',
 }
 
-export function BusinessProfileSection({ profile }: { profile: BusinessProfile | null }) {
+export function BusinessProfileSection({
+  clientId,
+  profile,
+}: {
+  clientId: string
+  profile: BusinessProfile | null
+}) {
+  const router = useRouter()
+  const [analyzing, setAnalyzing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function reanalyze() {
+    setAnalyzing(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/ai/analyze-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId }),
+      })
+      const json = (await res.json()) as { ok: boolean; error?: string }
+      if (!json.ok) {
+        setError(json.error ?? 'Analiza nie powiodła się')
+      } else {
+        router.refresh()
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Błąd sieci')
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
   if (!profile || !profile.business_format) {
     return (
       <Card className="border-l-4 border-l-purple-400">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
           <CardTitle className="flex items-center gap-2 text-base">
             <SparklesIcon className="size-5 text-purple-500" />
-            Profil biznesowy (AI)
+            Analiza biznesowa (AI)
           </CardTitle>
+          <Button size="sm" variant="outline" onClick={reanalyze} disabled={analyzing}>
+            {analyzing ? <Loader2Icon className="size-4 animate-spin" /> : <SparklesIcon className="size-4" />}
+            <span className="ml-2">Analizuj</span>
+          </Button>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Brak analizy biznesowej. Uruchom Intelligence Lookup żeby AI wygenerowało profil.
+            Brak analizy biznesowej. Uruchom Intelligence Lookup albo kliknij Analizuj — AI wygeneruje profil.
           </p>
+          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         </CardContent>
       </Card>
     )
@@ -59,13 +103,28 @@ export function BusinessProfileSection({ profile }: { profile: BusinessProfile |
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <CardTitle className="flex items-center gap-2 text-base">
           <SparklesIcon className="size-5 text-purple-500" />
-          Profil biznesowy (AI)
+          Analiza biznesowa (AI)
         </CardTitle>
-        <div className="text-right text-xs text-muted-foreground">
-          {profile.analyzed_at && new Date(profile.analyzed_at).toLocaleDateString('pl-PL')}
-          <div className="font-mono">{profile.model_used}</div>
+        <div className="flex items-start gap-3">
+          <div className="text-right text-xs text-muted-foreground">
+            {profile.analyzed_at && new Date(profile.analyzed_at).toLocaleDateString('pl-PL')}
+            <div className="font-mono">{profile.model_used}</div>
+          </div>
+          <Button size="sm" variant="outline" onClick={reanalyze} disabled={analyzing}>
+            {analyzing ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <RefreshCwIcon className="size-4" />
+            )}
+            <span className="ml-2 hidden sm:inline">Re-analyze</span>
+          </Button>
         </div>
       </CardHeader>
+      {error && (
+        <div className="mx-6 -mt-2 mb-2 rounded bg-red-50 p-2 text-sm text-red-700">
+          {error}
+        </div>
+      )}
       <CardContent className="space-y-3">
         {/* Top row: format + locations */}
         <div className="flex flex-wrap items-center gap-2">

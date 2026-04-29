@@ -11,8 +11,6 @@ import { cn } from '@/lib/utils'
 import { ClientContacts } from '@/components/clients/client-contacts'
 import { ClientDeals } from '@/components/clients/client-deals'
 import { ClientTasks } from '@/components/clients/client-tasks'
-import { BusinessDataPanel } from '@/components/clients/business-data-panel'
-import { PotentialAnalysisPanel } from '@/components/clients/potential-analysis-panel'
 import { NewDealButton } from '@/components/clients/new-deal-button'
 import { VatSection } from '@/app/(dashboard)/_shared/vat-section'
 import { GusSection } from '@/app/(dashboard)/_shared/gus-section'
@@ -304,8 +302,8 @@ export default async function ClientDetailPage({
             }}
           />
         </div>
-        {/* Sprint L Phase 3 — AI business profile (top-priority section) */}
-        <BusinessProfileSection profile={client.business_profile ?? null} />
+        {/* Sprint L Phase 3 / Sprint M FIX 4 — single unified AI block */}
+        <BusinessProfileSection clientId={id} profile={client.business_profile ?? null} />
 
         <KrsSection
           targetType="client"
@@ -348,17 +346,10 @@ export default async function ClientDetailPage({
         <MsigChangesSection changes={(msigChanges ?? []) as never} />
         <ProfileFieldsTable fields={(profileFields ?? []) as never} />
 
-        {/* Row 2: AI panele - dane biznesowe + potencjal wspolpracy */}
-        <div className="grid gap-6 lg:grid-cols-2">
-          <BusinessDataPanel clientId={id} initial={client.business_data} />
-          <PotentialAnalysisPanel
-            clientId={id}
-            currentSegment={client.segment}
-            initial={client.potential_analysis}
-          />
-        </div>
+        {/* Sprint M FIX 4: BusinessDataPanel + PotentialAnalysisPanel removed —
+             functionality merged into <BusinessProfileSection> above */}
 
-        {/* Row 2.5: L5 algo matching */}
+        {/* L5 algo matching */}
         <MatchesPanel
           mode="product-side"
           keyType="client_id"
