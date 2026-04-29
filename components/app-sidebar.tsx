@@ -14,6 +14,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
   SidebarTrigger,
 } from '@/components/ui/sidebar'
 import {
@@ -41,6 +42,8 @@ import {
   AlertCircleIcon,
   SearchIcon,
   HandshakeIcon,
+  BriefcaseIcon,
+  CalendarIcon,
   LogOutIcon,
   ChevronUpIcon,
   CommandIcon,
@@ -60,32 +63,63 @@ interface AppSidebarProps {
   prospectHotCount?: number
 }
 
+function renderNav(items: NavItem[], pathname: string) {
+  return items.map((item) => {
+    const isExact = pathname === item.href
+    const isSubsegment = pathname.startsWith(item.href + '/')
+    const isActive = isExact || isSubsegment
+    return (
+      <SidebarMenuItem key={item.name}>
+        <SidebarMenuButton asChild isActive={isActive} tooltip={item.name}>
+          <Link href={item.href}>
+            <item.icon className="size-4" />
+            <span>{item.name}</span>
+            {item.badgeCount !== undefined && item.badgeCount > 0 && (
+              <Badge
+                variant="secondary"
+                className="ml-auto h-5 min-w-[20px] justify-center bg-emerald-100 px-1.5 text-[10px] text-emerald-800"
+              >
+                {item.badgeCount}
+              </Badge>
+            )}
+          </Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    )
+  })
+}
+
 export function AppSidebar({ user, prospectHotCount = 0 }: AppSidebarProps) {
-  const navigation: NavItem[] = [
-    { name: 'Dzis', href: '/dashboard', icon: LayoutDashboardIcon },
-    { name: 'Pulpit (dziś)', href: '/pulpit/dzisiaj', icon: CalendarCheckIcon },
+  // Sprint O Phase 1 — consolidated navigation: 5 main + Organizer + Ustawienia.
+  // Old routes (intelligence, matches, kp-generator, tasks, etc.) remain
+  // accessible via direct URL for backward compat.
+  void prospectHotCount // surface badge moved into /clients tab у Phase 5
+  const mainNav: NavItem[] = [
+    { name: 'Dziś', href: '/pulpit/dzisiaj', icon: LayoutDashboardIcon },
     { name: 'Klienci', href: '/clients', icon: UsersIcon },
-    { name: 'Umowy', href: '/deals', icon: KanbanIcon },
-    { name: 'Generator KP', href: '/kp-generator', icon: FileTextIcon },
-    { name: 'Dostawcy', href: '/suppliers', icon: TruckIcon },
+    { name: 'Sprzedaż', href: '/sprzedaz', icon: BriefcaseIcon },
     { name: 'Produkty', href: '/products', icon: PackageIcon },
-    { name: 'AI Discovery', href: '/intelligence', icon: SparklesIcon },
-    { name: 'Intelligence Lookup', href: '/intelligence/lookup', icon: SearchIcon },
-    {
-      name: 'Prospekty',
-      href: '/intelligence/prospects',
-      icon: CrosshairIcon,
-      badgeCount: prospectHotCount,
-    },
-    { name: 'Matche (TOP-100)', href: '/matches', icon: SparklesIcon },
-    { name: 'Pre-Apify review', href: '/matches/review', icon: CheckSquareIcon },
-    { name: 'Handoff Pikniko', href: '/handoff/pikniko', icon: HandshakeIcon },
-    { name: 'Admin / Health', href: '/admin/health', icon: AlertCircleIcon },
-    { name: 'Kalkulator', href: '/calculator', icon: CalculatorIcon },
-    { name: 'Zadania', href: '/tasks', icon: CheckSquareIcon },
-    { name: 'Cele', href: '/goals', icon: TargetIcon },
-    { name: 'Nawyki', href: '/habits', icon: CalendarCheckIcon },
+    { name: 'Dostawcy', href: '/suppliers', icon: TruckIcon },
+  ]
+  const utilNav: NavItem[] = [
+    { name: 'Organizer', href: '/organizer', icon: CalendarIcon },
     { name: 'Ustawienia', href: '/settings', icon: SettingsIcon },
+  ]
+  const navigation: NavItem[] = [...mainNav, ...utilNav]
+  // Suppress "unused import" TS warnings — icons retained для backward compat
+  // routes (matches/intelligence/handoff still accessible via URL).
+  void [
+    KanbanIcon,
+    FileTextIcon,
+    SparklesIcon,
+    CrosshairIcon,
+    AlertCircleIcon,
+    SearchIcon,
+    HandshakeIcon,
+    CheckSquareIcon,
+    TargetIcon,
+    CalendarCheckIcon,
+    CalculatorIcon,
   ]
 
   const pathname = usePathname()
@@ -123,35 +157,15 @@ export function AppSidebar({ user, prospectHotCount = 0 }: AppSidebarProps) {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navigation.map((item) => {
-                // Active matching: exact match OR pathname startsWith href.
-                // Exception: /intelligence shouldn't capture /intelligence/prospects
-                // (uses startsWith → both would match). Use exact-or-segment
-                // boundary check instead.
-                const isExact = pathname === item.href
-                const isSubsegment =
-                  item.href !== '/dashboard' &&
-                  pathname.startsWith(item.href + '/')
-                const isActive = isExact || isSubsegment
-                return (
-                  <SidebarMenuItem key={item.name}>
-                    <SidebarMenuButton asChild isActive={isActive} tooltip={item.name}>
-                      <Link href={item.href}>
-                        <item.icon className="size-4" />
-                        <span>{item.name}</span>
-                        {item.badgeCount !== undefined && item.badgeCount > 0 && (
-                          <Badge
-                            variant="secondary"
-                            className="ml-auto h-5 min-w-[20px] justify-center bg-emerald-100 px-1.5 text-[10px] text-emerald-800"
-                          >
-                            {item.badgeCount}
-                          </Badge>
-                        )}
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )
-              })}
+              {renderNav(mainNav, pathname)}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarSeparator />
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {renderNav(utilNav, pathname)}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
