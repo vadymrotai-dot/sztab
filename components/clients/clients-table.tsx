@@ -97,7 +97,12 @@ export function ClientsTable({
   useEffect(() => {
     try {
       const t = localStorage.getItem(TOOLBAR_KEY)
-      if (t) setToolbar({ ...DEFAULT_TOOLBAR, ...JSON.parse(t) })
+      if (t) {
+        // Sprint Q FIX B: Group radio removed з UI у Sprint P FIX 3 —
+        // force groupBy='none' дla existing users з legacy localStorage
+        // state (otherwise FlatTable + checkbox column nie render).
+        setToolbar({ ...DEFAULT_TOOLBAR, ...JSON.parse(t), groupBy: 'none' })
+      }
     } catch {}
     setHydrated(true)
   }, [])

@@ -252,42 +252,43 @@ export function ClientsHub({ clients, unifiedRows }: Props) {
 
         <div className="ml-auto flex items-center gap-2">
           {selectedCount > 0 && (
-            <>
-              <span className="text-xs text-muted-foreground">
-                Wybrano <strong>{selectedCount}</strong> firm
-              </span>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm" variant="default">
-                    <ZapIcon className="mr-1 size-3" />
-                    Akcje grupowe
-                    <ChevronDownIcon className="ml-1 size-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={exportCohort}>
-                    <BriefcaseIcon className="mr-2 size-4" />
-                    Eksport jako kohorta Pikniko
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={changeTier}>
-                    Zmień tier
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={changeStatus}>
-                    Zmień status
-                  </DropdownMenuItem>
-                  <DropdownMenuItem disabled>
-                    Wzbogać kontakty (Apify) — soon
-                  </DropdownMenuItem>
-                  <DropdownMenuItem disabled>
-                    Wygeneruj cold openery — soon
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={clearSelection}>
-                    Wyczyść zaznaczenie
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
+            <span className="text-xs text-muted-foreground">
+              Wybrano <strong>{selectedCount}</strong> firm
+            </span>
           )}
+          {/* Sprint Q FIX B: dropdown always rendered, items disabled когда 0 selected */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant={selectedCount > 0 ? 'default' : 'outline'}>
+                <ZapIcon className="mr-1 size-3" />
+                Akcje grupowe
+                <ChevronDownIcon className="ml-1 size-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={exportCohort} disabled={selectedCount === 0}>
+                <BriefcaseIcon className="mr-2 size-4" />
+                Eksport jako kohorta Pikniko
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={changeTier} disabled={selectedCount === 0}>
+                Zmień tier
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={changeStatus} disabled={selectedCount === 0}>
+                Zmień status
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled>
+                Wzbogać kontakty (Apify) — soon
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled>
+                Wygeneruj cold openery — soon
+              </DropdownMenuItem>
+              {selectedCount > 0 && (
+                <DropdownMenuItem onClick={clearSelection}>
+                  Wyczyść zaznaczenie
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <AddCompanyButton />
         </div>
       </div>
