@@ -1,9 +1,11 @@
 // components/clients/financials-section.tsx
 // Sprint K — sprawozdania finansowe display з 3-year bar chart placeholder.
+// Sprint L Phase 1E / Sprint M FIX 7 — context-aware fallback дla empty
+// state: branches by forma_prawna + last enrichment_log run.
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { TrendingUpIcon, TrendingDownIcon } from 'lucide-react'
+import { TrendingUpIcon, TrendingDownIcon, AlertCircleIcon } from 'lucide-react'
 
 interface Financials {
   rok: number
@@ -23,16 +25,110 @@ function formatPln(v: number | null): string {
   return Math.round(v).toString()
 }
 
-export function FinancialsSection({ data }: { data: Financials[] }) {
+export interface FinancialsFallbackCtx {
+  forma_prawna: string | null
+  lastRunStatus: 'success' | 'partial' | 'error' | 'never'
+  lastRunError: string | null
+}
+
+function isJdg(forma: string | null): boolean {
+  if (!forma) return false
+  const lower = forma.toLowerCase()
+  return (
+    lower.includes('osoba fizyczna') ||
+    lower.includes('jdg') ||
+    lower.includes('działalność gospodarcza')
+  )
+}
+
+function isCompany(forma: string | null): boolean {
+  if (!forma) return false
+  const lower = forma.toLowerCase()
+  return (
+    lower.includes('z o.o.') ||
+    lower.includes('z ograniczoną') ||
+    lower.includes('akcyjna') ||
+    lower.includes('s.a.') ||
+    lower.includes('s.k.') ||
+    lower.includes('sp.k.')
+  )
+}
+
+function fallbackMessage(ctx: FinancialsFallbackCtx | undefined): {
+  message: string
+  isWarning: boolean
+} {
+  if (!ctx) {
+    return {
+      message: 'Brak sprawozdań finansowych. Uruchom Intelligence Lookup żeby spróbować pobrać.',
+      isWarning: false,
+    }
+  }
+  if (isJdg(ctx.forma_prawna)) {
+    return {
+      message:
+        'JDG nie publikuje sprawozdań finansowych — tylko sp. z o.o. / S.A. mają obowiązek raportowania.',
+      isWarning: false,
+    }
+  }
+  if (isCompany(ctx.forma_prawna)) {
+    if (ctx.lastRunStatus === 'error') {
+      return {
+        message: `Sprawozdania niedostępne — ostatnie pobranie zakończyło się błędem${
+          ctx.lastRunError ? `: ${ctx.lastRunError.slice(0, 100)}` : '. Spróbuj ponownie później.'
+        }`,
+        isWarning: true,
+      }
+    }
+    if (ctx.lastRunStatus === 'never') {
+      return {
+        message:
+          'Sprawozdania nie były jeszcze pobierane — uruchom Intelligence Lookup аby pobrać dane finansowe z KRS.',
+        isWarning: false,
+      }
+    }
+    return {
+      message:
+        'Brak sprawozdań w rejestrze KRS. Firma może być nowa (przed pierwszym rokiem obrotowym) albo раport jeszcze nie został złożony.',
+      isWarning: false,
+    }
+  }
+  // unknown forma_prawna
+  if (ctx.lastRunStatus === 'never') {
+    return {
+      message: 'Brak sprawozdań finansowych. Uruchom Intelligence Lookup żeby spróbować pobrać.',
+      isWarning: false,
+    }
+  }
+  return {
+    message:
+      'Brak sprawozdań finansowych (forma prawna nieznana — sprawdź profil aby określić obowiązki raportowe).',
+    isWarning: false,
+  }
+}
+
+export function FinancialsSection({
+  data,
+  fallbackCtx,
+}: {
+  data: Financials[]
+  fallbackCtx?: FinancialsFallbackCtx
+}) {
   if (data.length === 0) {
+    const fb = fallbackMessage(fallbackCtx)
     return (
       <Card className="border-l-4 border-l-orange-400">
         <CardHeader>
           <CardTitle className="text-base">Finanse · sprawozdania KRS</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Brak sprawozdań finansowych. JDG nie publikuje sprawozdań — tylko sp. z o.o./S.A. mają obowiązek.
+          <p
+            className={`flex items-start gap-2 text-sm ${
+              fb.isWarning ? 'text-amber-700' : 'text-muted-foreground'
+            }`}
+          >
+            {fb.isWarning && <AlertCircleIcon className="size-4 shrink-0 translate-y-0.5" />}
+            <span>{fb.message}</span>
           </p>
         </CardContent>
       </Card>
