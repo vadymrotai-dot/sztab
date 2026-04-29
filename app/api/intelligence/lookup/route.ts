@@ -184,7 +184,11 @@ export async function POST(req: Request) {
         if (krsNumber) fieldsList.push({ field_key: 'krs_number', value: { value_text: krsNumber } })
 
         const merged = await upsertFields(supabase, { type: 'client', id: clientId }, fieldsList, 'GUS')
-        // Mirror GUS data back to clients table (legacy compat)
+        // Mirror GUS data back to clients table.
+        // Sprint M FIX 2: GUS returns PKD-2007 codes — also write до
+        // pkd_2007_codes (matching engine reads це через clientToTarget).
+        // pkd_codes legacy column kept у sync. pkd_2025_codes left untouched
+        // (separate future migration коли GUS adapts).
         await supabase
           .from('clients')
           .update({
@@ -195,6 +199,7 @@ export async function POST(req: Request) {
             registered_date: gus.registered_date,
             employee_count_range: gus.employee_count_range,
             pkd_codes: gus.pkd_codes,
+            pkd_2007_codes: gus.pkd_codes && gus.pkd_codes.length > 0 ? gus.pkd_codes : null,
             gus_last_checked: gus.checked_at,
             krs_number: krsNumber,
           })
