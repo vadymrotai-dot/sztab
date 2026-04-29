@@ -39,6 +39,7 @@ import {
   SparklesIcon,
   CrosshairIcon,
   AlertCircleIcon,
+  SearchIcon,
   LogOutIcon,
   ChevronUpIcon,
   CommandIcon,
@@ -67,6 +68,7 @@ export function AppSidebar({ user, prospectHotCount = 0 }: AppSidebarProps) {
     { name: 'Dostawcy', href: '/suppliers', icon: TruckIcon },
     { name: 'Produkty', href: '/products', icon: PackageIcon },
     { name: 'AI Discovery', href: '/intelligence', icon: SparklesIcon },
+    { name: 'Intelligence Lookup', href: '/intelligence/lookup', icon: SearchIcon },
     {
       name: 'Prospekty',
       href: '/intelligence/prospects',
