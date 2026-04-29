@@ -136,9 +136,17 @@ async function gatherContext(
     .select('rola, person:persons(imie, nazwisko)')
     .eq('client_id', clientId)
     .is('data_do', null)
-  const zarząd = ((pcl ?? []) as Array<{ rola: string; person: { imie: string; nazwisko: string } | null }>)
-    .filter((l) => l.person)
-    .map((l) => ({ imie: l.person!.imie, nazwisko: l.person!.nazwisko, rola: l.rola }))
+  // Supabase joined relations comes through як array; tighten through unknown.
+  const pclRows = ((pcl ?? []) as unknown) as Array<{
+    rola: string
+    person: { imie: string; nazwisko: string } | { imie: string; nazwisko: string }[] | null
+  }>
+  const zarząd = pclRows
+    .map((l) => {
+      const p = Array.isArray(l.person) ? l.person[0] : l.person
+      return p ? { imie: p.imie, nazwisko: p.nazwisko, rola: l.rola } : null
+    })
+    .filter((x): x is { imie: string; nazwisko: string; rola: string } => x !== null)
   if (zarząd.length > 0) inputSources.add('persons')
 
   // Financials

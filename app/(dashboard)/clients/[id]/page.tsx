@@ -25,6 +25,7 @@ import { BusinessProfileSection } from '@/components/clients/business-profile-se
 import { PeopleSection } from '@/components/clients/people-section'
 import { ProfileFieldsTable } from '@/components/clients/profile-fields-table'
 import { MsigChangesSection } from '@/components/clients/msig-changes-section'
+import { EnrichmentProgressBanner } from '@/components/clients/enrichment-progress-banner'
 
 const segmentColors: Record<string, string> = {
   maly_opt: 'bg-slate-500',
@@ -163,6 +164,8 @@ export default async function ClientDetailPage({
         }
       />
       <div className="flex flex-1 flex-col gap-6 p-6">
+        {/* Sprint M FIX 3 — async enrichment progress indicator */}
+        <EnrichmentProgressBanner clientId={id} />
         {/* Row 1: podstawowe dane + podsumowanie */}
         <div className="grid gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-2">

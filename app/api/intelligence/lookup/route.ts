@@ -12,7 +12,7 @@
 // Returns: { client_id, entity_type, sources_completed, fields_filled,
 //            persons_created, top_matches, errors }
 
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { enrichWithVAT, normalizeNip, isValidNip } from '@/lib/enrichment/vat'
 import { enrichWithGUS, gusLogin } from '@/lib/enrichment/gus'
@@ -25,6 +25,7 @@ import { upsertField, upsertFields } from '@/lib/profile/merge'
 import { findExistingContact } from '@/lib/enrichment/contact-preflight'
 import { enrichContactsApify } from '@/lib/enrichment/apify'
 import { searchCompanyOnline } from '@/lib/enrichment/web-search'
+import { analyzeBusinessProfile } from '@/lib/ai/business-analysis'
 import { startEnrichmentRun, finishEnrichmentRun } from '@/lib/profile/enrichment-log'
 import { computeMatchesForClient } from '@/lib/matching/engine'
 
@@ -337,6 +338,102 @@ export async function POST(req: Request) {
     await finishEnrichmentRun(supabase, vatRunId, { status: 'error', error_message: msg })
   }
 
+  // ═══ PHASE A complete: identity + VAT + initial matching ═══
+  // Compute initial matches NOW (using GUS PKD codes) so /clients/[id]
+  // shows useful data immediately. Final recompute після PHASE B (з AI
+  // business_profile) overrides з niche bonus.
+  try {
+    const r = await computeMatchesForClient(supabase, clientId)
+    if (r.ok) {
+      const { data: topMatches } = await supabase
+        .from('matches')
+        .select('product_id, combined_score')
+        .eq('client_id', clientId)
+        .order('combined_score', { ascending: false })
+        .limit(3)
+      if (topMatches && topMatches.length > 0) {
+        const productIds = (topMatches as Array<{ product_id: string; combined_score: number }>).map(
+          (m) => m.product_id,
+        )
+        const { data: prods } = await supabase
+          .from('products')
+          .select('id, name')
+          .in('id', productIds)
+        const productMap = new Map<string, string>(
+          ((prods ?? []) as Array<{ id: string; name: string }>).map((p) => [p.id, p.name]),
+        )
+        response.top_matches = (topMatches as Array<{ product_id: string; combined_score: number }>).map((m) => ({
+          product_id: m.product_id,
+          product_name: productMap.get(m.product_id) ?? '?',
+          combined_score: m.combined_score,
+        }))
+      }
+      response.sources_completed.push({ source: 'matching', status: 'success' })
+    }
+  } catch {
+    /* match recompute failure non-fatal — PHASE B will retry */
+  }
+
+  // ─── PHASE B: schedule async enrichment via after() ───
+  // Sprint M FIX 3 — split orchestrator щоб PHASE A returns < 30s
+  // (avoids Vercel 504). PHASE B runs після response sent, до 120s
+  // function ceiling. UI on /clients/[id] poll enrichment_log дla running
+  // sources і refreshes coли всi complete.
+  // Capture закаптурити dependencies bo після response request scope може
+  // бути invalidated; clientId та entityType passed by value.
+  const phaseB_clientId = clientId
+  const phaseB_nip = nip
+  const phaseB_entityType = entityType
+  const phaseB_krsNumber = krsNumber
+  const phaseB_params = params
+  after(async () => {
+    await runPhaseB({
+      clientId: phaseB_clientId,
+      nip: phaseB_nip,
+      entityType: phaseB_entityType,
+      krsNumber: phaseB_krsNumber,
+      params: phaseB_params,
+    })
+  })
+
+  return NextResponse.json({ ok: true, response, phase: 'A_complete', enrichment_pending: true })
+}
+
+/** PHASE B — buying signals + people + Tavily + Apify + AI + final
+ *  match recompute. Runs after response sent. Errors logged до
+ *  enrichment_log; не surface back до user. */
+async function runPhaseB({
+  clientId,
+  nip,
+  entityType,
+  krsNumber,
+  params,
+}: {
+  clientId: string
+  nip: string
+  entityType: LookupResponse['entity_type']
+  krsNumber: string | null
+  params: {
+    anthropic_api_key?: string
+    gus_api_key?: string
+    apify_api_token?: string
+    krs_rejestr_api_token?: string
+  }
+}): Promise<void> {
+  const supabase = await createClient()
+
+  // Lightweight response object для helper compat (mostly to track per-step
+  // status у enrichment_log; not surfaced до user).
+  const response: LookupResponse = {
+    client_id: clientId,
+    entity_type: entityType,
+    sources_completed: [],
+    fields_filled: 0,
+    persons_created: 0,
+    top_matches: [],
+    errors: [],
+  }
+
   // ─── STEP 3: Buying signals (BZP + sprawozdania + MSiG, parallel) ───
   await Promise.allSettled([
     runBzpStep(supabase, clientId, nip, response),
@@ -349,7 +446,7 @@ export async function POST(req: Request) {
   ])
 
   // ─── STEP 4: People extraction ───
-  const personsCreated = await extractAndCreatePersons(
+  await extractAndCreatePersons(
     supabase,
     clientId,
     entityType,
@@ -357,7 +454,6 @@ export async function POST(req: Request) {
     response,
     params.anthropic_api_key,
   )
-  response.persons_created = personsCreated
 
   // ─── STEP 4.5: Online presence (Tavily web search) ───
   // Sprint L Phase 2 — find website / Facebook / Instagram / news mentions.
@@ -558,42 +654,12 @@ export async function POST(req: Request) {
     response.errors.push(`AI: ${err instanceof Error ? err.message : err}`)
   }
 
-  // ─── STEP 6: Sztab match intelligence ───
+  // ─── STEP 6 final: re-compute matches (тепер з business_profile niche bonus) ───
   try {
-    const r = await computeMatchesForClient(supabase, clientId)
-    if (r.ok) {
-      const { data: topMatches } = await supabase
-        .from('matches')
-        .select('product_id, combined_score')
-        .eq('client_id', clientId)
-        .order('combined_score', { ascending: false })
-        .limit(3)
-      if (topMatches && topMatches.length > 0) {
-        const productIds = (topMatches as Array<{ product_id: string; combined_score: number }>).map(
-          (m) => m.product_id,
-        )
-        const { data: prods } = await supabase
-          .from('products')
-          .select('id, name')
-          .in('id', productIds)
-        const productMap = new Map<string, string>(
-          ((prods ?? []) as Array<{ id: string; name: string }>).map((p) => [p.id, p.name]),
-        )
-        response.top_matches = (topMatches as Array<{ product_id: string; combined_score: number }>).map((m) => ({
-          product_id: m.product_id,
-          product_name: productMap.get(m.product_id) ?? '?',
-          combined_score: m.combined_score,
-        }))
-      }
-      response.sources_completed.push({ source: 'matching', status: 'success' })
-    } else {
-      response.sources_completed.push({ source: 'matching', status: 'error', error: r.error })
-    }
+    await computeMatchesForClient(supabase, clientId)
   } catch (err) {
-    response.sources_completed.push({ source: 'matching', status: 'error', error: err instanceof Error ? err.message : String(err) })
+    console.error('[PhaseB] final match recompute failed:', err)
   }
-
-  return NextResponse.json({ ok: true, response })
 }
 
 // ─── STEP 3 helpers ───
