@@ -25,6 +25,7 @@ import { ProfileFieldsTable } from '@/components/clients/profile-fields-table'
 import { MsigChangesSection } from '@/components/clients/msig-changes-section'
 import { EnrichmentProgressBanner } from '@/components/clients/enrichment-progress-banner'
 import { MetricsRow } from '@/components/clients/metrics-row'
+import { AnchorNav } from '@/components/clients/anchor-nav'
 
 const segmentColors: Record<string, string> = {
   maly_opt: 'bg-slate-500',
@@ -174,8 +175,10 @@ export default async function ClientDetailPage({
       <div className="flex flex-1 flex-col gap-6 p-6">
         {/* Sprint M FIX 3 — async enrichment progress indicator */}
         <EnrichmentProgressBanner clientId={id} />
-        {/* Row 1: podstawowe dane + podsumowanie */}
-        <div className="grid gap-6 lg:grid-cols-3">
+        {/* Sprint O Phase 7 — sticky anchor navigation */}
+        <AnchorNav />
+        {/* #profil section: hero + summary */}
+        <section id="profil" className="scroll-mt-20 grid gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-2">
             <CardHeader>
               <div className="flex items-start justify-between">
@@ -282,7 +285,7 @@ export default async function ClientDetailPage({
               </div>
             </CardContent>
           </Card>
-        </div>
+        </section>
 
         {/* Sprint M FIX 5: 4 metric cards row */}
         <MetricsRow
@@ -294,34 +297,46 @@ export default async function ClientDetailPage({
           topMatchScore={(topMatch as { algo_score: number } | null)?.algo_score ?? null}
         />
 
-        {/* ═══ PRIORITY SECTIONS (orange left border) ═══ */}
-        <BuyingSignalsSection tenders={(bzpTenders ?? []) as never} />
-        <FinancialsSection
-          data={(financials ?? []) as never}
-          fallbackCtx={{
-            forma_prawna: client.krs_legal_form ?? null,
-            lastRunStatus: lastFinancialRun
-              ? ((lastFinancialRun as { status: 'success' | 'partial' | 'error' }).status)
-              : 'never',
-            lastRunError: lastFinancialRun
-              ? ((lastFinancialRun as { error_message: string | null }).error_message)
-              : null,
-          }}
-        />
-        <BusinessProfileSection clientId={id} profile={client.business_profile ?? null} />
-        <PeopleSection
-          links={(personLinks ?? []) as never}
-          title={
-            (client.krs_legal_form ?? '').toLowerCase().includes('akcyjna') ||
-            (client.krs_legal_form ?? '').toLowerCase().includes('z o.o.')
-              ? 'Osoby decyzyjne'
-              : 'Właściciel / kontakty'
-          }
-        />
+        {/* #sygnaly section: BZP + sprawozdania + MSiG */}
+        <section id="sygnaly" className="scroll-mt-20 flex flex-col gap-6">
+          <BuyingSignalsSection tenders={(bzpTenders ?? []) as never} />
+          <FinancialsSection
+            data={(financials ?? []) as never}
+            fallbackCtx={{
+              forma_prawna: client.krs_legal_form ?? null,
+              lastRunStatus: lastFinancialRun
+                ? ((lastFinancialRun as { status: 'success' | 'partial' | 'error' }).status)
+                : 'never',
+              lastRunError: lastFinancialRun
+                ? ((lastFinancialRun as { error_message: string | null }).error_message)
+                : null,
+            }}
+          />
+          <MsigChangesSection changes={(msigChanges ?? []) as never} />
+        </section>
 
-        {/* ═══ SECONDARY SECTIONS (no border) ═══ */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          <VatSection
+        {/* #analiza section: AI business profile */}
+        <section id="analiza" className="scroll-mt-20">
+          <BusinessProfileSection clientId={id} profile={client.business_profile ?? null} />
+        </section>
+
+        {/* #osoby section: persons + decision makers */}
+        <section id="osoby" className="scroll-mt-20">
+          <PeopleSection
+            links={(personLinks ?? []) as never}
+            title={
+              (client.krs_legal_form ?? '').toLowerCase().includes('akcyjna') ||
+              (client.krs_legal_form ?? '').toLowerCase().includes('z o.o.')
+                ? 'Osoby decyzyjne'
+                : 'Właściciel / kontakty'
+            }
+          />
+        </section>
+
+        {/* #kontakt section: VAT + GUS + KRS verification */}
+        <section id="kontakt" className="scroll-mt-20 flex flex-col gap-4">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <VatSection
             targetType="client"
             targetId={id}
             hasNip={Boolean(client.nip)}
@@ -347,36 +362,37 @@ export default async function ClientDetailPage({
             }}
           />
         </div>
-        <KrsSection
-          targetType="client"
-          targetId={id}
-          initial={{
-            krs_number: client.krs_number ?? null,
-            krs_full_name: client.krs_full_name ?? null,
-            krs_legal_form: client.krs_legal_form ?? null,
-            krs_registration_date: client.krs_registration_date ?? null,
-            krs_status: client.krs_status ?? null,
-            krs_management_board: client.krs_management_board ?? null,
-            krs_pkd_with_descriptions: client.krs_pkd_with_descriptions ?? null,
-            krs_last_checked: client.krs_last_checked ?? null,
-          }}
-        />
+          <KrsSection
+            targetType="client"
+            targetId={id}
+            initial={{
+              krs_number: client.krs_number ?? null,
+              krs_full_name: client.krs_full_name ?? null,
+              krs_legal_form: client.krs_legal_form ?? null,
+              krs_registration_date: client.krs_registration_date ?? null,
+              krs_status: client.krs_status ?? null,
+              krs_management_board: client.krs_management_board ?? null,
+              krs_pkd_with_descriptions: client.krs_pkd_with_descriptions ?? null,
+              krs_last_checked: client.krs_last_checked ?? null,
+            }}
+          />
+        </section>
 
-        {/* L5 algo matching */}
-        <MatchesPanel
-          mode="product-side"
-          keyType="client_id"
-          keyValue={id}
-          recomputePath="/api/admin/matching/recompute-client"
-          title="Dopasowane produkty Sztab"
-        />
+        {/* #dopasowania section: L5 algo matching */}
+        <section id="dopasowania" className="scroll-mt-20">
+          <MatchesPanel
+            mode="product-side"
+            keyType="client_id"
+            keyValue={id}
+            recomputePath="/api/admin/matching/recompute-client"
+            title="Dopasowane produkty Sztab"
+          />
+        </section>
 
-        {/* History — bottom of page */}
-        <MsigChangesSection changes={(msigChanges ?? []) as never} />
-        <ProfileFieldsTable fields={(profileFields ?? []) as never} />
-
-        {/* Tabs */}
-        <Tabs defaultValue="contacts">
+        {/* #aktywnosc section: history + tabs */}
+        <section id="aktywnosc" className="scroll-mt-20 flex flex-col gap-6">
+          <ProfileFieldsTable fields={(profileFields ?? []) as never} />
+          <Tabs defaultValue="contacts">
           <TabsList>
             <TabsTrigger value="contacts">Kontakty ({contacts?.length || 0})</TabsTrigger>
             <TabsTrigger value="deals">Umowy ({deals?.length || 0})</TabsTrigger>
@@ -392,6 +408,7 @@ export default async function ClientDetailPage({
             <ClientTasks clientId={id} tasks={tasks || []} />
           </TabsContent>
         </Tabs>
+        </section>
       </div>
     </div>
   )
