@@ -605,13 +605,23 @@ async function runBzpStep(
   })
   try {
     const notices = await searchBzpByWinnerNip(nip)
+    const cleanNip = nip.replace(/\D/g, '')
     let inserted = 0
     for (const n of notices) {
+      // Strict: only persist коли matched winner NIP === client NIP. Searcher
+      // already filters but defense in depth — never stamp client.nip on
+      // winner_nip via fallback.
+      const winnerNip = n.winner?.nip ?? null
+      const candidates = n.winner?.candidates ?? []
+      const matched =
+        winnerNip === cleanNip ||
+        (winnerNip === null && candidates.includes(cleanNip))
+      if (!matched) continue
       const { error } = await supabase.from('bzp_tenders').upsert(
         {
           bzp_notice_id: n.noticeId,
           client_id: clientId,
-          winner_nip: n.winner?.nip ?? nip,
+          winner_nip: cleanNip,
           winner_name: n.winner?.name ?? null,
           ordering_party: n.orderingParty.name,
           ordering_party_type: n.orderingParty.type,

@@ -42,6 +42,9 @@ export interface BzpNotice {
   winner: {
     name: string | null
     nip: string | null
+    /** All NIPs found у Wykonawca section (excluding buyer). Used дla strict
+     *  post-fetch matching коли parser cannot disambiguate single winner. */
+    candidates?: string[]
   } | null
   contractPeriod: string | null
   raw: unknown
@@ -90,22 +93,70 @@ function parseCpvField(raw: string | undefined): string[] {
     .filter(Boolean)
 }
 
-/** Naive winner extraction from htmlBody (sufficient для POC; refine later). */
-function extractWinnerFromHtml(html: string | undefined): { name: string | null; nip: string | null } | null {
+/** Extract all NIPs that appear after a Wykonawca/Wybranego oferenta header.
+ *  BZP htmlBody mentions buyer NIP up top + winner NIP в секції "WYKONAWCA"
+ *  (sometimes multiple дла konsorcjum). Returns set of candidate winner NIPs. */
+function extractWinnerNipsFromHtml(html: string | undefined): Set<string> {
+  const nips = new Set<string>()
+  if (!html) return nips
+
+  const sectionRegexes = [
+    /WYKONAWC[AY][^]*?(?=ZAMAWIAJĄCY|NAGŁÓWEK|OGŁOSZENIE|$)/gi,
+    /Wybran[ay][\s\S]{0,4000}?wykonawc[ay][\s\S]{0,4000}/gi,
+    /Wykonawca,\s*któremu\s+udzielono\s+zamówienia[\s\S]{0,4000}/gi,
+    /Dane\s+wykonawcy[\s\S]{0,4000}/gi,
+  ]
+  let collected = ''
+  for (const re of sectionRegexes) {
+    const matches = html.match(re)
+    if (matches) collected += matches.join('\n')
+  }
+  const target = collected || html
+  const nipPattern = /NIP[^0-9]{0,15}(\d{10})/g
+  let m: RegExpExecArray | null
+  while ((m = nipPattern.exec(target)) !== null) {
+    if (m[1]) nips.add(m[1])
+  }
+  return nips
+}
+
+/** Try to extract winner display name (best-effort). */
+function extractWinnerNameFromHtml(html: string | undefined): string | null {
   if (!html) return null
-  const winnerNameMatch = html.match(/(?:Wykonawca|Nazwa wykonawcy)[^<]*<[^>]*>([^<]+)</i)
-  const nipMatch = html.match(/NIP[^0-9]{0,10}(\d{10})/)
-  const name = winnerNameMatch && winnerNameMatch[1] ? winnerNameMatch[1].trim() : null
-  const nip = nipMatch && nipMatch[1] ? nipMatch[1] : null
-  if (!name && !nip) return null
-  return { name: name ?? null, nip: nip ?? null }
+  const candidates = [
+    /Nazwa\s+wykonawcy[^<]*<[^>]*>([^<]+)</i,
+    /Wykonawca,\s*któremu\s+udzielono\s+zamówienia[^<]*<[^>]*>([^<]+)</i,
+    /Wybran[ay]\s+wykonawc[ay][^<]*<[^>]*>([^<]+)</i,
+  ]
+  for (const re of candidates) {
+    const m = html.match(re)
+    if (m && m[1]) {
+      const trimmed = m[1].trim()
+      if (trimmed.length > 0 && trimmed.length < 200) return trimmed
+    }
+  }
+  return null
 }
 
 function parseBzpItem(raw: BzpApiItem): BzpNotice | null {
   const noticeId = raw.noticeNumber ?? raw.bzpNumber
   if (!noticeId) return null
   const cpvCodes = parseCpvField(raw.cpvCode)
-  const winner = raw.noticeType === NOTICE_TYPE_AWARDED ? extractWinnerFromHtml(raw.htmlBody) : null
+
+  let winner: BzpNotice['winner'] = null
+  if (raw.noticeType === NOTICE_TYPE_AWARDED) {
+    const candidateNips = extractWinnerNipsFromHtml(raw.htmlBody)
+    const buyerNip = raw.organizationNationalId ?? ''
+    candidateNips.delete(buyerNip)
+    const winnerNip = candidateNips.size === 1 ? [...candidateNips][0]! : null
+    const winnerName = extractWinnerNameFromHtml(raw.htmlBody)
+    if (winnerNip || winnerName) {
+      winner = { nip: winnerNip ?? null, name: winnerName ?? null, candidates: [...candidateNips] }
+    } else {
+      winner = { nip: null, name: null, candidates: [] }
+    }
+  }
+
   return {
     noticeId,
     publicationDate: raw.publicationDate ?? null,
@@ -172,20 +223,41 @@ function defaultToDate(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-export async function searchBzpByWinnerNip(nip: string): Promise<BzpNotice[]> {
+/** Strict winner-side search.
+ *  BZP API doesn't expose a winner.nip filter, so we fetch awarded notices
+ *  у lookback window then post-filter those whose htmlBody Wykonawca section
+ *  contains the target NIP. Returns ONLY notices where matched winner == nip
+ *  (single-candidate match OR candidate list contains nip). */
+export async function searchBzpByWinnerNip(
+  nip: string,
+  opts: { lookbackDays?: number } = {},
+): Promise<BzpNotice[]> {
   const cleanNip = nip.replace(/\D/g, '')
   if (cleanNip.length !== 10) return []
-  // Try OrderingNip — for buyer-side (hospitals/schools/gov)
+
+  const lookback = opts.lookbackDays ?? 365
+  const fromDate = new Date(Date.now() - lookback * 86_400_000).toISOString().slice(0, 10)
+  const toDate = new Date().toISOString().slice(0, 10)
+
+  let candidates: BzpNotice[] = []
   try {
-    return await bzpSearch({
+    candidates = await bzpSearch({
       noticeType: NOTICE_TYPE_AWARDED,
-      orderingNip: cleanNip,
-      pageSize: 100,
+      fromDate,
+      toDate,
+      pageSize: 200,
     })
   } catch (err) {
-    console.warn('[BZP] OrderingNip search failed:', err instanceof Error ? err.message : err)
+    console.warn('[BZP] awarded search failed:', err instanceof Error ? err.message : err)
     return []
   }
+
+  return candidates.filter((n) => {
+    if (!n.winner) return false
+    if (n.winner.nip === cleanNip) return true
+    if (n.winner.candidates && n.winner.candidates.includes(cleanNip)) return true
+    return false
+  })
 }
 
 export async function fetchRecentHorecaNotices(sinceHours = 24): Promise<BzpNotice[]> {
