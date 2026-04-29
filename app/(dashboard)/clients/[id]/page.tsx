@@ -21,6 +21,7 @@ import { StatusBadgesRow } from '@/app/(dashboard)/_shared/status-badges-row'
 import { MatchesPanel } from '@/components/matches/matches-panel'
 import { BuyingSignalsSection } from '@/components/clients/buying-signals-section'
 import { FinancialsSection } from '@/components/clients/financials-section'
+import { BusinessProfileSection } from '@/components/clients/business-profile-section'
 import { PeopleSection } from '@/components/clients/people-section'
 import { ProfileFieldsTable } from '@/components/clients/profile-fields-table'
 import { MsigChangesSection } from '@/components/clients/msig-changes-section'
@@ -300,6 +301,9 @@ export default async function ClientDetailPage({
             }}
           />
         </div>
+        {/* Sprint L Phase 3 — AI business profile (top-priority section) */}
+        <BusinessProfileSection profile={client.business_profile ?? null} />
+
         <KrsSection
           targetType="client"
           targetId={id}

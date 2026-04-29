@@ -503,6 +503,56 @@ export async function POST(req: Request) {
     })
   }
 
+  // ─── STEP 6.5: AI business analysis (Claude Haiku) ───
+  // Sprint L Phase 3 — analyze всі accumulated signals → business_profile
+  // з buyer_strength_for_chm score. Drives Phase 4 score recalibration.
+  try {
+    const { data: paramsRow2 } = await supabase
+      .from('params')
+      .select('anthropic_api_key')
+      .limit(1)
+      .maybeSingle()
+    const anthropicKey = (paramsRow2 as { anthropic_api_key?: string } | null)?.anthropic_api_key ?? ''
+    if (anthropicKey) {
+      const aiRunId = await startEnrichmentRun(supabase, {
+        target_type: 'company',
+        target_id: clientId,
+        source: 'AI_business_analysis',
+      })
+      const aiResult = await analyzeBusinessProfile(supabase, anthropicKey, clientId)
+      if (aiResult.profile) {
+        response.sources_completed.push({
+          source: 'AI_business_analysis',
+          status: 'success',
+          note: `format=${aiResult.profile.business_format}, buyer_strength=${aiResult.profile.buyer_strength_for_chm}, cost $${aiResult.cost_usd.toFixed(4)}`,
+        })
+        await finishEnrichmentRun(supabase, aiRunId, {
+          status: 'success',
+          raw_payload: aiResult.profile,
+          cost_usd: aiResult.cost_usd,
+        })
+      } else {
+        response.sources_completed.push({
+          source: 'AI_business_analysis',
+          status: 'error',
+          error: aiResult.error,
+        })
+        await finishEnrichmentRun(supabase, aiRunId, {
+          status: 'error',
+          error_message: aiResult.error,
+        })
+      }
+    } else {
+      response.sources_completed.push({
+        source: 'AI_business_analysis',
+        status: 'skipped',
+        note: 'anthropic_api_key missing у params',
+      })
+    }
+  } catch (err) {
+    response.errors.push(`AI: ${err instanceof Error ? err.message : err}`)
+  }
+
   // ─── STEP 6: Sztab match intelligence ───
   try {
     const r = await computeMatchesForClient(supabase, clientId)
