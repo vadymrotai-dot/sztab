@@ -31,14 +31,23 @@ export default async function DashboardLayout({
     prospectHotCount = 0
   }
 
+  // Sprint R FIX: removed inner <main className="flex-1 overflow-auto"> wrapper.
+  //
+  // Issue: Sticky elements у /clients/[id] (action bar + anchor nav)
+  // disappeared on scroll because overflow:auto на inner wrapper стваря
+  // separate scroll context. Sticky elements у tym kontekście stick
+  // relative до wrapper (not viewport) — coupled з flex-column parents
+  // produced unreliable behavior across browsers.
+  //
+  // Fix: SidebarInset jest sam <main> (z @/components/ui/sidebar). Sidebar
+  // ma position: fixed (z h-svh), więc nie scrolls з contentem. Zwykły
+  // window-scroll przez body — sticky element rendered relative до
+  // viewport (jak GitHub README, Notion). Eliminates nested <main> too
+  // (invalid HTML).
   return (
     <SidebarProvider>
       <AppSidebar user={user} prospectHotCount={prospectHotCount} />
-      <SidebarInset>
-        <main className="flex-1 overflow-auto">
-          {children}
-        </main>
-      </SidebarInset>
+      <SidebarInset>{children}</SidebarInset>
       <CommandBar />
     </SidebarProvider>
   )
