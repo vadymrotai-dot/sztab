@@ -24,6 +24,7 @@ import { extractFromWebsite } from '@/lib/enrichment/website'
 import { upsertField, upsertFields } from '@/lib/profile/merge'
 import { findExistingContact } from '@/lib/enrichment/contact-preflight'
 import { enrichContactsApify } from '@/lib/enrichment/apify'
+import { searchCompanyOnline } from '@/lib/enrichment/web-search'
 import { startEnrichmentRun, finishEnrichmentRun } from '@/lib/profile/enrichment-log'
 import { computeMatchesForClient } from '@/lib/matching/engine'
 
@@ -352,6 +353,66 @@ export async function POST(req: Request) {
     params.anthropic_api_key,
   )
   response.persons_created = personsCreated
+
+  // ─── STEP 4.5: Online presence (Tavily web search) ───
+  // Sprint L Phase 2 — find website / Facebook / Instagram / news mentions.
+  const tavilyKey = process.env.TAVILY_API_KEY ?? ''
+  if (tavilyKey) {
+    const runId = await startEnrichmentRun(supabase, {
+      target_type: 'company',
+      target_id: clientId,
+      source: 'tavily',
+    })
+    try {
+      const { data: targetRow } = await supabase
+        .from('clients')
+        .select('title')
+        .eq('id', clientId)
+        .single()
+      const t = targetRow as { title: string } | null
+      if (t) {
+        const web = await searchCompanyOnline(tavilyKey, t.title, nip)
+        const fields: Array<{ field_key: string; value: { value_text?: string; value_json?: unknown } }> = []
+        if (web.website_url) fields.push({ field_key: 'website', value: { value_text: web.website_url } })
+        if (web.facebook_url) fields.push({ field_key: 'facebook_url', value: { value_text: web.facebook_url } })
+        if (web.instagram_url) fields.push({ field_key: 'instagram_url', value: { value_text: web.instagram_url } })
+        if (web.google_maps_urls.length > 0)
+          fields.push({ field_key: 'google_maps_urls', value: { value_json: web.google_maps_urls } })
+        if (web.news_mentions.length > 0)
+          fields.push({ field_key: 'news_mentions', value: { value_json: web.news_mentions } })
+        const merged =
+          fields.length > 0
+            ? await upsertFields(supabase, { type: 'client', id: clientId }, fields, 'WWW')
+            : { added: [], updated: [], unchanged: [], ignored: [] }
+        response.fields_filled += merged.added.length + merged.updated.length
+        response.sources_completed.push({
+          source: 'tavily',
+          status: fields.length > 0 ? 'success' : 'partial',
+          fields_added: merged.added.length,
+          fields_updated: merged.updated.length,
+          note: `${web.raw_results.length} raw, $${web.search_cost_usd.toFixed(4)}`,
+        })
+        await finishEnrichmentRun(supabase, runId, {
+          status: 'success',
+          fields_added: merged.added,
+          fields_updated: merged.updated,
+          raw_payload: web,
+          cost_usd: web.search_cost_usd,
+        })
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      response.errors.push(`Tavily: ${msg}`)
+      response.sources_completed.push({ source: 'tavily', status: 'error', error: msg })
+      await finishEnrichmentRun(supabase, runId, { status: 'error', error_message: msg })
+    }
+  } else {
+    response.sources_completed.push({
+      source: 'tavily',
+      status: 'skipped',
+      note: 'TAVILY_API_KEY missing у env',
+    })
+  }
 
   // ─── STEP 5: Apify Google Maps ───
   // Sprint L Phase 1D fix: actually invoke Apify if entity має no existing
