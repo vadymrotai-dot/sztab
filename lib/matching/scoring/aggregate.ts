@@ -27,12 +27,51 @@ import { computeSizeMatch } from './size-match'
 import { computeGeographic } from './geographic'
 import { computeRecencyBoost } from './recency-boost'
 
+// Sprint L Phase 4 — food families that benefit from AI niche bonus
+// when business buyer_strength_for_chm is high. ChM = Czudowa Marka
+// kiszonki/sałatki/marynaty/buraki — relevant до Polish food retail,
+// gastronomia, ukraińska/słowiańska sieć sklepów.
+const CHM_RELEVANT_FAMILIES = [
+  'Kiszonki',
+  'Sałatki gotowe',
+  'Marynaty',
+  'Buraki / Warzywa konserwowane',
+  'Warzywa konserwowane',
+  'Sałatki',
+]
+
+function nicheBonus(
+  target: MatchTarget,
+  family: MatchFamily,
+): { value: number; reasons: string[] } {
+  const strength = target.business_profile?.buyer_strength_for_chm ?? null
+  if (strength === null || strength === undefined) return { value: 0, reasons: [] }
+  // Family name match (case-insensitive)
+  const familyName = (family.name_pl ?? '').toLowerCase()
+  const isFoodFamily = CHM_RELEVANT_FAMILIES.some((f) => familyName.includes(f.toLowerCase()))
+  if (!isFoodFamily) return { value: 0, reasons: [] }
+
+  if (strength >= 70) {
+    return {
+      value: 25,
+      reasons: [`niche_bonus_high:strength=${strength},family=${family.name_pl}`],
+    }
+  }
+  if (strength >= 40) {
+    return {
+      value: 10,
+      reasons: [`niche_bonus_mid:strength=${strength},family=${family.name_pl}`],
+    }
+  }
+  return { value: 0, reasons: [] }
+}
+
 export function aggregateMatch(
   target: MatchTarget,
   product: MatchProduct,
   family: MatchFamily,
 ): MatchResult {
-  const ZERO_BREAKDOWN = { pkd: 0, activity: 0, size: 0, geo: 0, recency: 0 }
+  const ZERO_BREAKDOWN = { pkd: 0, activity: 0, size: 0, geo: 0, recency: 0, niche_bonus: 0 }
 
   // 1. Hygiene gate — short-circuit
   const hyg = computeHygieneGate(target, product)
@@ -72,9 +111,12 @@ export function aggregateMatch(
   const geo = computeGeographic()
   const recency = computeRecencyBoost(target)
 
+  // 7.5 Sprint L Phase 4 — AI niche bonus
+  const niche = nicheBonus(target, family)
+
   // 8. Aggregate
   const subTotal =
-    pkd.value + activity.value + size.value + geo.value + recency.value
+    pkd.value + activity.value + size.value + geo.value + recency.value + niche.value
   const finalScore = Math.max(
     0,
     Math.min(100, Math.round(subTotal * loyalty.mult)),
@@ -86,6 +128,7 @@ export function aggregateMatch(
     ...size.reasons,
     ...geo.reasons,
     ...recency.reasons,
+    ...niche.reasons,
     ...loyalty.reasons,
   ]
 
@@ -97,6 +140,7 @@ export function aggregateMatch(
       size: size.value,
       geo: geo.value,
       recency: recency.value,
+      niche_bonus: niche.value,
     },
     hygiene_pass: true,
     loyalty_multiplier: loyalty.mult,

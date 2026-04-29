@@ -25,6 +25,13 @@ export interface MatchTarget {
   chain_name: string | null
   /** Loyalty tier для chain — set вручну Vadym SQL коли verified. */
   loyalty_tier: 'closed' | 'hybrid' | 'open' | null
+  /** Sprint L Phase 4 — AI business analysis output (Claude Haiku).
+   *  buyer_strength_for_chm drives niche bonus у aggregateMatch. */
+  business_profile?: {
+    business_format?: string
+    buyer_strength_for_chm?: number
+    special_traits_pl?: string[]
+  } | null
 }
 
 export interface MatchProduct {
@@ -54,6 +61,9 @@ export interface SubscoreBreakdown {
   size: number
   geo: number
   recency: number
+  /** Sprint L Phase 4 — AI-driven niche bonus для food families when
+   *  business_profile.buyer_strength_for_chm is high. */
+  niche_bonus?: number
 }
 
 export interface MatchResult {

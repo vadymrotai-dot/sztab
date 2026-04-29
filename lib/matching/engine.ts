@@ -46,6 +46,7 @@ interface ClientRow {
   pkd_2025_codes: string[] | null
   pkd_2007_codes: string[] | null
   region: string | null
+  business_profile?: unknown
 }
 
 interface ProspectRow {
@@ -66,6 +67,11 @@ function clientToTarget(row: ClientRow): MatchTarget {
   const board = Array.isArray(row.krs_management_board)
     ? (row.krs_management_board as unknown[]).length
     : null
+  // Sprint L Phase 4 — extract minimal subset for scoring
+  const bp = row.business_profile as
+    | { business_format?: string; buyer_strength_for_chm?: number; special_traits_pl?: string[] }
+    | null
+    | undefined
   return {
     type: 'client',
     id: row.id,
@@ -78,8 +84,9 @@ function clientToTarget(row: ClientRow): MatchTarget {
     legal_form: row.krs_legal_form,
     board_size: board,
     voivodeship: row.region,
-    chain_name: null, // Sprint F: chain detection not yet propagated to clients
+    chain_name: null,
     loyalty_tier: null,
+    business_profile: bp ?? null,
   }
 }
 
@@ -211,7 +218,7 @@ export async function computeMatchesForClient(
   const { data, error: cErr } = await supabase
     .from('clients')
     .select(
-      'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region',
+      'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile',
     )
     .eq('id', clientId)
     .single()
@@ -301,7 +308,7 @@ export async function computeMatchesForProduct(
   const { data: clientRows } = await supabase
     .from('clients')
     .select(
-      'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region',
+      'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile',
     )
   const clientRowsArr = (clientRows ?? []) as ClientRow[]
   const clientInserts: MatchUpsertRow[] = []
@@ -371,7 +378,7 @@ export async function bulkRecomputeAll(
     const { data: clientRows, error: cErr } = await supabase
       .from('clients')
       .select(
-        'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region',
+        'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile',
       )
     if (cErr) summary.errors.push(`clients fetch: ${cErr.message}`)
     const rows = (clientRows ?? []) as ClientRow[]
