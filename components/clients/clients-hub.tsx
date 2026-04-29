@@ -65,6 +65,15 @@ export function ClientsHub({ clients, unifiedRows }: Props) {
   const [onlyWithContact, setOnlyWithContact] = useState(false)
   const [onlyHighMatch, setOnlyHighMatch] = useState(false)
   const [onlyNeedsReview, setOnlyNeedsReview] = useState(false)
+  const [activeIndustries, setActiveIndustries] = useState<Set<string>>(new Set())
+  const [sortBy, setSortBy] = useState<'score' | 'name' | 'created'>('score')
+
+  // Industry options derived from clients data
+  const industryOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const r of unifiedRows) if (r.industry?.trim()) set.add(r.industry)
+    return Array.from(set).sort().slice(0, 20)
+  }, [unifiedRows])
 
   // Bulk selection (across all rows у aktywny tab)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -91,8 +100,26 @@ export function ClientsHub({ clients, unifiedRows }: Props) {
     if (onlyWithContact) rows = rows.filter((r) => r.has_contact)
     if (onlyHighMatch) rows = rows.filter((r) => (r.top_match_score ?? 0) >= 70)
     if (onlyNeedsReview) rows = rows.filter((r) => r.status === 'pending')
+    if (activeIndustries.size > 0) {
+      rows = rows.filter((r) => r.industry && activeIndustries.has(r.industry))
+    }
+    // Sort
+    if (sortBy === 'score') {
+      rows = [...rows].sort((a, b) => (b.top_match_score ?? 0) - (a.top_match_score ?? 0))
+    } else if (sortBy === 'name') {
+      rows = [...rows].sort((a, b) => a.name.localeCompare(b.name, 'pl'))
+    }
     return rows
-  }, [unifiedRows, tab, onlyWithContact, onlyHighMatch, onlyNeedsReview])
+  }, [unifiedRows, tab, onlyWithContact, onlyHighMatch, onlyNeedsReview, activeIndustries, sortBy])
+
+  function toggleIndustry(name: string) {
+    setActiveIndustries((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
 
   function navigateTab(t: string) {
     const next = new URLSearchParams(params)
@@ -171,6 +198,29 @@ export function ClientsHub({ clients, unifiedRows }: Props) {
           active={onlyNeedsReview}
           onChange={() => setOnlyNeedsReview((v) => !v)}
         />
+        {industryOptions.length > 0 && (
+          <>
+            <span className="ml-2 text-xs text-muted-foreground">Branża:</span>
+            {industryOptions.map((ind) => (
+              <ChipToggle
+                key={ind}
+                label={ind}
+                active={activeIndustries.has(ind)}
+                onChange={() => toggleIndustry(ind)}
+              />
+            ))}
+          </>
+        )}
+        <span className="ml-2 text-xs text-muted-foreground">Sort:</span>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as 'score' | 'name' | 'created')}
+          className="rounded-md border bg-background px-2 py-1 text-xs"
+        >
+          <option value="score">Score (DESC)</option>
+          <option value="name">Nazwa (A-Z)</option>
+          <option value="created">Data utworzenia</option>
+        </select>
 
         <div className="ml-auto flex items-center gap-2">
           {selectedCount > 0 && (

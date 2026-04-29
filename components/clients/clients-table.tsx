@@ -180,6 +180,15 @@ export function ClientsTable({ clients }: ClientsTableProps) {
     if (!error) router.refresh()
   }
 
+  // Sprint P FIX 3: Branża/Kanał/Tier/strategic dropdowns переnesono do
+  // chip filters у components/clients/clients-hub.tsx. Tutaj zostawiamy
+  // tylko search + count. Sortowanie / grupowanie deferred (legacy
+  // toolbar state still у localStorage but unused).
+  void setGroupBy
+  void toggleHidden
+  void industryOptions
+  void channelOptions
+
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
       <div className="flex flex-wrap items-center gap-3">
@@ -191,58 +200,6 @@ export function ClientsTable({ clients }: ClientsTableProps) {
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
           />
-        </div>
-
-        <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-1.5">
-          <span className="text-xs text-muted-foreground">Grupuj:</span>
-          <RadioGroup
-            value={toolbar.groupBy}
-            onValueChange={(v) => setGroupBy(v as GroupBy)}
-            className="flex items-center gap-3"
-          >
-            <RadioGroupItem value="none" id="cg-none" className="size-3.5" />
-            <Label htmlFor="cg-none" className="cursor-pointer text-xs">
-              Brak
-            </Label>
-            <RadioGroupItem value="industry" id="cg-ind" className="size-3.5" />
-            <Label htmlFor="cg-ind" className="cursor-pointer text-xs">
-              Branża
-            </Label>
-            <RadioGroupItem value="channel_type" id="cg-ch" className="size-3.5" />
-            <Label htmlFor="cg-ch" className="cursor-pointer text-xs">
-              Kanał
-            </Label>
-            <RadioGroupItem value="size_tier" id="cg-tier" className="size-3.5" />
-            <Label htmlFor="cg-tier" className="cursor-pointer text-xs">
-              Tier
-            </Label>
-          </RadioGroup>
-        </div>
-
-        <FilterMultiSelect
-          label="Branże"
-          options={industryOptions}
-          hidden={toolbar.hiddenIndustries}
-          onToggle={(id) => toggleHidden('hiddenIndustries', id)}
-        />
-        <FilterMultiSelect
-          label="Kanały"
-          options={channelOptions}
-          hidden={toolbar.hiddenChannels}
-          onToggle={(id) => toggleHidden('hiddenChannels', id)}
-        />
-
-        <div className="flex items-center gap-2 rounded-md border px-3 py-1.5">
-          <Switch
-            id="only-strategic"
-            checked={toolbar.onlyStrategic}
-            onCheckedChange={(v) =>
-              setToolbar((prev) => ({ ...prev, onlyStrategic: v, page: 0 }))
-            }
-          />
-          <Label htmlFor="only-strategic" className="cursor-pointer text-xs">
-            Tylko strategic partners
-          </Label>
         </div>
 
         <div className="ml-auto text-xs text-muted-foreground">
