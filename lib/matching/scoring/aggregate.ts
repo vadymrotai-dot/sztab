@@ -26,6 +26,7 @@ import { computeActivityStatus } from './activity-status'
 import { computeSizeMatch } from './size-match'
 import { computeGeographic } from './geographic'
 import { computeRecencyBoost } from './recency-boost'
+import { computeS2ASignals } from './s2a-signals'
 
 // Sprint L Phase 4 — food families that benefit from AI niche bonus
 // when business buyer_strength_for_chm is high. ChM = Czudowa Marka
@@ -73,12 +74,21 @@ export function aggregateMatch(
 ): MatchResult {
   const ZERO_BREAKDOWN = { pkd: 0, activity: 0, size: 0, geo: 0, recency: 0, niche_bonus: 0 }
 
+  const ZERO_S2A = {
+    total: 0,
+    base: { pkd: 0, activity: 0, size: 0, geo: 0, recency: 0, niche: 0 },
+    penalties: { bankruptcy: 0, liquidation: 0, restructuring: 0, suspended: 0, stale_filing: 0 },
+    bonuses: { revenue: 0, branches: 0, bo_pl: 0, pkd_pivot: 0 },
+    reasons: [] as string[],
+  }
+
   // 1. Hygiene gate — short-circuit
   const hyg = computeHygieneGate(target, product)
   if (!hyg.pass) {
     return {
       algo_score: 0,
       subscore_breakdown: ZERO_BREAKDOWN,
+      score_breakdown: ZERO_S2A,
       hygiene_pass: false,
       loyalty_multiplier: 1.0,
       reason_codes: hyg.reasons,
@@ -91,6 +101,7 @@ export function aggregateMatch(
     return {
       algo_score: 0,
       subscore_breakdown: ZERO_BREAKDOWN,
+      score_breakdown: ZERO_S2A,
       hygiene_pass: true,
       loyalty_multiplier: 0,
       reason_codes: loyalty.reasons,
@@ -114,12 +125,23 @@ export function aggregateMatch(
   // 7.5 Sprint L Phase 4 — AI niche bonus
   const niche = nicheBonus(target, family)
 
+  // 7.6 Sprint S2A Phase 3 — penalties + bonuses z rejestr.io v2 signals
+  const s2a = computeS2ASignals(target)
+  const penaltiesSum =
+    s2a.penalties.bankruptcy +
+    s2a.penalties.liquidation +
+    s2a.penalties.restructuring +
+    s2a.penalties.suspended +
+    s2a.penalties.stale_filing
+  const bonusesSum =
+    s2a.bonuses.revenue + s2a.bonuses.branches + s2a.bonuses.bo_pl + s2a.bonuses.pkd_pivot
+
   // 8. Aggregate
   const subTotal =
     pkd.value + activity.value + size.value + geo.value + recency.value + niche.value
   const finalScore = Math.max(
     0,
-    Math.min(100, Math.round(subTotal * loyalty.mult)),
+    Math.min(100, Math.round(subTotal * loyalty.mult + penaltiesSum + bonusesSum)),
   )
 
   const reason_codes: string[] = [
@@ -129,6 +151,7 @@ export function aggregateMatch(
     ...geo.reasons,
     ...recency.reasons,
     ...niche.reasons,
+    ...s2a.reasons,
     ...loyalty.reasons,
   ]
 
@@ -141,6 +164,20 @@ export function aggregateMatch(
       geo: geo.value,
       recency: recency.value,
       niche_bonus: niche.value,
+    },
+    score_breakdown: {
+      total: finalScore,
+      base: {
+        pkd: pkd.value,
+        activity: activity.value,
+        size: size.value,
+        geo: geo.value,
+        recency: recency.value,
+        niche: niche.value,
+      },
+      penalties: s2a.penalties,
+      bonuses: s2a.bonuses,
+      reasons: s2a.reasons,
     },
     hygiene_pass: true,
     loyalty_multiplier: loyalty.mult,

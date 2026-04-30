@@ -32,6 +32,19 @@ export interface MatchTarget {
     buyer_strength_for_chm?: number
     special_traits_pl?: string[]
   } | null
+  /** Sprint S2A Phase 3 — red flags + bonuses signals (z rejestr.io v2 +
+   *  financial_statements + crbr_beneficiaries). */
+  s2a_signals?: {
+    bankruptcy_flag?: boolean
+    liquidation_flag?: boolean
+    restructuring_flag?: boolean
+    suspended_at?: string | null
+    branch_offices_count?: number
+    last_filing_date?: string | null
+    latest_revenue_pln?: number | null
+    has_bo_pl?: boolean
+    pkd_changed_recently?: boolean
+  } | null
 }
 
 export interface MatchProduct {
@@ -66,9 +79,32 @@ export interface SubscoreBreakdown {
   niche_bonus?: number
 }
 
+/** Sprint S2A Phase 3 — rich score breakdown stored у matches.score_breakdown
+ *  JSONB. Captures penalties/bonuses applied beyond legacy subscore_breakdown. */
+export interface ScoreBreakdownS2A {
+  total: number
+  base: { pkd: number; activity: number; size: number; geo: number; recency: number; niche: number }
+  penalties: {
+    bankruptcy: number
+    liquidation: number
+    restructuring: number
+    suspended: number
+    stale_filing: number
+  }
+  bonuses: {
+    revenue: number
+    branches: number
+    bo_pl: number
+    pkd_pivot: number
+  }
+  reasons: string[]
+}
+
 export interface MatchResult {
   algo_score: number
   subscore_breakdown: SubscoreBreakdown
+  /** Sprint S2A Phase 3 — rich breakdown {base, penalties, bonuses, reasons[]} */
+  score_breakdown: ScoreBreakdownS2A
   hygiene_pass: boolean
   loyalty_multiplier: number
   reason_codes: string[]

@@ -27,6 +27,8 @@ interface MatchUpsertRow {
   product_id: string
   algo_score: number
   subscore_breakdown: MatchResult['subscore_breakdown']
+  /** Sprint S2A Phase 3 — rich breakdown with penalties + bonuses */
+  score_breakdown: MatchResult['score_breakdown']
   reason_codes: string[]
   loyalty_multiplier: number
   computed_at: string
@@ -47,6 +49,17 @@ interface ClientRow {
   pkd_2007_codes: string[] | null
   region: string | null
   business_profile?: unknown
+  // Sprint S2A Phase 3 — red flags + bonuses signals
+  bankruptcy_flag?: boolean | null
+  liquidation_flag?: boolean | null
+  restructuring_flag?: boolean | null
+  suspended_at?: string | null
+  branch_offices_count?: number | null
+  last_filing_date?: string | null
+  /** Joined у select: latest financial_statements.przychody_netto */
+  latest_revenue_pln?: number | string | null
+  /** Joined: EXISTS crbr_beneficiaries з kraj_rezydencji='PL' */
+  has_bo_pl?: boolean | null
 }
 
 interface ProspectRow {
@@ -72,6 +85,11 @@ function clientToTarget(row: ClientRow): MatchTarget {
     | { business_format?: string; buyer_strength_for_chm?: number; special_traits_pl?: string[] }
     | null
     | undefined
+  // Sprint S2A Phase 3 — red flags + bonuses
+  const revenuePln =
+    typeof row.latest_revenue_pln === 'string'
+      ? parseFloat(row.latest_revenue_pln)
+      : (row.latest_revenue_pln ?? null)
   return {
     type: 'client',
     id: row.id,
@@ -87,6 +105,17 @@ function clientToTarget(row: ClientRow): MatchTarget {
     chain_name: null,
     loyalty_tier: null,
     business_profile: bp ?? null,
+    s2a_signals: {
+      bankruptcy_flag: row.bankruptcy_flag ?? false,
+      liquidation_flag: row.liquidation_flag ?? false,
+      restructuring_flag: row.restructuring_flag ?? false,
+      suspended_at: row.suspended_at ?? null,
+      branch_offices_count: row.branch_offices_count ?? 0,
+      last_filing_date: row.last_filing_date ?? null,
+      latest_revenue_pln: Number.isFinite(revenuePln as number) ? (revenuePln as number) : null,
+      has_bo_pl: row.has_bo_pl ?? false,
+      pkd_changed_recently: false,
+    },
   }
 }
 
@@ -162,6 +191,7 @@ function buildMatches(
       product_id: product.id,
       algo_score: result.algo_score,
       subscore_breakdown: result.subscore_breakdown,
+      score_breakdown: result.score_breakdown,
       reason_codes: result.reason_codes,
       loyalty_multiplier: result.loyalty_multiplier,
       computed_at: now.toISOString(),
@@ -218,7 +248,7 @@ export async function computeMatchesForClient(
   const { data, error: cErr } = await supabase
     .from('clients')
     .select(
-      'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile',
+      'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile, bankruptcy_flag, liquidation_flag, restructuring_flag, suspended_at, branch_offices_count, last_filing_date',
     )
     .eq('id', clientId)
     .single()
@@ -308,7 +338,7 @@ export async function computeMatchesForProduct(
   const { data: clientRows } = await supabase
     .from('clients')
     .select(
-      'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile',
+      'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile, bankruptcy_flag, liquidation_flag, restructuring_flag, suspended_at, branch_offices_count, last_filing_date',
     )
   const clientRowsArr = (clientRows ?? []) as ClientRow[]
   const clientInserts: MatchUpsertRow[] = []
@@ -378,7 +408,7 @@ export async function bulkRecomputeAll(
     const { data: clientRows, error: cErr } = await supabase
       .from('clients')
       .select(
-        'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile',
+        'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile, bankruptcy_flag, liquidation_flag, restructuring_flag, suspended_at, branch_offices_count, last_filing_date',
       )
     if (cErr) summary.errors.push(`clients fetch: ${cErr.message}`)
     const rows = (clientRows ?? []) as ClientRow[]
