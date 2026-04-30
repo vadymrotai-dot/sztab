@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
+import { PageHeader } from '@/components/page-header'
 
 import { updateSettings } from '@/app/actions/settings'
 
@@ -131,6 +132,21 @@ export function SettingsForm({ settings, maskedKeys }: SettingsFormProps) {
     </div>
   )
 
+  // Sprint S4 Phase 6A — dirty state derived from comparison vs initial.
+  const isDirty = useMemo(() => {
+    for (const key of [
+      ...KEY_ORDER_GENERAL,
+      ...KEY_ORDER_MARGINS,
+      ...KEY_ORDER_THRESHOLDS,
+    ]) {
+      const display = values[key]
+      if (display == null) continue
+      const normalized = fromDisplay(key, display)
+      if (normalized !== initialMap[key]) return true
+    }
+    return false
+  }, [values, initialMap])
+
   const handleSave = () => {
     const updates: Record<string, string> = {}
     for (const key of [
@@ -164,65 +180,78 @@ export function SettingsForm({ settings, maskedKeys }: SettingsFormProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <Tabs defaultValue="general">
-        <TabsList>
-          <TabsTrigger value="general">Ogólne</TabsTrigger>
-          <TabsTrigger value="pricing">Ceny i marże</TabsTrigger>
-          <TabsTrigger value="api">Klucze API</TabsTrigger>
-          <TabsTrigger value="templates">Szablony</TabsTrigger>
-        </TabsList>
+    <div className="flex flex-col">
+      <PageHeader
+        title="Ustawienia"
+        actions={
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={pending || !isDirty}
+            title={isDirty ? 'Zapisz zmiany' : 'Brak zmian do zapisania'}
+          >
+            {pending && <Spinner className="mr-2" />}
+            Zapisz
+          </Button>
+        }
+      />
+      <div className="p-6 max-w-2xl space-y-6">
+        <Tabs defaultValue="general">
+          <TabsList>
+            <TabsTrigger value="general">Ogólne</TabsTrigger>
+            <TabsTrigger value="pricing">Ceny i marże</TabsTrigger>
+            <TabsTrigger value="api">Klucze API</TabsTrigger>
+            <TabsTrigger value="templates">Szablony</TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="general">
-          <Card>
-            <CardContent className="space-y-4 pt-6">
-              {KEY_ORDER_GENERAL.map(renderField)}
-            </CardContent>
-          </Card>
-        </TabsContent>
+          <TabsContent value="general">
+            <Card className="rounded-lg border-[var(--sztab-border,#E5E1D8)]">
+              <CardContent className="space-y-4 pt-6">
+                {KEY_ORDER_GENERAL.map(renderField)}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-        <TabsContent value="pricing">
-          <Card>
-            <CardContent className="space-y-6 pt-6">
-              <section className="space-y-4">
-                <h3 className="text-sm font-medium">Marże</h3>
-                {KEY_ORDER_MARGINS.map(renderField)}
-              </section>
-              <section className="space-y-4">
-                <h3 className="text-sm font-medium">Progi wartości zamówienia</h3>
-                {KEY_ORDER_THRESHOLDS.map(renderField)}
-              </section>
-            </CardContent>
-          </Card>
-        </TabsContent>
+          <TabsContent value="pricing">
+            <Card className="rounded-lg border-[var(--sztab-border,#E5E1D8)]">
+              <CardContent className="space-y-6 pt-6">
+                <section className="space-y-4">
+                  <h3 className="text-[10px] font-medium uppercase tracking-wider text-[var(--sztab-text-muted,#888)]">
+                    Marże
+                  </h3>
+                  {KEY_ORDER_MARGINS.map(renderField)}
+                </section>
+                <section className="space-y-4">
+                  <h3 className="text-[10px] font-medium uppercase tracking-wider text-[var(--sztab-text-muted,#888)]">
+                    Progi wartości zamówienia
+                  </h3>
+                  {KEY_ORDER_THRESHOLDS.map(renderField)}
+                </section>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-        <TabsContent value="api">
-          <Card>
-            <CardContent className="pt-6">
-              <ApiKeysForm {...maskedKeys} />
-            </CardContent>
-          </Card>
-        </TabsContent>
+          <TabsContent value="api">
+            <Card className="rounded-lg border-[var(--sztab-border,#E5E1D8)]">
+              <CardContent className="pt-6">
+                <ApiKeysForm {...maskedKeys} />
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-        <TabsContent value="templates">
-          <Card>
-            <CardContent className="space-y-4 pt-6">
-              <p className="text-sm text-muted-foreground">
-                Szablon Excel z gotowymi nagłówkami i przykładowymi pozycjami.
-                Wyślij dostawcy do wypełnienia, potem zaimportuj na stronie
-                /products → „Importuj cennik z Excel".
-              </p>
-              <TemplateButton />
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      <div className="flex gap-3">
-        <Button onClick={handleSave} disabled={pending}>
-          {pending && <Spinner className="mr-2" />}
-          Zapisz ustawienia
-        </Button>
+          <TabsContent value="templates">
+            <Card className="rounded-lg border-[var(--sztab-border,#E5E1D8)]">
+              <CardContent className="space-y-4 pt-6">
+                <p className="text-sm text-[var(--sztab-text-secondary,#555)]">
+                  Szablon Excel z gotowymi nagłówkami i przykładowymi pozycjami.
+                  Wyślij dostawcy do wypełnienia, potem zaimportuj na stronie
+                  /products → „Importuj cennik z Excel".
+                </p>
+                <TemplateButton />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   )

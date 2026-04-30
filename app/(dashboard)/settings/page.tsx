@@ -1,5 +1,4 @@
 import { createClient } from '@/lib/supabase/server'
-import { PageHeader } from '@/components/page-header'
 import { getMaskedParamsKeys } from '@/app/actions/params'
 import { SettingsForm, type SettingsRow } from './settings-form'
 
@@ -15,20 +14,15 @@ export default async function SettingsPage() {
   ])
 
   return (
-    <div className="flex flex-col">
-      <PageHeader title="Ustawienia" />
-      <div className="p-6 max-w-2xl">
-        <SettingsForm
-          settings={(data as SettingsRow[]) ?? []}
-          maskedKeys={{
-            geminiMasked: masked.gemini_key,
-            apifyMasked: masked.apify_api_token,
-            krsMasked: masked.krs_rejestr_api_token,
-            allegroIdMasked: masked.allegro_client_id,
-            allegroSecretMasked: masked.allegro_client_secret,
-          }}
-        />
-      </div>
-    </div>
+    <SettingsForm
+      settings={(data as SettingsRow[]) ?? []}
+      maskedKeys={{
+        geminiMasked: masked.gemini_key,
+        apifyMasked: masked.apify_api_token,
+        krsMasked: masked.krs_rejestr_api_token,
+        allegroIdMasked: masked.allegro_client_id,
+        allegroSecretMasked: masked.allegro_client_secret,
+      }}
+    />
   )
 }
