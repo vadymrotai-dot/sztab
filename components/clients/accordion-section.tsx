@@ -1,6 +1,14 @@
+'use client'
+
 // components/clients/accordion-section.tsx
 // Sprint S2B Phase 2D — native <details> accordion. Open by default
 // configurable via prop.
+//
+// Sprint S2B regression fix — must be 'use client' because the
+// detailHref <a onClick={stopPropagation}> handler cannot be serialized
+// across server→client boundary у Next.js App Router. Without this
+// directive /clients/[id] SSR threw 500 for every page що passes detailHref.
+// Matches Sprint M FIX 4 pattern (BusinessProfileSection дla Re-analyze).
 
 import * as React from 'react'
 
