@@ -4,6 +4,8 @@
 // wpis_wprowadzajacy_data}}. Helper unwraps recursively.
 
 import { rejestrioGet } from './client'
+import { sumKapitalZWspolnikow } from './parsers/kapital'
+import { deriveFoundedAt } from './parsers/founded'
 
 interface Wrapped<T> {
   _wartosc?: T
@@ -174,13 +176,24 @@ export async function fetchRozdzialOgolny(
     }
   }
 
+  // Sprint S2A Phase 1A: kapital — fall back на sum z dane_wspolnikow.udzialow
+  // jeśli top-level kapital_zakladowy null (typowe sp.z o.o. case).
+  const kapital_zakladowy =
+    parseMoney(raw.kapital_zakladowy) ??
+    sumKapitalZWspolnikow(raw.dane_wspolnikow as never)
+
+  // Sprint S2A Phase 1B: founded_at — najstarsza wpis_wprowadzajacy_data.
+  const founded_at =
+    parsePolishDate(unwrap(raw.data_zarejestrowania) ?? unwrap(raw.data_dokonania_wpisu)) ??
+    deriveFoundedAt(raw as Record<string, unknown>)
+
   return {
     email_krs: unwrap(raw.email)?.toLowerCase() ?? null,
     website_krs: unwrap(raw.www) ?? unwrap(raw.adres_strony_internetowej) ?? null,
-    kapital_zakladowy: parseMoney(raw.kapital_zakladowy),
+    kapital_zakladowy,
     kapital_akcyjny: parseMoney(raw.kapital_akcyjny),
     opp_status: unwrap(raw.opp) === true,
-    founded_at: parsePolishDate(unwrap(raw.data_zarejestrowania) ?? unwrap(raw.data_dokonania_wpisu)),
+    founded_at,
     suspended_at,
     forma_prawna: unwrap(raw.forma_prawna),
     zarzad: extractPersonsFromObiekty(raw.organ_reprezentacji, 'zarzad'),

@@ -25,6 +25,20 @@ export interface PersonNetworkLink {
   data_koniec: string | null
 }
 
+/**
+ * Returns krs-powiązania для osoby z rejestr.io v2.
+ *
+ * Empty network is EXPECTED для persons holding only one company seat —
+ * API returns []. This is не bug. KOZAK OLEK example: PREZES Oleksii
+ * Ilchenko has only KOZAK OLEK у swojej network → returns [].
+ *
+ * Filters do `aktualnosc=aktualne` (only active relations). Past
+ * relations available via different query param коли потрібно.
+ *
+ * @param apiKey rejestr.io Biznes plan token
+ * @param personId rejestrio_person_id (number z /osoby/{id} response)
+ * @returns Array of network links across all current orgs, possibly empty
+ */
 export async function fetchPersonNetwork(
   apiKey: string,
   personId: number | string,

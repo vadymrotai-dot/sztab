@@ -109,12 +109,12 @@ async function main() {
   const allPersons = [...ogolny.zarzad, ...ogolny.prokurenci, ...ogolny.wspolnicy]
   for (const person of allPersons) {
     if (!person.rejestrio_person_id) continue
-    const { data: pIns } = await supabase
+    const { data: pIns, error: pErr } = await supabase
       .from('persons')
       .upsert(
         {
           rejestrio_person_id: person.rejestrio_person_id,
-          imie: person.imie,
+          imie: person.imie ?? '?',
           nazwisko: person.nazwisko ?? '?',
           zrodla_pol: { imie: 'rejestrio_v2', nazwisko: 'rejestrio_v2' },
           source: 'rejestrio_v2',
@@ -123,6 +123,7 @@ async function main() {
       )
       .select('id')
       .single()
+    if (pErr) console.error(`  person upsert ${person.imie}: ${pErr.message}`)
     if (pIns) {
       const { data: existing } = await supabase
         .from('person_company_links')
