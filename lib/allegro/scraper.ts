@@ -121,6 +121,7 @@ export async function searchOffersViaApify(
     input: {
       searchQueries: [phrase],
       maxItemsPerQuery: limit,
+      proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ['RESIDENTIAL'] },
     },
     timeoutSecs: RUN_TIMEOUT_SECS,
   })
