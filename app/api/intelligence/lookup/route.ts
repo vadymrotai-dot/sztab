@@ -18,8 +18,16 @@ import { enrichWithVAT, normalizeNip, isValidNip } from '@/lib/enrichment/vat'
 import { enrichWithGUS, gusLogin } from '@/lib/enrichment/gus'
 import { enrichWithKRS } from '@/lib/enrichment/krs'
 import { searchBzpByWinnerNip } from '@/lib/enrichment/bzp'
-import { fetchSprawozdania } from '@/lib/enrichment/krs-financials'
-import { fetchMsigChanges } from '@/lib/enrichment/msig'
+import { fetchOrgBasic } from '@/lib/rejestrio/org-basic'
+import { fetchRozdzialOgolny } from '@/lib/rejestrio/rozdzial-ogolny'
+import { fetchRozdzialPrzeksztalcenia } from '@/lib/rejestrio/rozdzial-przeksztalcenia'
+import { fetchRozdzialWzmianki } from '@/lib/rejestrio/rozdzial-wzmianki'
+import { fetchRozdzialOddzialy } from '@/lib/rejestrio/rozdzial-oddzialy'
+import { fetchAllFinancials } from '@/lib/rejestrio/sprawozdania'
+import { fetchOsobaDetail } from '@/lib/rejestrio/persons'
+import { fetchPersonNetwork } from '@/lib/rejestrio/person-network'
+import { fetchCrbr } from '@/lib/rejestrio/crbr'
+import { fetchBranches } from '@/lib/gus/branches'
 import { extractFromWebsite } from '@/lib/enrichment/website'
 import { upsertField, upsertFields } from '@/lib/profile/merge'
 import { findExistingContact } from '@/lib/enrichment/contact-preflight'
@@ -220,6 +228,43 @@ export async function POST(req: Request) {
           fields_unchanged: merged.unchanged,
           raw_payload: gus.raw,
         })
+
+        // Sprint S1 Phase 4: extend з jednostki lokalne (GUS BIR ListaJednLokalnych)
+        if (gus.regon) {
+          try {
+            const silosId = (gus.raw as { search?: { SilosID?: string } })?.search?.SilosID
+            const branches = await fetchBranches(sessionId, gus.regon, silosId)
+            if (branches.length > 0) {
+              for (const b of branches) {
+                if (!b.regon_jednostki) continue
+                await supabase.from('company_branches').upsert(
+                  {
+                    client_id: clientId,
+                    regon_jednostki: b.regon_jednostki,
+                    nazwa: b.nazwa,
+                    adres: b.adres,
+                    data_rozpoczecia: b.data_rozpoczecia,
+                    status: b.status,
+                    source: 'gus_bir',
+                  },
+                  { onConflict: 'client_id,regon_jednostki' },
+                )
+              }
+              await supabase
+                .from('clients')
+                .update({ branch_offices_count: branches.length })
+                .eq('id', clientId)
+            }
+            response.sources_completed.push({
+              source: 'GUS_branches',
+              status: branches.length > 0 ? 'success' : 'partial',
+              note: `${branches.length} jednostek lokalnych`,
+            })
+          } catch (brErr) {
+            const brMsg = brErr instanceof Error ? brErr.message : String(brErr)
+            response.sources_completed.push({ source: 'GUS_branches', status: 'error', error: brMsg })
+          }
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -438,14 +483,13 @@ async function runPhaseB({
     errors: [],
   }
 
-  // ─── STEP 3: Buying signals (BZP + sprawozdania + MSiG, parallel) ───
+  // ─── STEP 3: Buying signals (BZP + rejestr.io v2 comprehensive, parallel) ───
+  // Sprint S1 Phase 4: replaced legacy fetchSprawozdania/fetchMsigChanges
+  // з comprehensive runRejestrioStep що handles wszystkie 9 v2 endpoints.
   await Promise.allSettled([
     runBzpStep(supabase, clientId, nip, response),
     krsNumber
-      ? runSprawozdaniaStep(supabase, clientId, krsNumber, params.krs_rejestr_api_token, response)
-      : Promise.resolve(),
-    krsNumber
-      ? runMsigStep(supabase, clientId, krsNumber, params.krs_rejestr_api_token, response)
+      ? runRejestrioStep(supabase, clientId, krsNumber, params.krs_rejestr_api_token, response)
       : Promise.resolve(),
   ])
 
@@ -730,7 +774,18 @@ async function runBzpStep(
   }
 }
 
-async function runSprawozdaniaStep(
+// Sprint S1 Phase 4: legacy runSprawozdaniaStep + runMsigStep removed —
+// fully replaced by runRejestrioStep що uses lib/rejestrio/* v2 modules.
+// Old company_financials i msig_changes tables stay як read-only legacy
+// stores — будут eventually replaced by financial_statements + (future)
+// monitor_changes table.
+
+// ─── Sprint S1 — comprehensive rejestr.io v2 step ───
+// Replaces legacy fetchSprawozdania + fetchMsigChanges. Calls all 9 v2
+// endpoints (org-basic, ogolny, przeksztalcenia, wzmianki, oddzialy,
+// sprawozdania, osoby per zarzad, crbr) i persists у nowych tabel +
+// columns clients (Sprint S1 Phase 1 migrations 036-041).
+async function runRejestrioStep(
   supabase: Awaited<ReturnType<typeof createClient>>,
   clientId: string,
   krsNumber: string,
@@ -740,100 +795,241 @@ async function runSprawozdaniaStep(
   const runId = await startEnrichmentRun(supabase, {
     target_type: 'company',
     target_id: clientId,
-    source: 'sprawozdania_KRS',
+    source: 'rejestrio_v2',
   })
+  if (!apiKey) {
+    response.sources_completed.push({ source: 'rejestrio_v2', status: 'skipped', note: 'no token' })
+    await finishEnrichmentRun(supabase, runId, { status: 'partial', error_message: 'no API key' })
+    return
+  }
+
+  const krs = krsNumber.padStart(10, '0')
+  const summary: Record<string, number> = {}
+  const errors: string[] = []
+
   try {
-    if (!apiKey) {
-      response.sources_completed.push({ source: 'sprawozdania_KRS', status: 'skipped', note: 'no rejestr.io token' })
-      await finishEnrichmentRun(supabase, runId, { status: 'partial', error_message: 'no API key' })
-      return
+    // 1. /org/{krs} — rejestrio_org_id, employees_count
+    const orgBasic = await fetchOrgBasic(apiKey, krs)
+    if (orgBasic) {
+      await supabase
+        .from('clients')
+        .update({
+          rejestrio_org_id: orgBasic.rejestrio_org_id,
+          employees_count: orgBasic.employees_count,
+        })
+        .eq('id', clientId)
+      summary.org_basic = 1
     }
-    const sprawozdania = await fetchSprawozdania(apiKey, { krs: krsNumber })
-    let inserted = 0
-    for (const s of sprawozdania) {
-      const { error } = await supabase.from('company_financials').upsert(
+  } catch (e) {
+    errors.push(`org-basic: ${e instanceof Error ? e.message : e}`)
+  }
+
+  let zarzadList: { rejestrio_person_id: number | null; imie: string | null; nazwisko: string | null; funkcja: string | null }[] = []
+
+  try {
+    // 2. rozdzial-ogolny
+    const ogolny = await fetchRozdzialOgolny(apiKey, krs)
+    await supabase
+      .from('clients')
+      .update({
+        email_krs: ogolny.email_krs,
+        website_krs: ogolny.website_krs,
+        kapital_zakladowy: ogolny.kapital_zakladowy,
+        kapital_akcyjny: ogolny.kapital_akcyjny,
+        opp_status: ogolny.opp_status,
+        founded_at: ogolny.founded_at,
+        suspended_at: ogolny.suspended_at,
+      })
+      .eq('id', clientId)
+    summary.ogolny_fields = 1
+
+    // Persons z zarzad/prokurenci/wspolnicy → upsert persons + person_company_links
+    zarzadList = ogolny.zarzad
+    const allPersons = [...ogolny.zarzad, ...ogolny.prokurenci, ...ogolny.wspolnicy]
+    let personsUpserted = 0
+    for (const p of allPersons) {
+      if (!p.rejestrio_person_id) continue
+      // Upsert persons (real names from Biznes plan)
+      const { data: pIns, error: pErr } = await supabase
+        .from('persons')
+        .upsert(
+          {
+            rejestrio_person_id: p.rejestrio_person_id,
+            imie: p.imie,
+            nazwisko: p.nazwisko ?? '?',
+            zrodla_pol: { imie: 'rejestrio_v2', nazwisko: 'rejestrio_v2' },
+            source: 'rejestrio_v2',
+          },
+          { onConflict: 'rejestrio_person_id' },
+        )
+        .select('id')
+        .single()
+      if (pErr || !pIns) continue
+      const personId = (pIns as { id: string }).id
+
+      // Link to client (idempotent — check existing)
+      const { data: existing } = await supabase
+        .from('person_company_links')
+        .select('id')
+        .eq('client_id', clientId)
+        .eq('person_id', personId)
+        .maybeSingle()
+      if (!existing) {
+        await supabase.from('person_company_links').insert({
+          person_id: personId,
+          client_id: clientId,
+          rola: p.funkcja ?? 'Członek',
+          jest_decyzyjny:
+            (p.funkcja ?? '').toLowerCase().includes('prezes') ||
+            (p.funkcja ?? '').toLowerCase().includes('zarząd'),
+          zrodlo: 'rejestrio_v2',
+        })
+      }
+      personsUpserted++
+    }
+    summary.persons_upserted = personsUpserted
+  } catch (e) {
+    errors.push(`ogolny: ${e instanceof Error ? e.message : e}`)
+  }
+
+  try {
+    // 3. rozdzial-przeksztalcenia → red flags
+    const flags = await fetchRozdzialPrzeksztalcenia(apiKey, krs)
+    await supabase
+      .from('clients')
+      .update({
+        bankruptcy_flag: flags.bankruptcy_flag,
+        liquidation_flag: flags.liquidation_flag,
+        restructuring_flag: flags.restructuring_flag,
+      })
+      .eq('id', clientId)
+    summary.red_flags =
+      Number(flags.bankruptcy_flag) + Number(flags.liquidation_flag) + Number(flags.restructuring_flag)
+  } catch (e) {
+    errors.push(`przeksztalcenia: ${e instanceof Error ? e.message : e}`)
+  }
+
+  try {
+    // 4. rozdzial-wzmianki → last_filing_date
+    const wzm = await fetchRozdzialWzmianki(apiKey, krs)
+    if (wzm.last_filing_date) {
+      await supabase.from('clients').update({ last_filing_date: wzm.last_filing_date }).eq('id', clientId)
+      summary.last_filing = 1
+    }
+  } catch (e) {
+    errors.push(`wzmianki: ${e instanceof Error ? e.message : e}`)
+  }
+
+  try {
+    // 5. rozdzial-oddzialy
+    const odd = await fetchRozdzialOddzialy(apiKey, krs)
+    await supabase
+      .from('clients')
+      .update({ branch_offices_count: odd.branch_offices_count })
+      .eq('id', clientId)
+    summary.oddzialy = odd.branch_offices_count
+  } catch (e) {
+    errors.push(`oddzialy: ${e instanceof Error ? e.message : e}`)
+  }
+
+  try {
+    // 6. sprawozdania (XBRL JSON) → financial_statements rows
+    const fins = await fetchAllFinancials(apiKey, krs)
+    let finInserted = 0
+    for (const f of fins) {
+      const { error } = await supabase.from('financial_statements').upsert(
         {
           client_id: clientId,
-          rok: s.rok,
-          przychody_pln: s.przychody_pln,
-          zysk_netto_pln: s.zysk_netto_pln,
-          marza_netto: s.marza_netto,
-          aktywa_pln: s.aktywa_pln,
-          kapital_wlasny_pln: s.kapital_wlasny_pln,
-          zatrudnienie: s.zatrudnienie,
-          source_url: s.source_url,
-          filed_at: s.filed_at,
-          raw_payload: s.raw,
+          krs_doc_id: f.primary_doc_id,
+          okres_data_start: f.okres_data_start,
+          okres_data_koniec: f.okres_data_koniec,
+          przychody_netto: f.fields.przychody_netto,
+          zysk_netto: f.fields.zysk_netto,
+          aktywa_razem: f.fields.aktywa_razem,
+          liczba_pracownikow: f.fields.liczba_pracownikow,
+          raw_xbrl_json: f.raw_xbrl_combined,
+          source: 'rejestrio_v2',
         },
-        { onConflict: 'client_id,rok' },
+        { onConflict: 'client_id,okres_data_koniec' },
       )
-      if (!error) inserted++
+      if (!error) finInserted++
     }
-    response.sources_completed.push({
-      source: 'sprawozdania_KRS',
-      status: sprawozdania.length > 0 ? 'success' : 'partial',
-      fields_added: inserted,
-      note: `${sprawozdania.length} years (${inserted} stored)`,
-    })
-    await finishEnrichmentRun(supabase, runId, {
-      status: 'success',
-      raw_payload: { years: sprawozdania.length },
-    })
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    response.errors.push(`sprawozdania: ${msg}`)
-    response.sources_completed.push({ source: 'sprawozdania_KRS', status: 'error', error: msg })
-    await finishEnrichmentRun(supabase, runId, { status: 'error', error_message: msg })
+    summary.financial_years = finInserted
+  } catch (e) {
+    errors.push(`sprawozdania: ${e instanceof Error ? e.message : e}`)
   }
-}
 
-async function runMsigStep(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  clientId: string,
-  krsNumber: string,
-  apiKey: string | undefined,
-  response: LookupResponse,
-): Promise<void> {
-  const runId = await startEnrichmentRun(supabase, {
-    target_type: 'company',
-    target_id: clientId,
-    source: 'MSiG',
-  })
   try {
-    if (!apiKey) {
-      response.sources_completed.push({ source: 'MSiG', status: 'skipped', note: 'no rejestr.io token' })
-      await finishEnrichmentRun(supabase, runId, { status: 'partial', error_message: 'no API key' })
-      return
+    // 7. per zarzad person — /osoby/{id} update real names + powiazania
+    let networkLinks = 0
+    for (const p of zarzadList) {
+      if (!p.rejestrio_person_id) continue
+      // Update names (Biznes plan dał їх already у rozdzial-ogolny, але це
+      // double-check). Then fetch network links.
+      const network = await fetchPersonNetwork(apiKey, p.rejestrio_person_id)
+      if (network.length === 0) continue
+
+      const { data: pRow } = await supabase
+        .from('persons')
+        .select('id')
+        .eq('rejestrio_person_id', p.rejestrio_person_id)
+        .maybeSingle()
+      const sourcePersonId = (pRow as { id: string } | null)?.id
+      if (!sourcePersonId) continue
+
+      for (const link of network) {
+        const { error } = await supabase.from('person_network_links').insert({
+          source_person_id: sourcePersonId,
+          linked_krs: link.linked_krs,
+          linked_company_name: link.linked_company_name,
+          relation_type: link.relation_type,
+          relation_kierunek: link.relation_kierunek,
+          data_start: link.data_start,
+          data_koniec: link.data_koniec,
+        })
+        if (!error) networkLinks++
+      }
     }
-    const changes = await fetchMsigChanges(apiKey, { krs: krsNumber })
-    let inserted = 0
-    for (const c of changes) {
-      const { error } = await supabase.from('msig_changes').insert({
-        client_id: clientId,
-        msig_number: c.msig_number,
-        publication_date: c.publication_date,
-        change_type: c.change_type,
-        description: c.description,
-        raw_payload: c.raw,
-      })
-      if (!error) inserted++
-    }
-    response.sources_completed.push({
-      source: 'MSiG',
-      status: changes.length > 0 ? 'success' : 'partial',
-      fields_added: inserted,
-      note: `${changes.length} changes (${inserted} stored)`,
-    })
-    await finishEnrichmentRun(supabase, runId, {
-      status: 'success',
-      raw_payload: { changes: changes.length },
-    })
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    response.errors.push(`MSiG: ${msg}`)
-    response.sources_completed.push({ source: 'MSiG', status: 'error', error: msg })
-    await finishEnrichmentRun(supabase, runId, { status: 'error', error_message: msg })
+    summary.person_network_links = networkLinks
+  } catch (e) {
+    errors.push(`network: ${e instanceof Error ? e.message : e}`)
   }
+
+  try {
+    // 8. crbr beneficjenci
+    const beneficiaries = await fetchCrbr(apiKey, krs)
+    let crbrInserted = 0
+    for (const b of beneficiaries) {
+      const { error } = await supabase.from('crbr_beneficiaries').upsert(
+        {
+          client_id: clientId,
+          rejestrio_person_id: b.rejestrio_person_id,
+          imie: b.imie,
+          nazwisko: b.nazwisko,
+          kraj_rezydencji: b.kraj_rezydencji,
+          obywatelstwa: b.obywatelstwa,
+          rola: b.rola,
+        },
+        { onConflict: 'client_id,rejestrio_person_id' },
+      )
+      if (!error) crbrInserted++
+    }
+    summary.crbr_beneficiaries = crbrInserted
+  } catch (e) {
+    errors.push(`crbr: ${e instanceof Error ? e.message : e}`)
+  }
+
+  const overallStatus = errors.length === 0 ? 'success' : errors.length < 5 ? 'partial' : 'error'
+  response.sources_completed.push({
+    source: 'rejestrio_v2',
+    status: overallStatus,
+    note: `${Object.entries(summary).map(([k, v]) => `${k}=${v}`).join(', ')}${errors.length ? ` | errors: ${errors.length}` : ''}`,
+  })
+  await finishEnrichmentRun(supabase, runId, {
+    status: overallStatus,
+    raw_payload: { summary, errors },
+    error_message: errors.length > 0 ? errors.join('; ').slice(0, 500) : undefined,
+  })
 }
 
 // ─── STEP 4 — extract persons z KRS zarząd / website ───
