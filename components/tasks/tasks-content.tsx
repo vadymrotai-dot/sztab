@@ -1,21 +1,21 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
+import { HotLeadyChips, type HotLead } from '@/components/dzis/hot-leady-chips'
 import {
   Select,
   SelectContent,
@@ -40,7 +40,11 @@ interface TasksContentProps {
   tasks: (Task & { client?: { id: string; title: string } | null; goal?: { id: string; title: string } | null })[]
   clients: { id: string; title: string }[]
   goals: { id: string; title: string }[]
+  /** Sprint S4 Phase 4B — top hot leady дla empty state action prompt. */
+  hotLeads?: HotLead[]
 }
+
+type TaskFilter = 'dzis' | 'tydzien' | 'wszystko' | 'pilne'
 
 const priorityColors: Record<string, string> = {
   low: 'text-muted-foreground',
@@ -56,10 +60,18 @@ const sphereColors: Record<string, string> = {
   finanse: 'bg-emerald-500',
 }
 
-export function TasksContent({ tasks: initialTasks, clients, goals }: TasksContentProps) {
+export function TasksContent({
+  tasks: initialTasks,
+  clients,
+  goals,
+  hotLeads = [],
+}: TasksContentProps) {
   const [tasks, setTasks] = useState(initialTasks)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const searchParams = useSearchParams()
+  const [filter, setFilter] = useState<TaskFilter>('dzis')
+  const [showCompleted, setShowCompleted] = useState(false)
   const [formData, setFormData] = useState({
     title: '',
     due: '',
@@ -73,6 +85,19 @@ export function TasksContent({ tasks: initialTasks, clients, goals }: TasksConte
   const supabase = createClient()
 
   const today = new Date().toISOString().split('T')[0]
+  const weekFromNow = new Date(Date.now() + 7 * 86_400_000)
+    .toISOString()
+    .split('T')[0]
+
+  // Sprint S4 Phase 4B — open Dialog gdy URL ma ?new=1, optionally
+  // pre-fill client_id з ?client_id=…
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      const preClient = searchParams.get('client_id') ?? ''
+      setFormData((prev) => ({ ...prev, client_id: preClient }))
+      setOpen(true)
+    }
+  }, [searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -143,7 +168,41 @@ export function TasksContent({ tasks: initialTasks, clients, goals }: TasksConte
   const completedTasks = tasks.filter((t) => t.done)
   const overdueTasks = pendingTasks.filter((t) => t.due && t.due < today)
   const todayTasks = pendingTasks.filter((t) => t.due === today)
-  const upcomingTasks = pendingTasks.filter((t) => !t.due || t.due > today)
+
+  // Sprint S4 Phase 4B — filter chips replace pending/completed tabs.
+  const filteredTasks = useMemo(() => {
+    if (filter === 'dzis') return [...overdueTasks, ...todayTasks]
+    if (filter === 'tydzien')
+      return pendingTasks.filter((t) => t.due && t.due <= weekFromNow)
+    if (filter === 'pilne')
+      return pendingTasks.filter(
+        (t) => t.priority === 'high' || (t.due && t.due < today),
+      )
+    return pendingTasks
+  }, [filter, pendingTasks, overdueTasks, todayTasks, weekFromNow, today])
+
+  const filterCounts: Record<TaskFilter, number> = {
+    dzis: overdueTasks.length + todayTasks.length,
+    tydzien: pendingTasks.filter((t) => t.due && t.due <= weekFromNow).length,
+    wszystko: pendingTasks.length,
+    pilne: pendingTasks.filter(
+      (t) => t.priority === 'high' || (t.due && t.due < today),
+    ).length,
+  }
+
+  const filterLabels: Record<TaskFilter, string> = {
+    dzis: 'Dziś',
+    tydzien: 'Tydzień',
+    wszystko: 'Wszystko',
+    pilne: 'Pilne',
+  }
+
+  const emptyMessage: Record<TaskFilter, string> = {
+    dzis: 'Brak zadań na dziś',
+    tydzien: 'Brak zadań w tym tygodniu',
+    wszystko: 'Brak zadań do zrobienia',
+    pilne: 'Brak pilnych zadań',
+  }
 
   const TaskItem = ({ task }: { task: typeof tasks[0] }) => (
     <Card>
@@ -194,17 +253,47 @@ export function TasksContent({ tasks: initialTasks, clients, goals }: TasksConte
     </Card>
   )
 
+  const topHotLead = hotLeads[0]
+
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
-      <div className="flex justify-end">
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <PlusIcon className="mr-2 size-4" />
-              Nowe zadanie
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
+      {/* Filter chips */}
+      <div className="flex flex-wrap items-center gap-2">
+        {(['dzis', 'tydzien', 'wszystko', 'pilne'] as TaskFilter[]).map((f) => {
+          const active = f === filter
+          const count = filterCounts[f]
+          return (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setFilter(f)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] transition ${
+                active
+                  ? 'border-[#4F46E5] bg-[#EEEDFE] text-[#3730A3]'
+                  : 'border-[#E5E1D8] text-[#555] hover:bg-[#FAFAF7]'
+              }`}
+            >
+              {filterLabels[f]}
+              <span className={`font-mono text-[10px] ${active ? 'text-[#4F46E5]' : 'text-[#888]'}`}>
+                {count}
+              </span>
+            </button>
+          )
+        })}
+        {completedTasks.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowCompleted((v) => !v)}
+            className="ml-auto rounded-full border border-[#E5E1D8] px-3 py-1 text-[12px] text-[#555] hover:bg-[#FAFAF7]"
+          >
+            {showCompleted ? 'Ukryj ukończone' : `Pokaż ukończone (${completedTasks.length})`}
+          </button>
+        )}
+      </div>
+
+      {/* New task dialog (otwierany з URL ?new=1 lub з Header) */}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
             <DialogHeader>
               <DialogTitle>Nowe zadanie</DialogTitle>
             </DialogHeader>
@@ -337,63 +426,70 @@ export function TasksContent({ tasks: initialTasks, clients, goals }: TasksConte
               </div>
             </form>
           </DialogContent>
-        </Dialog>
-      </div>
+      </Dialog>
 
-      <Tabs defaultValue="pending">
-        <TabsList>
-          <TabsTrigger value="pending">Do zrobienia ({pendingTasks.length})</TabsTrigger>
-          <TabsTrigger value="completed">Ukonczone ({completedTasks.length})</TabsTrigger>
-        </TabsList>
+      {/* Filtered task list */}
+      {filteredTasks.length > 0 ? (
+        <div className="space-y-2">
+          {filteredTasks.map((task) => (
+            <TaskItem key={task.id} task={task} />
+          ))}
+        </div>
+      ) : (
+        // Sprint S4 Phase 4B — action-oriented empty state
+        <Card>
+          <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+            <div className="flex size-12 items-center justify-center rounded-full border-2 border-[#E5E1D8] text-[#888]">
+              <span className="text-xl">○</span>
+            </div>
+            <div>
+              <h3 className="text-[16px] font-medium">{emptyMessage[filter]}</h3>
+              {hotLeads.length > 0 ? (
+                <p className="mt-1 text-[13px] text-[#555]">
+                  Co dalej? Skorzystaj z hot leadów и zaplanuj kontakt.
+                </p>
+              ) : (
+                <p className="mt-1 text-[13px] text-[#888]">
+                  Wszystko zrobione na ten filtr.
+                </p>
+              )}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+              {topHotLead && (
+                <Button size="sm" asChild>
+                  <Link
+                    href={`/organizer?tab=zadania&new=1&client_id=${topHotLead.id}`}
+                  >
+                    <PlusIcon className="mr-1.5 size-3.5" />
+                    Zaplanuj kontakt z hot leadem
+                  </Link>
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+                <PlusIcon className="mr-1.5 size-3.5" />
+                Nowe zadanie
+              </Button>
+            </div>
+            {hotLeads.length > 0 && (
+              <div className="mt-3">
+                <HotLeadyChips leads={hotLeads.slice(0, 3)} compact />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-        <TabsContent value="pending" className="mt-4 space-y-6">
-          {overdueTasks.length > 0 && (
-            <div>
-              <h3 className="text-sm font-medium text-destructive mb-3">Zaległe ({overdueTasks.length})</h3>
-              <div className="space-y-2">
-                {overdueTasks.map((task) => (
-                  <TaskItem key={task.id} task={task} />
-                ))}
-              </div>
-            </div>
-          )}
-          {todayTasks.length > 0 && (
-            <div>
-              <h3 className="text-sm font-medium mb-3">Dzisiaj ({todayTasks.length})</h3>
-              <div className="space-y-2">
-                {todayTasks.map((task) => (
-                  <TaskItem key={task.id} task={task} />
-                ))}
-              </div>
-            </div>
-          )}
-          {upcomingTasks.length > 0 && (
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-3">Nadchodzace ({upcomingTasks.length})</h3>
-              <div className="space-y-2">
-                {upcomingTasks.map((task) => (
-                  <TaskItem key={task.id} task={task} />
-                ))}
-              </div>
-            </div>
-          )}
-          {pendingTasks.length === 0 && (
-            <p className="text-center text-muted-foreground py-8">Brak zadan do wykonania</p>
-          )}
-        </TabsContent>
-
-        <TabsContent value="completed" className="mt-4">
-          {completedTasks.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">Brak ukonczonych zadan</p>
-          ) : (
-            <div className="space-y-2">
-              {completedTasks.map((task) => (
-                <TaskItem key={task.id} task={task} />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+      {/* Completed list (toggle) */}
+      {showCompleted && completedTasks.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-[10px] uppercase tracking-wider text-[#888]">
+            Ukończone ({completedTasks.length})
+          </h3>
+          {completedTasks.map((task) => (
+            <TaskItem key={task.id} task={task} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

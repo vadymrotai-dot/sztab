@@ -64,24 +64,31 @@ interface DealsKanbanProps {
   deals: DealRow[]
 }
 
+// Sprint S4 Phase 4A — single accent #4F46E5 (no rainbow per stage).
+// Active stages get neutral white/border-light; wygrana/przegrana subtle
+// terminal accents to distinguish closed states.
+const STAGE_NEUTRAL = 'border-[#E5E1D8] bg-white'
+const STAGE_WON = 'border-[#00A656]/30 bg-[#F0FDF4]'
+const STAGE_LOST = 'border-[#DC2626]/30 bg-[#FEF2F2]'
+
 const stageColors: Record<DealStage, string> = {
-  lead: 'border-slate-300 bg-slate-50',
-  oferta: 'border-blue-300 bg-blue-50',
-  negocjacje: 'border-amber-300 bg-amber-50',
-  sample: 'border-violet-300 bg-violet-50',
-  kontrakt: 'border-cyan-300 bg-cyan-50',
-  wygrana: 'border-green-300 bg-green-50',
-  przegrana: 'border-red-300 bg-red-50',
+  lead: STAGE_NEUTRAL,
+  oferta: STAGE_NEUTRAL,
+  negocjacje: STAGE_NEUTRAL,
+  sample: STAGE_NEUTRAL,
+  kontrakt: STAGE_NEUTRAL,
+  wygrana: STAGE_WON,
+  przegrana: STAGE_LOST,
 }
 
 const stageTitleColors: Record<DealStage, string> = {
-  lead: 'text-slate-700',
-  oferta: 'text-blue-700',
-  negocjacje: 'text-amber-700',
-  sample: 'text-violet-700',
-  kontrakt: 'text-cyan-700',
-  wygrana: 'text-green-700',
-  przegrana: 'text-red-700',
+  lead: 'text-[#0A0A0A]',
+  oferta: 'text-[#0A0A0A]',
+  negocjacje: 'text-[#0A0A0A]',
+  sample: 'text-[#0A0A0A]',
+  kontrakt: 'text-[#0A0A0A]',
+  wygrana: 'text-[#065F46]',
+  przegrana: 'text-[#991B1B]',
 }
 
 const plnFormatter = new Intl.NumberFormat('pl-PL', {
@@ -256,28 +263,63 @@ function KanbanColumn({
   const { setNodeRef, isOver } = useDroppable({ id: stage.value })
 
   const totalValue = deals.reduce((sum, d) => sum + dealValue(d), 0)
+  const isEmpty = deals.length === 0
+
+  // Sprint S4 Phase 4A — empty stages collapse до 44px vertical strip
+  // dla space efficiency. Drop target zachowane (drag z innego stage'u
+  // expands).
+  if (isEmpty && !isOver) {
+    return (
+      <div
+        ref={setNodeRef}
+        className={cn(
+          'flex flex-col items-center justify-between rounded-lg border min-w-[44px] w-[44px] py-3 transition-all hover:bg-[#FAFAF7]',
+          stageColors[stage.value],
+        )}
+        title={`${stage.label} · 0 — kliknij "+" by dodać umowę`}
+      >
+        <span
+          className={cn(
+            'text-[11px] font-medium tracking-wider uppercase',
+            stageTitleColors[stage.value],
+          )}
+          style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+        >
+          {stage.label} · 0
+        </span>
+        <Link
+          href={`/deals/new?stage=${stage.value}`}
+          className="rounded p-1 text-[#888] hover:bg-[#EEEDFE] hover:text-[#4F46E5]"
+          title={`Dodaj umowę w stage'u ${stage.label}`}
+        >
+          <PlusIcon className="size-3.5" />
+        </Link>
+      </div>
+    )
+  }
 
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        'flex flex-col rounded-lg border-2 min-w-[280px] w-[280px] transition-colors',
+        'flex flex-col rounded-lg border min-w-[280px] w-[280px] transition-colors',
         stageColors[stage.value],
-        isOver && 'ring-2 ring-primary ring-offset-2'
+        isOver && 'ring-2 ring-[#4F46E5] ring-offset-2',
       )}
     >
       <div className="p-3 border-b border-inherit">
         <div className="flex items-center justify-between">
-          <h3 className={cn('font-semibold text-sm', stageTitleColors[stage.value])}>
+          <h3 className={cn('font-medium text-sm', stageTitleColors[stage.value])}>
             {stage.label}
           </h3>
-          <Badge variant="secondary" className="text-xs">
+          <Badge
+            variant="outline"
+            className="text-xs border-[#E5E1D8] bg-[#EEEDFE] text-[#3730A3]"
+          >
             {deals.length}
           </Badge>
         </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          {formatPLNCompact(totalValue)}
-        </p>
+        <p className="text-xs text-[#888] mt-1">{formatPLNCompact(totalValue)}</p>
       </div>
       <SortableContext
         items={deals.map((d) => d.id)}
