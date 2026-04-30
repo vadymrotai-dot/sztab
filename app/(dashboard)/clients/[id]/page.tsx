@@ -1,43 +1,33 @@
+// app/(dashboard)/clients/[id]/page.tsx
+// Sprint S2B Phase 2 — comprehensive client detail redesign.
+// Connects S1 (rejestr.io v2) + S2A (score formula) DB fields.
+// Drops: sticky 5-action bar, horizontal anchor nav, debug "Profil canonical
+// 18 pól", raw JSON dumps, stale "Sprawozdania niedostępne HTTP 400".
+
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { PencilIcon, MailIcon, PhoneIcon, MapPinIcon, BuildingIcon, GlobeIcon } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { PencilIcon } from 'lucide-react'
 import { ClientContacts } from '@/components/clients/client-contacts'
 import { ClientDeals } from '@/components/clients/client-deals'
 import { ClientTasks } from '@/components/clients/client-tasks'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { NewDealButton } from '@/components/clients/new-deal-button'
-import { VatSection } from '@/app/(dashboard)/_shared/vat-section'
-import { GusSection } from '@/app/(dashboard)/_shared/gus-section'
-import { KrsSection } from '@/app/(dashboard)/_shared/krs-section'
-import { StatusBadgesRow } from '@/app/(dashboard)/_shared/status-badges-row'
 import { MatchesPanel } from '@/components/matches/matches-panel'
-import { BuyingSignalsSection } from '@/components/clients/buying-signals-section'
-import { FinancialsSection } from '@/components/clients/financials-section'
 import { BusinessProfileSection } from '@/components/clients/business-profile-section'
-import { PeopleSection } from '@/components/clients/people-section'
-import { ProfileFieldsTable } from '@/components/clients/profile-fields-table'
-import { MsigChangesSection } from '@/components/clients/msig-changes-section'
 import { EnrichmentProgressBanner } from '@/components/clients/enrichment-progress-banner'
-import { MetricsRow } from '@/components/clients/metrics-row'
-import { AnchorNav } from '@/components/clients/anchor-nav'
-import { ClientActionBar } from '@/components/clients/client-action-bar'
+import { AccordionSection } from '@/components/clients/accordion-section'
+import { MetricStrip } from '@/components/clients/metric-strip'
+import { ProfileSectionV2 } from '@/components/clients/profile-section-v2'
+import { FinancialStatementsTable } from '@/components/clients/financial-statements-table'
+import { PersonsSectionV2 } from '@/components/clients/persons-section-v2'
+import { SignalsSection } from '@/components/clients/signals-section'
+import { ContactSectionV2 } from '@/components/clients/contact-section-v2'
 
-const segmentColors: Record<string, string> = {
-  maly_opt: 'bg-slate-500',
-  sredni_opt: 'bg-blue-500',
-  duzy_opt: 'bg-green-500',
-  katalog: 'bg-purple-500',
-  docel: 'bg-indigo-600',
-  niesklasyfikowany: 'bg-gray-400',
-}
-
-const statusColors: Record<string, string> = {
+const statusColor: Record<string, string> = {
   nowy: 'bg-blue-500',
   aktywny: 'bg-green-500',
   nieaktywny: 'bg-gray-400',
@@ -56,84 +46,58 @@ export default async function ClientDetailPage({
     { data: contacts },
     { data: deals },
     { data: tasks },
-    { data: clients },
+    { data: clientsList },
     { data: products },
     { data: people },
     { data: suppliers },
-    // Sprint K — new sources
     { data: bzpTenders },
-    { data: financials },
-    { data: msigChanges },
+    { data: financialStatements },
     { data: profileFields },
     { data: personLinks },
-    { data: lastFinancialRun },
+    { data: crbr },
+    { data: branches },
     { data: topMatch },
+    { data: pkdMain },
   ] = await Promise.all([
     supabase.from('clients').select('*').eq('id', id).single(),
-    supabase
-      .from('contacts')
-      .select('*')
-      .eq('client_id', id)
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('deals')
-      .select('*')
-      .eq('client_id', id)
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('tasks')
-      .select('*')
-      .eq('client_id', id)
-      .order('due', { ascending: true }),
+    supabase.from('contacts').select('*').eq('client_id', id).order('created_at', { ascending: false }),
+    supabase.from('deals').select('*').eq('client_id', id).order('created_at', { ascending: false }),
+    supabase.from('tasks').select('*').eq('client_id', id).order('due', { ascending: true }),
     supabase.from('clients').select('id, title').order('title', { ascending: true }),
     supabase.from('products').select('id, name').order('name', { ascending: true }),
-    supabase
-      .from('people')
-      .select('id, name, client_id')
-      .order('name', { ascending: true }),
+    supabase.from('people').select('id, name, client_id').order('name', { ascending: true }),
     supabase.from('suppliers').select('id, name').order('name', { ascending: true }),
-    // Sprint K
     supabase
       .from('bzp_tenders')
-      .select('id, bzp_notice_id, ordering_party, ordering_party_type, cpv_codes, subject, award_value_pln, award_date')
+      .select('id, ordering_party, award_date')
       .eq('client_id', id)
-      .order('award_date', { ascending: false, nullsFirst: false })
-      .limit(20),
+      .order('award_date', { ascending: false, nullsFirst: false }),
     supabase
-      .from('company_financials')
-      .select('rok, przychody_pln, zysk_netto_pln, marza_netto, aktywa_pln, kapital_wlasny_pln, zatrudnienie, source_url')
+      .from('financial_statements')
+      .select('okres_data_koniec, przychody_netto, zysk_netto, aktywa_razem, liczba_pracownikow')
       .eq('client_id', id)
-      .order('rok', { ascending: false })
-      .limit(5),
-    supabase
-      .from('msig_changes')
-      .select('id, msig_number, publication_date, change_type, description')
-      .eq('client_id', id)
-      .order('publication_date', { ascending: false, nullsFirst: false })
-      .limit(20),
+      .order('okres_data_koniec', { ascending: false }),
     supabase
       .from('company_profile_fields')
-      .select('field_key, value_text, value_number, value_json, source, source_priority, confidence, last_verified_at')
+      .select('field_key, value_text, value_number, value_json, source')
       .eq('client_id', id)
-      .is('superseded_at', null)
-      .order('source_priority', { ascending: false }),
+      .is('superseded_at', null),
     supabase
       .from('person_company_links')
       .select(
-        'id, rola, jest_decyzyjny, sila_relacji, zrodlo, data_od, data_do, person:persons(id, imie, nazwisko, email_glowny, telefon_komorkowy, linkedin_url)',
+        'rola, jest_decyzyjny, persons:persons!inner(id, imie, nazwisko, source, rejestrio_person_id)',
       )
       .eq('client_id', id)
-      .is('data_do', null)
-      .order('jest_decyzyjny', { ascending: false }),
+      .is('data_do', null),
     supabase
-      .from('enrichment_log')
-      .select('status, error_message, run_completed_at')
-      .eq('target_id', id)
-      .eq('source', 'sprawozdania_KRS')
-      .order('run_started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    // Sprint M FIX 5: top match score дla Metrics card
+      .from('crbr_beneficiaries')
+      .select('imie, nazwisko, kraj_rezydencji, obywatelstwa')
+      .eq('client_id', id),
+    supabase
+      .from('company_branches')
+      .select('id')
+      .eq('client_id', id)
+      .eq('status', 'AKTYWNA'),
     supabase
       .from('matches')
       .select('algo_score')
@@ -141,31 +105,168 @@ export default async function ClientDetailPage({
       .order('algo_score', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    supabase
+      .from('company_profile_fields')
+      .select('value_text, value_json')
+      .eq('client_id', id)
+      .eq('field_key', 'pkd_main')
+      .is('superseded_at', null)
+      .limit(1)
+      .maybeSingle(),
   ])
 
-  if (!client) {
-    notFound()
+  if (!client) notFound()
+
+  const c = client as Record<string, unknown> & {
+    id: string
+    title: string
+    nip: string | null
+    status: string
+    industry: string | null
+    address: string | null
+    city: string | null
+    region: string | null
+    krs_number: string | null
+    krs_legal_form: string | null
+    gus_regon: string | null
+    pkd_codes: string[] | null
+    employee_count_range: string | null
+    vat_status: string | null
+    vat_registered_date: string | null
+    vat_bank_accounts: string[] | null
+    bankruptcy_flag: boolean | null
+    liquidation_flag: boolean | null
+    restructuring_flag: boolean | null
+    suspended_at: string | null
+    branch_offices_count: number | null
+    last_filing_date: string | null
+    kapital_zakladowy: number | string | null
+    founded_at: string | null
+    email_krs: string | null
+    website_krs: string | null
+    employees_count: number | null
+    business_profile: unknown
+    phone: string | null
+    email: string | null
+    website: string | null
   }
 
+  const fs = (financialStatements ?? []) as Array<{
+    okres_data_koniec: string
+    przychody_netto: number | string | null
+    zysk_netto: number | string | null
+    aktywa_razem: number | string | null
+    liczba_pracownikow: number | null
+  }>
+
+  const latestRevenuePln = fs[0]?.przychody_netto
+    ? typeof fs[0].przychody_netto === 'string'
+      ? parseFloat(fs[0].przychody_netto)
+      : fs[0].przychody_netto
+    : null
+  const prevRevenuePln = fs[1]?.przychody_netto
+    ? typeof fs[1].przychody_netto === 'string'
+      ? parseFloat(fs[1].przychody_netto)
+      : fs[1].przychody_netto
+    : null
+  const revenueYoyPct =
+    latestRevenuePln !== null && prevRevenuePln !== null && prevRevenuePln > 0
+      ? ((latestRevenuePln - prevRevenuePln) / prevRevenuePln) * 100
+      : null
+  const employeesCount = c.employees_count ?? fs[0]?.liczba_pracownikow ?? null
+  const branchOfficesCount = c.branch_offices_count ?? branches?.length ?? 0
+  const topMatchScore = (topMatch as { algo_score: number } | null)?.algo_score ?? null
+  const bzpCount = bzpTenders?.length ?? 0
+
+  type PersonLinkRow = {
+    rola: string
+    jest_decyzyjny: boolean
+    persons:
+      | { id: string; imie: string; nazwisko: string; source: string | null; rejestrio_person_id: number | null }
+      | { id: string; imie: string; nazwisko: string; source: string | null; rejestrio_person_id: number | null }[]
+      | null
+  }
+  const allPersonLinks = ((personLinks ?? []) as unknown) as PersonLinkRow[]
+  const personsForSection = allPersonLinks
+    .map((l) => {
+      const p = Array.isArray(l.persons) ? l.persons[0] : l.persons
+      if (!p) return null
+      return {
+        imie: p.imie,
+        nazwisko: p.nazwisko,
+        rola: l.rola,
+        jest_decyzyjny: l.jest_decyzyjny,
+        source: p.source ?? 'unknown',
+        rejestrio_person_id: p.rejestrio_person_id,
+        network_count: 0,
+      }
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+
+  const crbrEntries = ((crbr ?? []) as unknown) as Array<{
+    imie: string | null
+    nazwisko: string | null
+    kraj_rezydencji: string | null
+    obywatelstwa: string[]
+  }>
+
+  type CanonicalField = {
+    field_key: string
+    value_text: string | null
+    value_number: number | null
+    value_json: unknown
+    source: string | null
+  }
+  const fieldsArr = ((profileFields ?? []) as CanonicalField[]).filter((f) => f.value_text)
+  const fieldsByKey = new Map<string, CanonicalField>()
+  for (const f of fieldsArr) if (!fieldsByKey.has(f.field_key)) fieldsByKey.set(f.field_key, f)
+  const emailField = fieldsByKey.get('email')
+  const phoneField = fieldsByKey.get('phone')
+  const websiteField = fieldsByKey.get('website')
+  const facebookField = fieldsByKey.get('facebook_url')
+  const instagramField = fieldsByKey.get('instagram_url')
+
+  const emailValue = c.email_krs ?? emailField?.value_text ?? c.email
+  const emailSource = c.email_krs ? 'KRS' : emailField?.source ?? null
+  const websiteValue = c.website_krs ?? websiteField?.value_text ?? c.website
+  const websiteSource = c.website_krs ? 'KRS' : websiteField?.source ?? null
+  const phoneValue = phoneField?.value_text ?? c.phone
+  const phoneSource = phoneField?.source ?? null
+
+  const pkdMainCode = c.pkd_codes?.[0] ?? null
+  const pkdMainRow = pkdMain as { value_text: string | null; value_json: unknown } | null
+  const pkdMainName = (pkdMainRow?.value_json as { nazwa?: string } | null)?.nazwa ?? null
+  const bankAccount = c.vat_bank_accounts?.[0] ?? null
+
+  const profileMeta = `${c.krs_legal_form ?? '—'} · ${[c.city, c.region].filter(Boolean).join(', ') || '—'}`
+  const fsMeta =
+    fs.length > 0
+      ? `${fs.length} lat KRS · ostatni rok ${fs[0]?.okres_data_koniec.slice(0, 4)}`
+      : 'Brak danych'
+  const personsMeta = `${personsForSection.length} zarząd · ${crbrEntries.length} BO`
+  const signalsMeta =
+    (c.bankruptcy_flag || c.liquidation_flag || c.restructuring_flag
+      ? '⚠️ Red flags · '
+      : '✓ Aktywna · ') + `${bzpCount} BZP`
+  const matchesMeta = topMatchScore !== null ? `TOP score ${topMatchScore}` : 'Brak dopasowań'
+  const contactSourcesCount = [emailValue, phoneValue, websiteValue].filter(Boolean).length
+
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col bg-[#FAFAF7] min-h-screen">
       <PageHeader
-        title={client.title}
-        breadcrumbs={[
-          { label: 'Klienci', href: '/clients' },
-          { label: client.title },
-        ]}
+        title={c.title}
+        breadcrumbs={[{ label: 'Klienci', href: '/clients' }, { label: c.title }]}
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" asChild>
+            <Button variant="outline" size="sm" asChild>
               <Link href={`/clients/${id}/edit`}>
-                <PencilIcon className="mr-2 size-4" />
+                <PencilIcon className="mr-1.5 size-3.5" />
                 Edytuj
               </Link>
             </Button>
             <NewDealButton
               clientId={id}
-              clients={clients || []}
+              clients={clientsList || []}
               products={products || []}
               people={people || []}
               suppliers={suppliers || []}
@@ -173,252 +274,128 @@ export default async function ClientDetailPage({
           </div>
         }
       />
-      {/* Sprint Q FIX A — combined sticky toolbar (ActionBar + AnchorNav).
-           Single sticky container avoids DOM-order stacking conflict (which
-           caused AnchorNav to disappear у Sprint P browser test). */}
-      <div className="sticky top-0 z-40 bg-background border-b shadow-sm">
-        <ClientActionBar
-          clientId={id}
-          nip={client.nip ?? null}
-          topProductName={null}
-        />
-        <AnchorNav />
-      </div>
-      <div className="flex flex-1 flex-col gap-6 p-6">
-        {/* Sprint M FIX 3 — async enrichment progress indicator */}
-        <EnrichmentProgressBanner clientId={id} />
-        {/* #profil section: hero + summary */}
-        <section id="profil" className="scroll-mt-20 grid gap-6 lg:grid-cols-3">
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle className="text-2xl">{client.title}</CardTitle>
-                  {client.industry && (
-                    <CardDescription className="mt-1">{client.industry}</CardDescription>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <Badge variant="secondary" className={cn('text-white', segmentColors[client.segment] || segmentColors.niesklasyfikowany)}>
-                    {client.segment}
-                  </Badge>
-                  <Badge variant="secondary" className={cn('text-white', statusColors[client.status])}>
-                    {client.status}
-                  </Badge>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 sm:grid-cols-2">
-                {client.nip && (
-                  <div className="flex items-center gap-2">
-                    <BuildingIcon className="size-4 text-muted-foreground" />
-                    <span className="text-sm">NIP: {client.nip}</span>
-                  </div>
-                )}
-                {(client.city || client.address) && (
-                  <div className="flex items-center gap-2">
-                    <MapPinIcon className="size-4 text-muted-foreground" />
-                    <span className="text-sm">
-                      {[client.address, client.city, client.region].filter(Boolean).join(', ')}
-                    </span>
-                  </div>
-                )}
-                {client.email && (
-                  <div className="flex items-center gap-2">
-                    <MailIcon className="size-4 text-muted-foreground" />
-                    <a href={`mailto:${client.email}`} className="text-sm hover:underline">
-                      {client.email}
-                    </a>
-                  </div>
-                )}
-                {client.phone && (
-                  <div className="flex items-center gap-2">
-                    <PhoneIcon className="size-4 text-muted-foreground" />
-                    <a href={`tel:${client.phone}`} className="text-sm hover:underline">
-                      {client.phone}
-                    </a>
-                  </div>
-                )}
-                {client.website && (
-                  <div className="flex items-center gap-2 sm:col-span-2">
-                    <GlobeIcon className="size-4 text-muted-foreground" />
-                    <a
-                      href={client.website.startsWith('http') ? client.website : `https://${client.website}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm hover:underline"
-                    >
-                      {client.website}
-                    </a>
-                  </div>
-                )}
-              </div>
-              <div className="mt-6">
-                <StatusBadgesRow
-                  vatStatus={client.vat_status ?? null}
-                  gusStatus={client.gus_status ?? null}
-                  employeeCountRange={client.employee_count_range ?? null}
-                  krsStatus={client.krs_status ?? null}
-                  krsLegalForm={client.krs_legal_form ?? null}
-                />
-              </div>
-              {client.notes && (
-                <div className="mt-4">
-                  <h4 className="mb-2 text-sm font-medium">Notatki</h4>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{client.notes}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Podsumowanie</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Kontakty</span>
-                <span className="font-medium">{contacts?.length || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Umowy</span>
-                <span className="font-medium">{deals?.length || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Zadania</span>
-                <span className="font-medium">{tasks?.length || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Utworzono</span>
-                <span className="text-sm">{new Date(client.created_at).toLocaleDateString('pl-PL')}</span>
-              </div>
-            </CardContent>
-          </Card>
-        </section>
-
-        {/* Sprint M FIX 5: 4 metric cards row */}
-        <MetricsRow
-          bzpCount={bzpTenders?.length ?? 0}
-          latestRevenuePln={
-            (financials as Array<{ przychody_pln: number | null }> | null)?.[0]?.przychody_pln ?? null
-          }
-          employeeRange={client.employee_count_range ?? null}
-          topMatchScore={(topMatch as { algo_score: number } | null)?.algo_score ?? null}
-        />
-
-        {/* #sygnaly section: BZP + sprawozdania + MSiG */}
-        <section id="sygnaly" className="scroll-mt-20 flex flex-col gap-6">
-          <BuyingSignalsSection tenders={(bzpTenders ?? []) as never} />
-          <FinancialsSection
-            data={(financials ?? []) as never}
-            fallbackCtx={{
-              forma_prawna: client.krs_legal_form ?? null,
-              lastRunStatus: lastFinancialRun
-                ? ((lastFinancialRun as { status: 'success' | 'partial' | 'error' }).status)
-                : 'never',
-              lastRunError: lastFinancialRun
-                ? ((lastFinancialRun as { error_message: string | null }).error_message)
-                : null,
-            }}
-          />
-          <MsigChangesSection changes={(msigChanges ?? []) as never} />
-        </section>
-
-        {/* #analiza section: AI business profile */}
-        <section id="analiza" className="scroll-mt-20">
-          <BusinessProfileSection clientId={id} profile={client.business_profile ?? null} />
-        </section>
-
-        {/* #osoby section: persons + decision makers */}
-        <section id="osoby" className="scroll-mt-20">
-          <PeopleSection
-            links={(personLinks ?? []) as never}
-            title={
-              (client.krs_legal_form ?? '').toLowerCase().includes('akcyjna') ||
-              (client.krs_legal_form ?? '').toLowerCase().includes('z o.o.')
-                ? 'Osoby decyzyjne'
-                : 'Właściciel / kontakty'
-            }
-          />
-        </section>
-
-        {/* #kontakt section: VAT + GUS + KRS verification */}
-        <section id="kontakt" className="scroll-mt-20 flex flex-col gap-4">
-          <div className="grid gap-4 lg:grid-cols-2">
-            <VatSection
-            targetType="client"
-            targetId={id}
-            hasNip={Boolean(client.nip)}
-            initial={{
-              vat_status: client.vat_status ?? null,
-              vat_registered_date: client.vat_registered_date ?? null,
-              vat_bank_accounts: client.vat_bank_accounts ?? null,
-              vat_last_checked: client.vat_last_checked ?? null,
-            }}
-          />
-          <GusSection
-            targetType="client"
-            targetId={id}
-            hasNip={Boolean(client.nip)}
-            initial={{
-              gus_legal_name: client.gus_legal_name ?? null,
-              gus_regon: client.gus_regon ?? null,
-              gus_status: client.gus_status ?? null,
-              registered_date: client.registered_date ?? null,
-              employee_count_range: client.employee_count_range ?? null,
-              pkd_codes: client.pkd_codes ?? null,
-              gus_last_checked: client.gus_last_checked ?? null,
-            }}
-          />
+      <div className="flex flex-1 flex-col gap-3 p-6">
+        {/* Hero row — status + NIP + KRS, secondary identity */}
+        <div className="flex flex-wrap items-center gap-3 px-1">
+          <Badge variant="secondary" className={`text-white ${statusColor[c.status] ?? 'bg-gray-400'}`}>
+            {c.status}
+          </Badge>
+          {c.nip && <span className="text-[12px] text-[#888] font-mono">NIP {c.nip}</span>}
+          {c.krs_number && (
+            <span className="text-[12px] text-[#888] font-mono">KRS {c.krs_number}</span>
+          )}
+          {c.gus_regon && (
+            <span className="text-[12px] text-[#888] font-mono">REGON {c.gus_regon}</span>
+          )}
         </div>
-          <KrsSection
-            targetType="client"
-            targetId={id}
-            initial={{
-              krs_number: client.krs_number ?? null,
-              krs_full_name: client.krs_full_name ?? null,
-              krs_legal_form: client.krs_legal_form ?? null,
-              krs_registration_date: client.krs_registration_date ?? null,
-              krs_status: client.krs_status ?? null,
-              krs_management_board: client.krs_management_board ?? null,
-              krs_pkd_with_descriptions: client.krs_pkd_with_descriptions ?? null,
-              krs_last_checked: client.krs_last_checked ?? null,
-            }}
-          />
-        </section>
 
-        {/* #dopasowania section: L5 algo matching */}
-        <section id="dopasowania" className="scroll-mt-20">
+        <EnrichmentProgressBanner clientId={id} />
+
+        <MetricStrip
+          topMatchScore={topMatchScore}
+          latestRevenuePln={latestRevenuePln}
+          revenueYoyPct={revenueYoyPct}
+          employeesCount={employeesCount}
+          branchOfficesCount={branchOfficesCount}
+        />
+
+        <AccordionSection title="Profil" meta={profileMeta} defaultOpen={true}>
+          <ProfileSectionV2
+            forma_prawna={c.krs_legal_form}
+            address={c.address}
+            city={c.city}
+            region={c.region}
+            nip={c.nip}
+            regon={c.gus_regon}
+            krs_number={c.krs_number}
+            kapital_zakladowy={c.kapital_zakladowy}
+            founded_at={c.founded_at}
+            vat_status={c.vat_status}
+            vat_registered_date={c.vat_registered_date}
+            pkd_main={pkdMainCode}
+            pkd_main_name={pkdMainName}
+            pkd_total_count={c.pkd_codes?.length ?? 0}
+            bank_account={bankAccount}
+          />
+        </AccordionSection>
+
+        <AccordionSection
+          title="Sprawozdania finansowe"
+          meta={fsMeta}
+          detailHref={`/clients/${id}/sprawozdania`}
+        >
+          <FinancialStatementsTable rows={fs} />
+        </AccordionSection>
+
+        <AccordionSection title="Osoby" meta={personsMeta}>
+          <PersonsSectionV2 persons={personsForSection} crbr={crbrEntries} />
+        </AccordionSection>
+
+        <AccordionSection title="Sygnały" meta={signalsMeta}>
+          <SignalsSection
+            lastFilingDate={c.last_filing_date}
+            bankruptcyFlag={Boolean(c.bankruptcy_flag)}
+            liquidationFlag={Boolean(c.liquidation_flag)}
+            restructuringFlag={Boolean(c.restructuring_flag)}
+            suspendedAt={c.suspended_at}
+            bzpCount={bzpCount}
+          />
+        </AccordionSection>
+
+        <AccordionSection title="Analiza biznesowa (AI)" meta="Czudowa Marka — buyer strength">
+          <BusinessProfileSection clientId={id} profile={(c.business_profile as never) ?? null} />
+        </AccordionSection>
+
+        <AccordionSection title="Dopasowania produktów" meta={matchesMeta}>
           <MatchesPanel
             mode="product-side"
             keyType="client_id"
             keyValue={id}
             recomputePath="/api/admin/matching/recompute-client"
-            title="Dopasowane produkty Sztab"
+            title=""
           />
-        </section>
+        </AccordionSection>
 
-        {/* #aktywnosc section: history + tabs */}
-        <section id="aktywnosc" className="scroll-mt-20 flex flex-col gap-6">
-          <ProfileFieldsTable fields={(profileFields ?? []) as never} />
+        <AccordionSection title="Kontakt" meta={`${contactSourcesCount} źródeł`}>
+          <ContactSectionV2
+            email={emailValue ?? null}
+            emailSource={emailSource}
+            phone={phoneValue ?? null}
+            phoneSource={phoneSource}
+            website={websiteValue ?? null}
+            websiteSource={websiteSource}
+            facebookUrl={facebookField?.value_text ?? null}
+            instagramUrl={instagramField?.value_text ?? null}
+            hints={{
+              email: !emailValue ? 'Brak w KRS' : undefined,
+              phone: !phoneValue ? 'Brak danych' : undefined,
+              website: !websiteValue ? 'Brak własnej domeny' : undefined,
+            }}
+          />
+        </AccordionSection>
+
+        <AccordionSection
+          title="Aktywność"
+          meta={`${(contacts?.length ?? 0) + (deals?.length ?? 0) + (tasks?.length ?? 0)} pozycji`}
+        >
           <Tabs defaultValue="contacts">
-          <TabsList>
-            <TabsTrigger value="contacts">Kontakty ({contacts?.length || 0})</TabsTrigger>
-            <TabsTrigger value="deals">Umowy ({deals?.length || 0})</TabsTrigger>
-            <TabsTrigger value="tasks">Zadania ({tasks?.length || 0})</TabsTrigger>
-          </TabsList>
-          <TabsContent value="contacts" className="mt-4">
-            <ClientContacts clientId={id} contacts={contacts || []} />
-          </TabsContent>
-          <TabsContent value="deals" className="mt-4">
-            <ClientDeals clientId={id} deals={deals || []} />
-          </TabsContent>
-          <TabsContent value="tasks" className="mt-4">
-            <ClientTasks clientId={id} tasks={tasks || []} />
-          </TabsContent>
-        </Tabs>
-        </section>
+            <TabsList>
+              <TabsTrigger value="contacts">Kontakty ({contacts?.length || 0})</TabsTrigger>
+              <TabsTrigger value="deals">Umowy ({deals?.length || 0})</TabsTrigger>
+              <TabsTrigger value="tasks">Zadania ({tasks?.length || 0})</TabsTrigger>
+            </TabsList>
+            <TabsContent value="contacts" className="mt-4">
+              <ClientContacts clientId={id} contacts={contacts || []} />
+            </TabsContent>
+            <TabsContent value="deals" className="mt-4">
+              <ClientDeals clientId={id} deals={deals || []} />
+            </TabsContent>
+            <TabsContent value="tasks" className="mt-4">
+              <ClientTasks clientId={id} tasks={tasks || []} />
+            </TabsContent>
+          </Tabs>
+        </AccordionSection>
       </div>
     </div>
   )
