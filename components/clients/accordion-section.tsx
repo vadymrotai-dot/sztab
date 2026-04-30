@@ -1,14 +1,15 @@
 'use client'
 
 // components/clients/accordion-section.tsx
-// Sprint S2B Phase 2D — native <details> accordion. Open by default
-// configurable via prop.
+// Sprint S2B Phase 2D — native <details> accordion.
+// Sprint S4 Phase 1C — added `action` slot in summary header so primary
+// per-section actions ("Pobierz z KRS", "✨ Analizuj", "+ Dodaj kontakt"
+// etc.) are visible without expanding. Resolves "buried action" anti-
+// pattern.
 //
 // Sprint S2B regression fix — must be 'use client' because the
 // detailHref <a onClick={stopPropagation}> handler cannot be serialized
-// across server→client boundary у Next.js App Router. Without this
-// directive /clients/[id] SSR threw 500 for every page що passes detailHref.
-// Matches Sprint M FIX 4 pattern (BusinessProfileSection дla Re-analyze).
+// across server→client boundary у Next.js App Router.
 
 import * as React from 'react'
 
@@ -17,13 +18,24 @@ interface Props {
   title: string
   /** Right-side meta string in muted small text */
   meta?: string
-  /** Optional href for "↗ open detail" link arrow */
+  /** Optional href for "↗ Otwórz" drill-down link */
   detailHref?: string
+  /** Optional in-summary action (button or other interactive). Click
+   *  events are stopPropagated so toggling the accordion is suppressed. */
+  action?: React.ReactNode
   defaultOpen?: boolean
   children: React.ReactNode
 }
 
-export function AccordionSection({ id, title, meta, detailHref, defaultOpen = false, children }: Props) {
+export function AccordionSection({
+  id,
+  title,
+  meta,
+  detailHref,
+  action,
+  defaultOpen = false,
+  children,
+}: Props) {
   return (
     <details
       id={id}
@@ -44,15 +56,25 @@ export function AccordionSection({ id, title, meta, detailHref, defaultOpen = fa
           <h2 className="text-[18px] font-medium leading-tight">{title}</h2>
           {meta && <span className="truncate text-[12px] text-[#888]">{meta}</span>}
         </div>
-        {detailHref && (
-          <a
-            href={detailHref}
-            onClick={(e) => e.stopPropagation()}
-            className="text-[12px] text-[#4F46E5] hover:underline whitespace-nowrap"
-          >
-            ↗ Otwórz
-          </a>
-        )}
+        <div className="flex items-center gap-3">
+          {action && (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center"
+            >
+              {action}
+            </div>
+          )}
+          {detailHref && (
+            <a
+              href={detailHref}
+              onClick={(e) => e.stopPropagation()}
+              className="text-[12px] text-[#4F46E5] hover:underline whitespace-nowrap"
+            >
+              ↗ Otwórz
+            </a>
+          )}
+        </div>
       </summary>
       <div className="border-t border-[#F0EDE5] px-5 py-4">{children}</div>
     </details>

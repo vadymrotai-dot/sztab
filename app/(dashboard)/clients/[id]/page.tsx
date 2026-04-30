@@ -5,17 +5,13 @@
 // 18 pól", raw JSON dumps, stale "Sprawozdania niedostępne HTTP 400".
 
 import { notFound } from 'next/navigation'
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/page-header'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { PencilIcon } from 'lucide-react'
 import { ClientContacts } from '@/components/clients/client-contacts'
 import { ClientDeals } from '@/components/clients/client-deals'
 import { ClientTasks } from '@/components/clients/client-tasks'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { NewDealButton } from '@/components/clients/new-deal-button'
 import { MatchesPanel } from '@/components/matches/matches-panel'
 import { BusinessProfileSection } from '@/components/clients/business-profile-section'
 import { EnrichmentProgressBanner } from '@/components/clients/enrichment-progress-banner'
@@ -26,6 +22,8 @@ import { FinancialStatementsTable } from '@/components/clients/financial-stateme
 import { PersonsSectionV2 } from '@/components/clients/persons-section-v2'
 import { SignalsSection } from '@/components/clients/signals-section'
 import { ContactSectionV2 } from '@/components/clients/contact-section-v2'
+import { ClientDetailActions } from '@/components/clients/client-detail-actions'
+import { SectionActionLink } from '@/components/clients/section-action-link'
 
 const statusColor: Record<string, string> = {
   nowy: 'bg-blue-500',
@@ -46,10 +44,6 @@ export default async function ClientDetailPage({
     { data: contacts },
     { data: deals },
     { data: tasks },
-    { data: clientsList },
-    { data: products },
-    { data: people },
-    { data: suppliers },
     { data: bzpTenders },
     { data: financialStatements },
     { data: profileFields },
@@ -63,10 +57,6 @@ export default async function ClientDetailPage({
     supabase.from('contacts').select('*').eq('client_id', id).order('created_at', { ascending: false }),
     supabase.from('deals').select('*').eq('client_id', id).order('created_at', { ascending: false }),
     supabase.from('tasks').select('*').eq('client_id', id).order('due', { ascending: true }),
-    supabase.from('clients').select('id, title').order('title', { ascending: true }),
-    supabase.from('products').select('id, name').order('name', { ascending: true }),
-    supabase.from('people').select('id, name, client_id').order('name', { ascending: true }),
-    supabase.from('suppliers').select('id, name').order('name', { ascending: true }),
     supabase
       .from('bzp_tenders')
       .select('id, ordering_party, award_date')
@@ -257,21 +247,13 @@ export default async function ClientDetailPage({
         title={c.title}
         breadcrumbs={[{ label: 'Klienci', href: '/clients' }, { label: c.title }]}
         actions={
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" asChild>
-              <Link href={`/clients/${id}/edit`}>
-                <PencilIcon className="mr-1.5 size-3.5" />
-                Edytuj
-              </Link>
-            </Button>
-            <NewDealButton
-              clientId={id}
-              clients={clientsList || []}
-              products={products || []}
-              people={people || []}
-              suppliers={suppliers || []}
-            />
-          </div>
+          <ClientDetailActions
+            clientId={id}
+            nip={c.nip}
+            hasProfile={Boolean(
+              (c.business_profile as { business_format?: string } | null)?.business_format,
+            )}
+          />
         }
       />
 
@@ -321,18 +303,30 @@ export default async function ClientDetailPage({
         </AccordionSection>
 
         <AccordionSection
+          id="sprawozdania"
           title="Sprawozdania finansowe"
           meta={fsMeta}
           detailHref={`/clients/${id}/sprawozdania`}
+          action={c.nip ? <SectionActionLink label="Pobierz z KRS" href={`/clients/${id}#krs-refresh`} /> : null}
         >
           <FinancialStatementsTable rows={fs} />
         </AccordionSection>
 
-        <AccordionSection title="Osoby" meta={personsMeta}>
+        <AccordionSection
+          id="osoby"
+          title="Osoby"
+          meta={personsMeta}
+          action={c.nip ? <SectionActionLink label="Pobierz z KRS" href={`/clients/${id}#krs-refresh`} /> : null}
+        >
           <PersonsSectionV2 persons={personsForSection} crbr={crbrEntries} />
         </AccordionSection>
 
-        <AccordionSection title="Sygnały" meta={signalsMeta}>
+        <AccordionSection
+          id="sygnaly"
+          title="Sygnały"
+          meta={signalsMeta}
+          action={<SectionActionLink label="Sprawdź BZP" href={`/intelligence/lookup?nip=${c.nip ?? ''}`} />}
+        >
           <SignalsSection
             lastFilingDate={c.last_filing_date}
             bankruptcyFlag={Boolean(c.bankruptcy_flag)}
@@ -343,11 +337,20 @@ export default async function ClientDetailPage({
           />
         </AccordionSection>
 
-        <AccordionSection title="Analiza biznesowa (AI)" meta="Czudowa Marka — buyer strength">
+        <AccordionSection
+          id="analiza-ai"
+          title="Analiza biznesowa (AI)"
+          meta="Czudowa Marka — buyer strength"
+        >
           <BusinessProfileSection clientId={id} profile={(c.business_profile as never) ?? null} />
         </AccordionSection>
 
-        <AccordionSection title="Dopasowania produktów" meta={matchesMeta}>
+        <AccordionSection
+          id="dopasowania"
+          title="Dopasowania produktów"
+          meta={matchesMeta}
+          action={<SectionActionLink label="Pokaż TOP-10 →" href={`/matches?client_id=${id}`} primary />}
+        >
           <MatchesPanel
             mode="product-side"
             keyType="client_id"
@@ -357,7 +360,12 @@ export default async function ClientDetailPage({
           />
         </AccordionSection>
 
-        <AccordionSection title="Kontakt" meta={`${contactSourcesCount} źródeł`}>
+        <AccordionSection
+          id="kontakt"
+          title="Kontakt"
+          meta={`${contactSourcesCount} źródeł`}
+          action={<SectionActionLink label="+ Dodaj kontakt" href={`/clients/${id}#aktywnosc`} />}
+        >
           <ContactSectionV2
             email={emailValue ?? null}
             emailSource={emailSource}
@@ -376,6 +384,7 @@ export default async function ClientDetailPage({
         </AccordionSection>
 
         <AccordionSection
+          id="aktywnosc"
           title="Aktywność"
           meta={`${(contacts?.length ?? 0) + (deals?.length ?? 0) + (tasks?.length ?? 0)} pozycji`}
         >

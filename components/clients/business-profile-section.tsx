@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { SparklesIcon, RefreshCwIcon, Loader2Icon } from 'lucide-react'
+import { SupplierMatrix } from './supplier-matrix'
 
 interface BusinessProfile {
   business_format?: string
@@ -95,8 +96,6 @@ export function BusinessProfileSection({
   }
 
   const strength = profile.buyer_strength_for_chm ?? 0
-  const strengthColor =
-    strength >= 70 ? 'bg-green-600' : strength >= 40 ? 'bg-amber-500' : 'bg-gray-400'
 
   return (
     <Card className="border-l-4 border-l-orange-400 bg-orange-50/10">
@@ -186,19 +185,22 @@ export function BusinessProfileSection({
           </div>
         )}
 
-        {/* Buyer strength для ChM */}
-        <div className="rounded border bg-background p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-medium">Buyer strength dla ChM Czudowa Marka</span>
-            <span className="text-lg font-semibold">{strength}/100</span>
-          </div>
-          <div className="h-2 overflow-hidden rounded bg-muted">
-            <div className={`h-full ${strengthColor}`} style={{ width: `${strength}%` }} />
-          </div>
-          {profile.buyer_reasoning_pl && (
-            <p className="mt-2 text-xs italic text-muted-foreground">🤖 {profile.buyer_reasoning_pl}</p>
-          )}
-        </div>
+        {/* Multi-supplier buyer-strength matrix. Only ChM has real value
+            until Sprint M wires per-supplier scoring. */}
+        <SupplierMatrix
+          clientId={clientId}
+          rows={[
+            { name: 'Czudowa Marka', strength: strength, skuCount: null },
+            { name: 'Mod-loszka', strength: null, skuCount: null },
+            { name: 'Gmurczyk', strength: null, skuCount: null },
+            { name: 'Karol', strength: null, skuCount: null },
+            { name: 'Pikniko', strength: null, skuCount: null },
+          ]}
+        />
+
+        {profile.buyer_reasoning_pl && (
+          <p className="text-xs italic text-muted-foreground">🤖 {profile.buyer_reasoning_pl}</p>
+        )}
 
         {/* Input sources */}
         {profile.input_sources && profile.input_sources.length > 0 && (
