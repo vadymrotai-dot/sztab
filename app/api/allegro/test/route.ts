@@ -1,19 +1,24 @@
 // app/api/allegro/test/route.ts
-// Sprint S3 main — diagnostic GET endpoint to verify Allegro OAuth +
-// searchOffers end-to-end. Owner-scoped: reads cookies session, mints/uses
-// cached Allegro token via getAllegroToken(), calls /offers/listing.
+// Sprint S3 main — diagnostic GET endpoint for Allegro integrations.
+// Two modes:
+//   ?mode=api      → REST /offers/listing (currently 403 для unverified app;
+//                    keep wired для future "verified app" path)
+//   ?mode=scraper  → Apify scraper (default; works today)
 //
 // Usage:
-//   GET /api/allegro/test?phrase=coca-cola&limit=5
+//   GET /api/allegro/test?mode=scraper&phrase=coca-cola&limit=5
 //
-// Returns JSON з timing breakdown (token vs search), meta counts і sample.
-// On error returns {success:false, error} 500. Auth required (401 без sesji).
+// Same response shape незалежно від mode plus a `mode` field для debugging.
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getAllegroToken, searchOffers } from '@/lib/allegro/client'
+import { searchOffersViaApify } from '@/lib/allegro/scraper'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 300
+
+type Mode = 'api' | 'scraper'
 
 export async function GET(req: Request) {
   const supabase = await createClient()
@@ -25,22 +30,40 @@ export async function GET(req: Request) {
   }
 
   const url = new URL(req.url)
+  const modeRaw = (url.searchParams.get('mode') ?? 'scraper').toLowerCase()
+  if (modeRaw !== 'api' && modeRaw !== 'scraper') {
+    return NextResponse.json(
+      { success: false, error: `Invalid mode '${modeRaw}'. Use 'api' or 'scraper'.` },
+      { status: 400 },
+    )
+  }
+  const mode = modeRaw as Mode
   const phrase = url.searchParams.get('phrase') ?? 'coca-cola'
   const limitRaw = url.searchParams.get('limit') ?? '5'
-  const limit = Math.min(60, Math.max(1, parseInt(limitRaw, 10) || 5))
+  const limit = Math.min(100, Math.max(1, parseInt(limitRaw, 10) || 5))
 
   const startTotal = Date.now()
   try {
-    const startToken = Date.now()
-    await getAllegroToken()
-    const tokenMs = Date.now() - startToken
+    let tokenMs = 0
+    let listing
+    let searchMs
 
-    const startSearch = Date.now()
-    const listing = await searchOffers(phrase, { limit })
-    const searchMs = Date.now() - startSearch
+    if (mode === 'api') {
+      const startToken = Date.now()
+      await getAllegroToken()
+      tokenMs = Date.now() - startToken
+
+      const startSearch = Date.now()
+      listing = await searchOffers(phrase, { limit })
+      searchMs = Date.now() - startSearch
+    } else {
+      // scraper mode — no token mint step
+      const startSearch = Date.now()
+      listing = await searchOffersViaApify(phrase, { limit })
+      searchMs = Date.now() - startSearch
+    }
 
     const totalMs = Date.now() - startTotal
-
     const promoted = listing.items?.promoted ?? []
     const regular = listing.items?.regular ?? []
     const combined = [...promoted, ...regular].slice(0, limit)
@@ -58,6 +81,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       success: true,
+      mode,
       phrase,
       limit,
       timing: { tokenMs, searchMs, totalMs },
@@ -73,6 +97,7 @@ export async function GET(req: Request) {
     return NextResponse.json(
       {
         success: false,
+        mode,
         error: err instanceof Error ? err.message : String(err),
       },
       { status: 500 },
