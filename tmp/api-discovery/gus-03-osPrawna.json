@@ -1,0 +1,69 @@
+{
+  "action": "DanePobierzPelnyRaport",
+  "body": {
+    "DanePobierzPelnyRaportResponse": {
+      "DanePobierzPelnyRaportResult": "<root>&#xD;\n  <dane>&#xD;\n    <praw_regon9>522340602</praw_regon9>&#xD;\n    <praw_nip>7561993172</praw_nip>&#xD;\n    <praw_statusNip />&#xD;\n    <praw_nazwa>KOZAK OLEK SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ</praw_nazwa>&#xD;\n    <praw_nazwaSkrocona />&#xD;\n    <praw_numerWRejestrzeEwidencji>0000977768</praw_numerWRejestrzeEwidencji>&#xD;\n    <praw_dataWpisuDoRejestruEwidencji>2022-06-20</praw_dataWpisuDoRejestruEwidencji>&#xD;\n    <praw_dataPowstania>2022-06-20</praw_dataPowstania>&#xD;\n    <praw_dataRozpoczeciaDzialalnosci>2022-06-20</praw_dataRozpoczeciaDzialalnosci>&#xD;\n    <praw_dataWpisuDoRegon>2022-06-21</praw_dataWpisuDoRegon>&#xD;\n    <praw_dataZawieszeniaDzialalnosci />&#xD;\n    <praw_dataWznowieniaDzialalnosci />&#xD;\n    <praw_dataZaistnieniaZmiany>2025-09-30</praw_dataZaistnieniaZmiany>&#xD;\n    <praw_dataZakonczeniaDzialalnosci />&#xD;\n    <praw_dataSkresleniaZRegon />&#xD;\n    <praw_dataOrzeczeniaOUpadlosci />&#xD;\n    <praw_dataZakonczeniaPostepowaniaUpadlosciowego />&#xD;\n    <praw_adSiedzKraj_Symbol>PL</praw_adSiedzKraj_Symbol>&#xD;\n    <praw_adSiedzWojewodztwo_Symbol>16</praw_adSiedzWojewodztwo_Symbol>&#xD;\n    <praw_adSiedzPowiat_Symbol>11</praw_adSiedzPowiat_Symbol>&#xD;\n    <praw_adSiedzGmina_Symbol>054</praw_adSiedzGmina_Symbol>&#xD;\n    <praw_adSiedzKodPocztowy>47100</praw_adSiedzKodPocztowy>&#xD;\n    <praw_adSiedzMiejscowoscPoczty_Symbol>0965915</praw_adSiedzMiejscowoscPoczty_Symbol>&#xD;\n    <praw_adSiedzMiejscowosc_Symbol>0965915</praw_adSiedzMiejscowosc_Symbol>&#xD;\n    <praw_adSiedzUlica_Symbol>11383</praw_adSiedzUlica_Symbol>&#xD;\n    <praw_adSiedzNumerNieruchomosci>2</praw_adSiedzNumerNieruchomosci>&#xD;\n    <praw_adSiedzNumerLokalu />&#xD;\n    <praw_adSiedzNietypoweMiejsceLokalizacji />&#xD;\n    <praw_numerTelefonu />&#xD;\n    <praw_numerWewnetrznyTelefonu />&#xD;\n    <praw_numerFaksu />&#xD;\n    <praw_adresEmail />&#xD;\n    <praw_adresStronyinternetowej />&#xD;\n    <praw_adSiedzKraj_Nazwa>POLSKA</praw_adSiedzKraj_Nazwa>&#xD;\n    <praw_adSiedzWojewodztwo_Nazwa>OPOLSKIE</praw_adSiedzWojewodztwo_Nazwa>&#xD;\n    <praw_adSiedzPowiat_Nazwa>strzelecki</praw_adSiedzPowiat_Nazwa>&#xD;\n    <praw_adSiedzGmina_Nazwa>Strzelce Opolskie</praw_adSiedzGmina_Nazwa>&#xD;\n    <praw_adSiedzMiejscowosc_Nazwa>Strzelce Opolskie</praw_adSiedzMiejscowosc_Nazwa>&#xD;\n    <praw_adSiedzMiejscowoscPoczty_Nazwa>Strzelce Opolskie</praw_adSiedzMiejscowoscPoczty_Nazwa>&#xD;\n    <praw_adSiedzUlica_Nazwa>ul. Ludowa</praw_adSiedzUlica_Nazwa>&#xD;\n    <praw_podstawowaFormaPrawna_Symbol>1</praw_podstawowaFormaPrawna_Symbol>&#xD;\n    <praw_szczegolnaFormaPrawna_Symbol>117</praw_szczegolnaFormaPrawna_Symbol>&#xD;\n    <praw_formaFinansowania_Symbol>1</praw_formaFinansowania_Symbol>&#xD;\n    <praw_formaWlasnosci_Symbol />&#xD;\n    <praw_organZalozycielski_Symbol />&#xD;\n    <praw_organRejestrowy_Symbol>071530010</praw_organRejestrowy_Symbol>&#xD;\n    <praw_rodzajRejestruEwidencji_Symbol>138</praw_rodzajRejestruEwidencji_Symbol>&#xD;\n    <praw_podstawowaFormaPrawna_Nazwa>OSOBA PRAWNA</praw_podstawowaFormaPrawna_Nazwa>&#xD;\n    <praw_szczegolnaFormaPrawna_Nazwa>SPÓŁKI Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ</praw_szczegolnaFormaPrawna_Nazwa>&#xD;\n    <praw_formaFinansowania_Nazwa>JEDNOSTKA SAMOFINANSUJĄCA NIE BĘDĄCA JEDNOSTKĄ BUDŻETOWĄ LUB SAMORZĄDOWYM ZAKŁADEM BUDŻETOWYM</praw_formaFinansowania_Nazwa>&#xD;\n    <praw_formaWlasnosci_Nazwa />&#xD;\n    <praw_organZalozycielski_Nazwa />&#xD;\n    <praw_organRejestrowy_Nazwa>SĄD REJONOWY W OPOLU, VIII WYDZIAŁ GOSPODARCZY KRAJOWEGO REJESTRU SĄDOWEGO</praw_organRejestrowy_Nazwa>&#xD;\n    <praw_rodzajRejestruEwidencji_Nazwa>REJESTR PRZEDSIĘBIORCÓW</praw_rodzajRejestruEwidencji_Nazwa>&#xD;\n    <praw_liczbaJednLokalnych>0</praw_liczbaJednLokalnych>&#xD;\n  </dane>&#xD;\n</root>"
+    }
+  },
+  "inner": {
+    "root": {
+      "dane": {
+        "praw_regon9": "522340602",
+        "praw_nip": "7561993172",
+        "praw_statusNip": "",
+        "praw_nazwa": "KOZAK OLEK SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ",
+        "praw_nazwaSkrocona": "",
+        "praw_numerWRejestrzeEwidencji": "0000977768",
+        "praw_dataWpisuDoRejestruEwidencji": "2022-06-20",
+        "praw_dataPowstania": "2022-06-20",
+        "praw_dataRozpoczeciaDzialalnosci": "2022-06-20",
+        "praw_dataWpisuDoRegon": "2022-06-21",
+        "praw_dataZawieszeniaDzialalnosci": "",
+        "praw_dataWznowieniaDzialalnosci": "",
+        "praw_dataZaistnieniaZmiany": "2025-09-30",
+        "praw_dataZakonczeniaDzialalnosci": "",
+        "praw_dataSkresleniaZRegon": "",
+        "praw_dataOrzeczeniaOUpadlosci": "",
+        "praw_dataZakonczeniaPostepowaniaUpadlosciowego": "",
+        "praw_adSiedzKraj_Symbol": "PL",
+        "praw_adSiedzWojewodztwo_Symbol": "16",
+        "praw_adSiedzPowiat_Symbol": "11",
+        "praw_adSiedzGmina_Symbol": "054",
+        "praw_adSiedzKodPocztowy": "47100",
+        "praw_adSiedzMiejscowoscPoczty_Symbol": "0965915",
+        "praw_adSiedzMiejscowosc_Symbol": "0965915",
+        "praw_adSiedzUlica_Symbol": "11383",
+        "praw_adSiedzNumerNieruchomosci": "2",
+        "praw_adSiedzNumerLokalu": "",
+        "praw_adSiedzNietypoweMiejsceLokalizacji": "",
+        "praw_numerTelefonu": "",
+        "praw_numerWewnetrznyTelefonu": "",
+        "praw_numerFaksu": "",
+        "praw_adresEmail": "",
+        "praw_adresStronyinternetowej": "",
+        "praw_adSiedzKraj_Nazwa": "POLSKA",
+        "praw_adSiedzWojewodztwo_Nazwa": "OPOLSKIE",
+        "praw_adSiedzPowiat_Nazwa": "strzelecki",
+        "praw_adSiedzGmina_Nazwa": "Strzelce Opolskie",
+        "praw_adSiedzMiejscowosc_Nazwa": "Strzelce Opolskie",
+        "praw_adSiedzMiejscowoscPoczty_Nazwa": "Strzelce Opolskie",
+        "praw_adSiedzUlica_Nazwa": "ul. Ludowa",
+        "praw_podstawowaFormaPrawna_Symbol": "1",
+        "praw_szczegolnaFormaPrawna_Symbol": "117",
+        "praw_formaFinansowania_Symbol": "1",
+        "praw_formaWlasnosci_Symbol": "",
+        "praw_organZalozycielski_Symbol": "",
+        "praw_organRejestrowy_Symbol": "071530010",
+        "praw_rodzajRejestruEwidencji_Symbol": "138",
+        "praw_podstawowaFormaPrawna_Nazwa": "OSOBA PRAWNA",
+        "praw_szczegolnaFormaPrawna_Nazwa": "SPÓŁKI Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ",
+        "praw_formaFinansowania_Nazwa": "JEDNOSTKA SAMOFINANSUJĄCA NIE BĘDĄCA JEDNOSTKĄ BUDŻETOWĄ LUB SAMORZĄDOWYM ZAKŁADEM BUDŻETOWYM",
+        "praw_formaWlasnosci_Nazwa": "",
+        "praw_organZalozycielski_Nazwa": "",
+        "praw_organRejestrowy_Nazwa": "SĄD REJONOWY W OPOLU, VIII WYDZIAŁ GOSPODARCZY KRAJOWEGO REJESTRU SĄDOWEGO",
+        "praw_rodzajRejestruEwidencji_Nazwa": "REJESTR PRZEDSIĘBIORCÓW",
+        "praw_liczbaJednLokalnych": "0"
+      }
+    }
+  }
+}

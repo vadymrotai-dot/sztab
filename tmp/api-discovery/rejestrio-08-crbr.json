@@ -1,0 +1,36 @@
+{
+  "url": "https://rejestr.io/api/v2/org/0000977768/crbr",
+  "status": 200,
+  "body": [
+    {
+      "id": "3008027",
+      "kody_krajow_obywatelstwa": [
+        "UA"
+      ],
+      "kod_kraju_rezydencji": "PL",
+      "tozsamosc": {
+        "data_urodzenia": "1971-04-02",
+        "imie": "Olena",
+        "imiona_i_nazwisko": "Olena Ilchenko",
+        "nazwisko": "Ilchenko",
+        "plec": "F"
+      },
+      "typ": "osoba"
+    },
+    {
+      "id": "3008026",
+      "kody_krajow_obywatelstwa": [
+        "UA"
+      ],
+      "kod_kraju_rezydencji": "PL",
+      "tozsamosc": {
+        "data_urodzenia": "1999-02-15",
+        "imie": "Oleksii",
+        "imiona_i_nazwisko": "Oleksii Ilchenko",
+        "nazwisko": "Ilchenko",
+        "plec": "M"
+      },
+      "typ": "osoba"
+    }
+  ]
+}

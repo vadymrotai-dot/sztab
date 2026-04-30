@@ -1,0 +1,452 @@
+{
+  "url": "https://rejestr.io/api/v2/org/0000977768/krs-dokumenty/17708354?format=json",
+  "status": 200,
+  "body": {
+    "id_organizacji": "977768",
+    "id_dokumentu": "17708354",
+    "nazwa": "Rachunek zysków i strat",
+    "okres_data_start": "2024-01-01",
+    "okres_data_koniec": "2024-12-31",
+    "zawartosc": {
+      "nazwa_wezla": "RZiSJednostkaInna",
+      "etykieta": "Rachunek zysków i strat jednostki innej",
+      "podetykieta": null,
+      "pln_rok_obrotowy_biezacy": null,
+      "pln_rok_obrotowy_poprzedni": null,
+      "podobiekty": [
+        {
+          "nazwa_wezla": "RZiSPor",
+          "etykieta": "Rachunek zysków i strat (wariant porównawczy)",
+          "podetykieta": null,
+          "pln_rok_obrotowy_biezacy": null,
+          "pln_rok_obrotowy_poprzedni": null,
+          "podobiekty": [
+            {
+              "nazwa_wezla": "A",
+              "etykieta": "Przychody netto ze sprzedaży i zrównane z nimi, w tym:",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "1850133.32",
+              "pln_rok_obrotowy_poprzedni": "1452978.76",
+              "podobiekty": [
+                {
+                  "nazwa_wezla": "A_J",
+                  "etykieta": "– od jednostek powiązanych",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "A_I",
+                  "etykieta": "Przychody netto ze sprzedaży produktów",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "185.22",
+                  "pln_rok_obrotowy_poprzedni": "2.09",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "A_II",
+                  "etykieta": "Zmiana stanu produktów (zwiększenie – wartość dodatnia, zmniejszenie – wartość ujemna)",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "A_III",
+                  "etykieta": "Koszt wytworzenia produktów na własne potrzeby jednostki",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "A_IV",
+                  "etykieta": "Przychody netto ze sprzedaży towarów i materiałów",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "1849948.10",
+                  "pln_rok_obrotowy_poprzedni": "1452976.67",
+                  "podobiekty": null
+                }
+              ]
+            },
+            {
+              "nazwa_wezla": "B",
+              "etykieta": "Koszty działalności operacyjnej",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "1700311.08",
+              "pln_rok_obrotowy_poprzedni": "1398490.38",
+              "podobiekty": [
+                {
+                  "nazwa_wezla": "B_I",
+                  "etykieta": "Amortyzacja",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "B_II",
+                  "etykieta": "Zużycie materiałów i energii",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "139519.23",
+                  "pln_rok_obrotowy_poprzedni": "77630.67",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "B_III",
+                  "etykieta": "Usługi obce",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "170215.91",
+                  "pln_rok_obrotowy_poprzedni": "152423.72",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "B_IV",
+                  "etykieta": "Podatki i opłaty, w tym:",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "B_IV_1",
+                      "etykieta": "– podatek akcyzowy",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "B_V",
+                  "etykieta": "Wynagrodzenia",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "297696.62",
+                  "pln_rok_obrotowy_poprzedni": "231750.15",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "B_VI",
+                  "etykieta": "Ubezpieczenia społeczne i inne świadczenia, w tym:",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "59573.28",
+                  "pln_rok_obrotowy_poprzedni": "42417.71",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "B_VI_1",
+                      "etykieta": "– emerytalne",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "B_VII",
+                  "etykieta": "Pozostałe koszty rodzajowe",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "2988.88",
+                  "pln_rok_obrotowy_poprzedni": "10812.67",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "B_VIII",
+                  "etykieta": "Wartość sprzedanych towarów i materiałów",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "1030317.16",
+                  "pln_rok_obrotowy_poprzedni": "883455.46",
+                  "podobiekty": null
+                }
+              ]
+            },
+            {
+              "nazwa_wezla": "C",
+              "etykieta": "Zysk (strata) ze sprzedaży (A–B)",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "149822.24",
+              "pln_rok_obrotowy_poprzedni": "54488.38",
+              "podobiekty": null
+            },
+            {
+              "nazwa_wezla": "D",
+              "etykieta": "Pozostałe przychody operacyjne",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "938.99",
+              "pln_rok_obrotowy_poprzedni": "1.01",
+              "podobiekty": [
+                {
+                  "nazwa_wezla": "D_I",
+                  "etykieta": "Zysk z tytułu rozchodu niefinansowych aktywów trwałych",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "D_II",
+                  "etykieta": "Dotacje",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "D_III",
+                  "etykieta": "Aktualizacja wartości aktywów niefinansowych",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "D_IV",
+                  "etykieta": "Inne przychody operacyjne",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "938.99",
+                  "pln_rok_obrotowy_poprzedni": "1.01",
+                  "podobiekty": null
+                }
+              ]
+            },
+            {
+              "nazwa_wezla": "E",
+              "etykieta": "Pozostałe koszty operacyjne",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "0.00",
+              "pln_rok_obrotowy_poprzedni": "75.27",
+              "podobiekty": [
+                {
+                  "nazwa_wezla": "E_I",
+                  "etykieta": "Strata z tytułu rozchodu niefinansowych aktywów trwałych",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "E_II",
+                  "etykieta": "Aktualizacja wartości aktywów niefinansowych",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "E_III",
+                  "etykieta": "Inne koszty operacyjne",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "75.27",
+                  "podobiekty": null
+                }
+              ]
+            },
+            {
+              "nazwa_wezla": "F",
+              "etykieta": "Zysk (strata) z działalności operacyjnej (C+D–E)",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "150761.23",
+              "pln_rok_obrotowy_poprzedni": "54414.12",
+              "podobiekty": null
+            },
+            {
+              "nazwa_wezla": "G",
+              "etykieta": "Przychody finansowe",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "0.00",
+              "pln_rok_obrotowy_poprzedni": "0.00",
+              "podobiekty": [
+                {
+                  "nazwa_wezla": "G_I",
+                  "etykieta": "Dywidendy i udziały w zyskach, w tym:",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "G_I_A",
+                      "etykieta": "Od jednostek powiązanych, w tym:",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": [
+                        {
+                          "nazwa_wezla": "G_I_A_1",
+                          "etykieta": "– w których jednostka posiada zaangażowanie w kapitale",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        }
+                      ]
+                    },
+                    {
+                      "nazwa_wezla": "G_I_B",
+                      "etykieta": "Od jednostek pozostałych, w tym:",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": [
+                        {
+                          "nazwa_wezla": "G_I_B_1",
+                          "etykieta": "– w których jednostka posiada zaangażowanie w kapitale",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "G_II",
+                  "etykieta": "Odsetki, w tym:",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "G_II_J",
+                      "etykieta": "– od jednostek powiązanych",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "G_III",
+                  "etykieta": "Zysk z tytułu rozchodu aktywów finansowych, w tym:",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "G_III_J",
+                      "etykieta": "– w jednostkach powiązanych",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "G_IV",
+                  "etykieta": "Aktualizacja wartości aktywów finansowych",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "G_V",
+                  "etykieta": "Inne",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": null
+                }
+              ]
+            },
+            {
+              "nazwa_wezla": "H",
+              "etykieta": "Koszty finansowe",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "269.36",
+              "pln_rok_obrotowy_poprzedni": "251.00",
+              "podobiekty": [
+                {
+                  "nazwa_wezla": "H_I",
+                  "etykieta": "Odsetki, w tym:",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "157.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "H_I_J",
+                      "etykieta": "– dla jednostek powiązanych",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "H_II",
+                  "etykieta": "Strata z tytułu rozchodu aktywów finansowych, w tym:",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "H_II_J",
+                      "etykieta": "– w jednostkach powiązanych",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "H_III",
+                  "etykieta": "Aktualizacja wartości aktywów finansowych",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "H_IV",
+                  "etykieta": "Inne",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "112.36",
+                  "pln_rok_obrotowy_poprzedni": "251.00",
+                  "podobiekty": null
+                }
+              ]
+            },
+            {
+              "nazwa_wezla": "I",
+              "etykieta": "Zysk (strata) brutto (F+G–H)",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "150491.87",
+              "pln_rok_obrotowy_poprzedni": "54163.12",
+              "podobiekty": null
+            },
+            {
+              "nazwa_wezla": "J",
+              "etykieta": "Podatek dochodowy",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "13544.00",
+              "pln_rok_obrotowy_poprzedni": "5997.00",
+              "podobiekty": null
+            },
+            {
+              "nazwa_wezla": "K",
+              "etykieta": "Pozostałe obowiązkowe zmniejszenia zysku (zwiększenia straty)",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "0.00",
+              "pln_rok_obrotowy_poprzedni": "0.00",
+              "podobiekty": null
+            },
+            {
+              "nazwa_wezla": "L",
+              "etykieta": "Zysk (strata) netto (I–J–K)",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "136947.87",
+              "pln_rok_obrotowy_poprzedni": "48166.12",
+              "podobiekty": null
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,614 @@
+{
+  "action": "DanePobierzPelnyRaport",
+  "body": {
+    "DanePobierzPelnyRaportResponse": {
+      "DanePobierzPelnyRaportResult": "<root>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4719Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>POZOSTAŁA SPRZEDAŻ DETALICZNA PROWADZONA W NIEWYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>1</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1011Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRZETWARZANIE I KONSERWOWANIE MIĘSA, Z WYŁĄCZENIEM MIĘSA Z DROBIU</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1012Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRZETWARZANIE I KONSERWOWANIE MIĘSA Z DROBIU</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1013Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRODUKCJA WYROBÓW Z MIĘSA, WŁĄCZAJĄC WYROBY Z MIĘSA DROBIOWEGO</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1020Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRZETWARZANIE I KONSERWOWANIE RYB, SKORUPIAKÓW I MIĘCZAKÓW</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1031Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRZETWARZANIE I KONSERWOWANIE ZIEMNIAKÓW</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1032Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRODUKCJA SOKÓW Z OWOCÓW I WARZYW</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1039Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>POZOSTAŁE PRZETWARZANIE I KONSERWOWANIE OWOCÓW I WARZYW</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1041Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRODUKCJA OLEJÓW I POZOSTAŁYCH TŁUSZCZÓW PŁYNNYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1042Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRODUKCJA MARGARYNY I PODOBNYCH TŁUSZCZÓW JADALNYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1051Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRZETWÓRSTWO MLEKA I WYRÓB SERÓW</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1052Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRODUKCJA LODÓW</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1061Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>WYTWARZANIE PRODUKTÓW PRZEMIAŁU ZBÓŻ</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1062Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>WYTWARZANIE SKROBI I WYROBÓW SKROBIOWYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1071Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRODUKCJA PIECZYWA; PRODUKCJA ŚWIEŻYCH WYROBÓW CIASTKARSKICH I CIASTEK</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1072Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRODUKCJA SUCHARÓW I HERBATNIKÓW; PRODUKCJA KONSERWOWANYCH WYROBÓW CIASTKARSKICH I CIASTEK</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1073Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRODUKCJA MAKARONÓW, KLUSEK, KUSKUSU I PODOBNYCH WYROBÓW MĄCZNYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1081Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRODUKCJA CUKRU</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1082Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRODUKCJA KAKAO, CZEKOLADY I WYROBÓW CUKIERNICZYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1083Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRZETWÓRSTWO HERBATY I KAWY</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1084Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRODUKCJA PRZYPRAW</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1085Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>WYTWARZANIE GOTOWYCH POSIŁKÓW I DAŃ</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1086Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRODUKCJA ARTYKUŁÓW SPOŻYWCZYCH HOMOGENIZOWANYCH I ŻYWNOŚCI DIETETYCZNEJ</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1089Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRODUKCJA POZOSTAŁYCH ARTYKUŁÓW SPOŻYWCZYCH, GDZIE INDZIEJ NIESKLASYFIKOWANA</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1091Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRODUKCJA GOTOWEJ PASZY DLA ZWIERZĄT GOSPODARSKICH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1092Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRODUKCJA GOTOWEJ KARMY DLA ZWIERZĄT DOMOWYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>1330Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>WYKOŃCZANIE WYROBÓW WŁÓKIENNICZYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4611Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>DZIAŁALNOŚĆ AGENTÓW ZAJMUJĄCYCH SIĘ SPRZEDAŻĄ PŁODÓW ROLNYCH, ŻYWYCH ZWIERZĄT, SUROWCÓW DLA PRZEMYSŁU TEKSTYLNEGO I PÓŁPRODUKTÓW</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4612Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>DZIAŁALNOŚĆ AGENTÓW ZAJMUJĄCYCH SIĘ SPRZEDAŻĄ PALIW, RUD, METALI I CHEMIKALIÓW PRZEMYSŁOWYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4613Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>DZIAŁALNOŚĆ AGENTÓW ZAJMUJĄCYCH SIĘ SPRZEDAŻĄ DREWNA I MATERIAŁÓW BUDOWLANYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4614Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>DZIAŁALNOŚĆ AGENTÓW ZAJMUJĄCYCH SIĘ SPRZEDAŻĄ MASZYN, URZĄDZEŃ PRZEMYSŁOWYCH, STATKÓW I SAMOLOTÓW</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4615Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>DZIAŁALNOŚĆ AGENTÓW ZAJMUJĄCYCH SIĘ SPRZEDAŻĄ MEBLI, ARTYKUŁÓW GOSPODARSTWA DOMOWEGO I DROBNYCH WYROBÓW METALOWYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4616Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>DZIAŁALNOŚĆ AGENTÓW ZAJMUJĄCYCH SIĘ SPRZEDAŻĄ WYROBÓW TEKSTYLNYCH, ODZIEŻY, WYROBÓW FUTRZARSKICH, OBUWIA I ARTYKUŁÓW SKÓRZANYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4617Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>DZIAŁALNOŚĆ AGENTÓW ZAJMUJĄCYCH SIĘ SPRZEDAŻĄ ŻYWNOŚCI, NAPOJÓW I WYROBÓW TYTONIOWYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4618Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>DZIAŁALNOŚĆ AGENTÓW SPECJALIZUJĄCYCH SIĘ W SPRZEDAŻY POZOSTAŁYCH OKREŚLONYCH TOWARÓW</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4619Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>DZIAŁALNOŚĆ AGENTÓW ZAJMUJĄCYCH SIĘ SPRZEDAŻĄ TOWARÓW RÓŻNEGO RODZAJU</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4621Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA ZBOŻA, NIEPRZETWORZONEGO TYTONIU, NASION I PASZ DLA ZWIERZĄT</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4622Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA KWIATÓW I ROŚLIN</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4623Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA ŻYWYCH ZWIERZĄT</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4624Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA SKÓR</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4631Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA OWOCÓW I WARZYW</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4632Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA MIĘSA I WYROBÓW Z MIĘSA</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4633Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA MLEKA, WYROBÓW MLECZARSKICH, JAJ, OLEJÓW I TŁUSZCZÓW JADALNYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4634A</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA NAPOJÓW ALKOHOLOWYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4634B</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA NAPOJÓW BEZALKOHOLOWYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4635Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA WYROBÓW TYTONIOWYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4636Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA CUKRU, CZEKOLADY, WYROBÓW CUKIERNICZYCH I PIEKARSKICH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4637Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA HERBATY, KAWY, KAKAO I PRZYPRAW</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4638Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA POZOSTAŁEJ ŻYWNOŚCI, WŁĄCZAJĄC RYBY, SKORUPIAKI I MIĘCZAKI</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4639Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA NIEWYSPECJALIZOWANA ŻYWNOŚCI, NAPOJÓW I WYROBÓW TYTONIOWYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4641Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA WYROBÓW TEKSTYLNYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4642Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA ODZIEŻY I OBUWIA</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4643Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA ELEKTRYCZNYCH ARTYKUŁÓW UŻYTKU DOMOWEGO</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4644Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA WYROBÓW PORCELANOWYCH, CERAMICZNYCH I SZKLANYCH ORAZ ŚRODKÓW CZYSZCZĄCYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4645Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA PERFUM I KOSMETYKÓW</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4646Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA WYROBÓW FARMACEUTYCZNYCH I MEDYCZNYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4647Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA MEBLI, DYWANÓW I SPRZĘTU OŚWIETLENIOWEGO</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4648Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA ZEGARKÓW, ZEGARÓW I BIŻUTERII</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4649Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA POZOSTAŁYCH ARTYKUŁÓW UŻYTKU DOMOWEGO</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4651Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA KOMPUTERÓW, URZĄDZEŃ PERYFERYJNYCH I OPROGRAMOWANIA</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4652Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA SPRZĘTU ELEKTRONICZNEGO I TELEKOMUNIKACYJNEGO ORAZ CZĘŚCI DO NIEGO</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4661Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA MASZYN I URZĄDZEŃ ROLNICZYCH ORAZ DODATKOWEGO WYPOSAŻENIA</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4662Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA OBRABIAREK</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4663Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA MASZYN WYKORZYSTYWANYCH W GÓRNICTWIE, BUDOWNICTWIE ORAZ INŻYNIERII LĄDOWEJ I WODNEJ</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4664Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA MASZYN DLA PRZEMYSŁU TEKSTYLNEGO ORAZ MASZYN DO SZYCIA I MASZYN DZIEWIARSKICH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4665Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA MEBLI BIUROWYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4666Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA POZOSTAŁYCH MASZYN I URZĄDZEŃ BIUROWYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4669Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA POZOSTAŁYCH MASZYN I URZĄDZEŃ</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4671Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA PALIW I PRODUKTÓW POCHODNYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4672Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA METALI I RUD METALI</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4673Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA DREWNA, MATERIAŁÓW BUDOWLANYCH I WYPOSAŻENIA SANITARNEGO</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4674Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA WYROBÓW METALOWYCH ORAZ SPRZĘTU I DODATKOWEGO WYPOSAŻENIA HYDRAULICZNEGO I GRZEJNEGO</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4675Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA WYROBÓW CHEMICZNYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4676Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA POZOSTAŁYCH PÓŁPRODUKTÓW</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4677Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA ODPADÓW I ZŁOMU</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4690Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ HURTOWA NIEWYSPECJALIZOWANA</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4711Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA PROWADZONA W NIEWYSPECJALIZOWANYCH SKLEPACH Z PRZEWAGĄ ŻYWNOŚCI, NAPOJÓW I WYROBÓW TYTONIOWYCH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4721Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA OWOCÓW I WARZYW PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4722Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA MIĘSA I WYROBÓW Z MIĘSA PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4723Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA RYB, SKORUPIAKÓW I MIĘCZAKÓW PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4724Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA PIECZYWA, CIAST, WYROBÓW CIASTKARSKICH I CUKIERNICZYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4725Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA NAPOJÓW ALKOHOLOWYCH I BEZALKOHOLOWYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4726Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA WYROBÓW TYTONIOWYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4729Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA POZOSTAŁEJ ŻYWNOŚCI PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4730Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA PALIW DO POJAZDÓW SILNIKOWYCH NA STACJACH PALIW</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4741Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA KOMPUTERÓW, URZĄDZEŃ PERYFERYJNYCH I OPROGRAMOWANIA PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4742Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA SPRZĘTU TELEKOMUNIKACYJNEGO PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4743Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA SPRZĘTU AUDIOWIZUALNEGO PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4751Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA WYROBÓW TEKSTYLNYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4752Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA DROBNYCH WYROBÓW METALOWYCH, FARB I SZKŁA PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4753Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA DYWANÓW, CHODNIKÓW I INNYCH POKRYĆ PODŁOGOWYCH ORAZ POKRYĆ ŚCIENNYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4754Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA ELEKTRYCZNEGO SPRZĘTU GOSPODARSTWA DOMOWEGO PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4759Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA MEBLI, SPRZĘTU OŚWIETLENIOWEGO I POZOSTAŁYCH ARTYKUŁÓW UŻYTKU DOMOWEGO PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4761Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA KSIĄŻEK PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4762Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA GAZET I ARTYKUŁÓW PIŚMIENNYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4763Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA NAGRAŃ DŹWIĘKOWYCH I AUDIOWIZUALNYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4764Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA SPRZĘTU SPORTOWEGO PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4765Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA GIER I ZABAWEK PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4771Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA ODZIEŻY PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4772Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA OBUWIA I WYROBÓW SKÓRZANYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4773Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA WYROBÓW FARMACEUTYCZNYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4774Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA WYROBÓW MEDYCZNYCH, WŁĄCZAJĄC ORTOPEDYCZNE, PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4775Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA KOSMETYKÓW I ARTYKUŁÓW TOALETOWYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4776Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA KWIATÓW, ROŚLIN, NASION, NAWOZÓW, ŻYWYCH ZWIERZĄT DOMOWYCH, KARMY DLA ZWIERZĄT DOMOWYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4777Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA ZEGARKÓW, ZEGARÓW I BIŻUTERII PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4778Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA POZOSTAŁYCH NOWYCH WYROBÓW PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4779Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA ARTYKUŁÓW UŻYWANYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4781Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA ŻYWNOŚCI, NAPOJÓW I WYROBÓW TYTONIOWYCH PROWADZONA NA STRAGANACH I TARGOWISKACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4782Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA WYROBÓW TEKSTYLNYCH, ODZIEŻY I OBUWIA PROWADZONA NA STRAGANACH I TARGOWISKACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4789Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA POZOSTAŁYCH WYROBÓW PROWADZONA NA STRAGANACH I TARGOWISKACH</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4791Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>SPRZEDAŻ DETALICZNA PROWADZONA PRZEZ DOMY SPRZEDAŻY WYSYŁKOWEJ LUB INTERNET</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>4799Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>POZOSTAŁA SPRZEDAŻ DETALICZNA PROWADZONA POZA SIECIĄ SKLEPOWĄ, STRAGANAMI I TARGOWISKAMI</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>5320Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>POZOSTAŁA DZIAŁALNOŚĆ POCZTOWA I KURIERSKA</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>5610A</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>RESTAURACJE I INNE STAŁE PLACÓWKI GASTRONOMICZNE</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>5610B</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>RUCHOME PLACÓWKI GASTRONOMICZNE</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>5621Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRZYGOTOWYWANIE I DOSTARCZANIE ŻYWNOŚCI DLA ODBIORCÓW ZEWNĘTRZNYCH (KATERING)</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>5629Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>POZOSTAŁA USŁUGOWA DZIAŁALNOŚĆ GASTRONOMICZNA</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>5630Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>PRZYGOTOWYWANIE I PODAWANIE NAPOJÓW</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>7312C</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>POŚREDNICTWO W SPRZEDAŻY MIEJSCA NA CELE REKLAMOWE W MEDIACH ELEKTRONICZNYCH (INTERNET)</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n  <dane>&#xD;\n    <praw_pkdKod>8292Z</praw_pkdKod>&#xD;\n    <praw_pkdNazwa>DZIAŁALNOŚĆ ZWIĄZANA Z PAKOWANIEM</praw_pkdNazwa>&#xD;\n    <praw_pkdPrzewazajace>0</praw_pkdPrzewazajace>&#xD;\n  </dane>&#xD;\n</root>"
+    }
+  },
+  "inner": {
+    "root": {
+      "dane": [
+        {
+          "praw_pkdKod": "4719Z",
+          "praw_pkdNazwa": "POZOSTAŁA SPRZEDAŻ DETALICZNA PROWADZONA W NIEWYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "1"
+        },
+        {
+          "praw_pkdKod": "1011Z",
+          "praw_pkdNazwa": "PRZETWARZANIE I KONSERWOWANIE MIĘSA, Z WYŁĄCZENIEM MIĘSA Z DROBIU",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1012Z",
+          "praw_pkdNazwa": "PRZETWARZANIE I KONSERWOWANIE MIĘSA Z DROBIU",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1013Z",
+          "praw_pkdNazwa": "PRODUKCJA WYROBÓW Z MIĘSA, WŁĄCZAJĄC WYROBY Z MIĘSA DROBIOWEGO",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1020Z",
+          "praw_pkdNazwa": "PRZETWARZANIE I KONSERWOWANIE RYB, SKORUPIAKÓW I MIĘCZAKÓW",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1031Z",
+          "praw_pkdNazwa": "PRZETWARZANIE I KONSERWOWANIE ZIEMNIAKÓW",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1032Z",
+          "praw_pkdNazwa": "PRODUKCJA SOKÓW Z OWOCÓW I WARZYW",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1039Z",
+          "praw_pkdNazwa": "POZOSTAŁE PRZETWARZANIE I KONSERWOWANIE OWOCÓW I WARZYW",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1041Z",
+          "praw_pkdNazwa": "PRODUKCJA OLEJÓW I POZOSTAŁYCH TŁUSZCZÓW PŁYNNYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1042Z",
+          "praw_pkdNazwa": "PRODUKCJA MARGARYNY I PODOBNYCH TŁUSZCZÓW JADALNYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1051Z",
+          "praw_pkdNazwa": "PRZETWÓRSTWO MLEKA I WYRÓB SERÓW",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1052Z",
+          "praw_pkdNazwa": "PRODUKCJA LODÓW",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1061Z",
+          "praw_pkdNazwa": "WYTWARZANIE PRODUKTÓW PRZEMIAŁU ZBÓŻ",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1062Z",
+          "praw_pkdNazwa": "WYTWARZANIE SKROBI I WYROBÓW SKROBIOWYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1071Z",
+          "praw_pkdNazwa": "PRODUKCJA PIECZYWA; PRODUKCJA ŚWIEŻYCH WYROBÓW CIASTKARSKICH I CIASTEK",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1072Z",
+          "praw_pkdNazwa": "PRODUKCJA SUCHARÓW I HERBATNIKÓW; PRODUKCJA KONSERWOWANYCH WYROBÓW CIASTKARSKICH I CIASTEK",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1073Z",
+          "praw_pkdNazwa": "PRODUKCJA MAKARONÓW, KLUSEK, KUSKUSU I PODOBNYCH WYROBÓW MĄCZNYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1081Z",
+          "praw_pkdNazwa": "PRODUKCJA CUKRU",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1082Z",
+          "praw_pkdNazwa": "PRODUKCJA KAKAO, CZEKOLADY I WYROBÓW CUKIERNICZYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1083Z",
+          "praw_pkdNazwa": "PRZETWÓRSTWO HERBATY I KAWY",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1084Z",
+          "praw_pkdNazwa": "PRODUKCJA PRZYPRAW",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1085Z",
+          "praw_pkdNazwa": "WYTWARZANIE GOTOWYCH POSIŁKÓW I DAŃ",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1086Z",
+          "praw_pkdNazwa": "PRODUKCJA ARTYKUŁÓW SPOŻYWCZYCH HOMOGENIZOWANYCH I ŻYWNOŚCI DIETETYCZNEJ",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1089Z",
+          "praw_pkdNazwa": "PRODUKCJA POZOSTAŁYCH ARTYKUŁÓW SPOŻYWCZYCH, GDZIE INDZIEJ NIESKLASYFIKOWANA",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1091Z",
+          "praw_pkdNazwa": "PRODUKCJA GOTOWEJ PASZY DLA ZWIERZĄT GOSPODARSKICH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1092Z",
+          "praw_pkdNazwa": "PRODUKCJA GOTOWEJ KARMY DLA ZWIERZĄT DOMOWYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "1330Z",
+          "praw_pkdNazwa": "WYKOŃCZANIE WYROBÓW WŁÓKIENNICZYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4611Z",
+          "praw_pkdNazwa": "DZIAŁALNOŚĆ AGENTÓW ZAJMUJĄCYCH SIĘ SPRZEDAŻĄ PŁODÓW ROLNYCH, ŻYWYCH ZWIERZĄT, SUROWCÓW DLA PRZEMYSŁU TEKSTYLNEGO I PÓŁPRODUKTÓW",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4612Z",
+          "praw_pkdNazwa": "DZIAŁALNOŚĆ AGENTÓW ZAJMUJĄCYCH SIĘ SPRZEDAŻĄ PALIW, RUD, METALI I CHEMIKALIÓW PRZEMYSŁOWYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4613Z",
+          "praw_pkdNazwa": "DZIAŁALNOŚĆ AGENTÓW ZAJMUJĄCYCH SIĘ SPRZEDAŻĄ DREWNA I MATERIAŁÓW BUDOWLANYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4614Z",
+          "praw_pkdNazwa": "DZIAŁALNOŚĆ AGENTÓW ZAJMUJĄCYCH SIĘ SPRZEDAŻĄ MASZYN, URZĄDZEŃ PRZEMYSŁOWYCH, STATKÓW I SAMOLOTÓW",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4615Z",
+          "praw_pkdNazwa": "DZIAŁALNOŚĆ AGENTÓW ZAJMUJĄCYCH SIĘ SPRZEDAŻĄ MEBLI, ARTYKUŁÓW GOSPODARSTWA DOMOWEGO I DROBNYCH WYROBÓW METALOWYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4616Z",
+          "praw_pkdNazwa": "DZIAŁALNOŚĆ AGENTÓW ZAJMUJĄCYCH SIĘ SPRZEDAŻĄ WYROBÓW TEKSTYLNYCH, ODZIEŻY, WYROBÓW FUTRZARSKICH, OBUWIA I ARTYKUŁÓW SKÓRZANYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4617Z",
+          "praw_pkdNazwa": "DZIAŁALNOŚĆ AGENTÓW ZAJMUJĄCYCH SIĘ SPRZEDAŻĄ ŻYWNOŚCI, NAPOJÓW I WYROBÓW TYTONIOWYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4618Z",
+          "praw_pkdNazwa": "DZIAŁALNOŚĆ AGENTÓW SPECJALIZUJĄCYCH SIĘ W SPRZEDAŻY POZOSTAŁYCH OKREŚLONYCH TOWARÓW",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4619Z",
+          "praw_pkdNazwa": "DZIAŁALNOŚĆ AGENTÓW ZAJMUJĄCYCH SIĘ SPRZEDAŻĄ TOWARÓW RÓŻNEGO RODZAJU",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4621Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA ZBOŻA, NIEPRZETWORZONEGO TYTONIU, NASION I PASZ DLA ZWIERZĄT",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4622Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA KWIATÓW I ROŚLIN",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4623Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA ŻYWYCH ZWIERZĄT",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4624Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA SKÓR",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4631Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA OWOCÓW I WARZYW",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4632Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA MIĘSA I WYROBÓW Z MIĘSA",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4633Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA MLEKA, WYROBÓW MLECZARSKICH, JAJ, OLEJÓW I TŁUSZCZÓW JADALNYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4634A",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA NAPOJÓW ALKOHOLOWYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4634B",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA NAPOJÓW BEZALKOHOLOWYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4635Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA WYROBÓW TYTONIOWYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4636Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA CUKRU, CZEKOLADY, WYROBÓW CUKIERNICZYCH I PIEKARSKICH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4637Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA HERBATY, KAWY, KAKAO I PRZYPRAW",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4638Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA POZOSTAŁEJ ŻYWNOŚCI, WŁĄCZAJĄC RYBY, SKORUPIAKI I MIĘCZAKI",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4639Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA NIEWYSPECJALIZOWANA ŻYWNOŚCI, NAPOJÓW I WYROBÓW TYTONIOWYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4641Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA WYROBÓW TEKSTYLNYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4642Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA ODZIEŻY I OBUWIA",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4643Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA ELEKTRYCZNYCH ARTYKUŁÓW UŻYTKU DOMOWEGO",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4644Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA WYROBÓW PORCELANOWYCH, CERAMICZNYCH I SZKLANYCH ORAZ ŚRODKÓW CZYSZCZĄCYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4645Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA PERFUM I KOSMETYKÓW",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4646Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA WYROBÓW FARMACEUTYCZNYCH I MEDYCZNYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4647Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA MEBLI, DYWANÓW I SPRZĘTU OŚWIETLENIOWEGO",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4648Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA ZEGARKÓW, ZEGARÓW I BIŻUTERII",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4649Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA POZOSTAŁYCH ARTYKUŁÓW UŻYTKU DOMOWEGO",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4651Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA KOMPUTERÓW, URZĄDZEŃ PERYFERYJNYCH I OPROGRAMOWANIA",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4652Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA SPRZĘTU ELEKTRONICZNEGO I TELEKOMUNIKACYJNEGO ORAZ CZĘŚCI DO NIEGO",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4661Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA MASZYN I URZĄDZEŃ ROLNICZYCH ORAZ DODATKOWEGO WYPOSAŻENIA",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4662Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA OBRABIAREK",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4663Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA MASZYN WYKORZYSTYWANYCH W GÓRNICTWIE, BUDOWNICTWIE ORAZ INŻYNIERII LĄDOWEJ I WODNEJ",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4664Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA MASZYN DLA PRZEMYSŁU TEKSTYLNEGO ORAZ MASZYN DO SZYCIA I MASZYN DZIEWIARSKICH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4665Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA MEBLI BIUROWYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4666Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA POZOSTAŁYCH MASZYN I URZĄDZEŃ BIUROWYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4669Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA POZOSTAŁYCH MASZYN I URZĄDZEŃ",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4671Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA PALIW I PRODUKTÓW POCHODNYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4672Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA METALI I RUD METALI",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4673Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA DREWNA, MATERIAŁÓW BUDOWLANYCH I WYPOSAŻENIA SANITARNEGO",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4674Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA WYROBÓW METALOWYCH ORAZ SPRZĘTU I DODATKOWEGO WYPOSAŻENIA HYDRAULICZNEGO I GRZEJNEGO",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4675Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA WYROBÓW CHEMICZNYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4676Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA POZOSTAŁYCH PÓŁPRODUKTÓW",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4677Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA ODPADÓW I ZŁOMU",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4690Z",
+          "praw_pkdNazwa": "SPRZEDAŻ HURTOWA NIEWYSPECJALIZOWANA",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4711Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA PROWADZONA W NIEWYSPECJALIZOWANYCH SKLEPACH Z PRZEWAGĄ ŻYWNOŚCI, NAPOJÓW I WYROBÓW TYTONIOWYCH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4721Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA OWOCÓW I WARZYW PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4722Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA MIĘSA I WYROBÓW Z MIĘSA PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4723Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA RYB, SKORUPIAKÓW I MIĘCZAKÓW PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4724Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA PIECZYWA, CIAST, WYROBÓW CIASTKARSKICH I CUKIERNICZYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4725Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA NAPOJÓW ALKOHOLOWYCH I BEZALKOHOLOWYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4726Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA WYROBÓW TYTONIOWYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4729Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA POZOSTAŁEJ ŻYWNOŚCI PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4730Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA PALIW DO POJAZDÓW SILNIKOWYCH NA STACJACH PALIW",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4741Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA KOMPUTERÓW, URZĄDZEŃ PERYFERYJNYCH I OPROGRAMOWANIA PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4742Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA SPRZĘTU TELEKOMUNIKACYJNEGO PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4743Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA SPRZĘTU AUDIOWIZUALNEGO PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4751Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA WYROBÓW TEKSTYLNYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4752Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA DROBNYCH WYROBÓW METALOWYCH, FARB I SZKŁA PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4753Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA DYWANÓW, CHODNIKÓW I INNYCH POKRYĆ PODŁOGOWYCH ORAZ POKRYĆ ŚCIENNYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4754Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA ELEKTRYCZNEGO SPRZĘTU GOSPODARSTWA DOMOWEGO PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4759Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA MEBLI, SPRZĘTU OŚWIETLENIOWEGO I POZOSTAŁYCH ARTYKUŁÓW UŻYTKU DOMOWEGO PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4761Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA KSIĄŻEK PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4762Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA GAZET I ARTYKUŁÓW PIŚMIENNYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4763Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA NAGRAŃ DŹWIĘKOWYCH I AUDIOWIZUALNYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4764Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA SPRZĘTU SPORTOWEGO PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4765Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA GIER I ZABAWEK PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4771Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA ODZIEŻY PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4772Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA OBUWIA I WYROBÓW SKÓRZANYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4773Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA WYROBÓW FARMACEUTYCZNYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4774Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA WYROBÓW MEDYCZNYCH, WŁĄCZAJĄC ORTOPEDYCZNE, PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4775Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA KOSMETYKÓW I ARTYKUŁÓW TOALETOWYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4776Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA KWIATÓW, ROŚLIN, NASION, NAWOZÓW, ŻYWYCH ZWIERZĄT DOMOWYCH, KARMY DLA ZWIERZĄT DOMOWYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4777Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA ZEGARKÓW, ZEGARÓW I BIŻUTERII PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4778Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA POZOSTAŁYCH NOWYCH WYROBÓW PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4779Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA ARTYKUŁÓW UŻYWANYCH PROWADZONA W WYSPECJALIZOWANYCH SKLEPACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4781Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA ŻYWNOŚCI, NAPOJÓW I WYROBÓW TYTONIOWYCH PROWADZONA NA STRAGANACH I TARGOWISKACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4782Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA WYROBÓW TEKSTYLNYCH, ODZIEŻY I OBUWIA PROWADZONA NA STRAGANACH I TARGOWISKACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4789Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA POZOSTAŁYCH WYROBÓW PROWADZONA NA STRAGANACH I TARGOWISKACH",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4791Z",
+          "praw_pkdNazwa": "SPRZEDAŻ DETALICZNA PROWADZONA PRZEZ DOMY SPRZEDAŻY WYSYŁKOWEJ LUB INTERNET",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "4799Z",
+          "praw_pkdNazwa": "POZOSTAŁA SPRZEDAŻ DETALICZNA PROWADZONA POZA SIECIĄ SKLEPOWĄ, STRAGANAMI I TARGOWISKAMI",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "5320Z",
+          "praw_pkdNazwa": "POZOSTAŁA DZIAŁALNOŚĆ POCZTOWA I KURIERSKA",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "5610A",
+          "praw_pkdNazwa": "RESTAURACJE I INNE STAŁE PLACÓWKI GASTRONOMICZNE",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "5610B",
+          "praw_pkdNazwa": "RUCHOME PLACÓWKI GASTRONOMICZNE",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "5621Z",
+          "praw_pkdNazwa": "PRZYGOTOWYWANIE I DOSTARCZANIE ŻYWNOŚCI DLA ODBIORCÓW ZEWNĘTRZNYCH (KATERING)",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "5629Z",
+          "praw_pkdNazwa": "POZOSTAŁA USŁUGOWA DZIAŁALNOŚĆ GASTRONOMICZNA",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "5630Z",
+          "praw_pkdNazwa": "PRZYGOTOWYWANIE I PODAWANIE NAPOJÓW",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "7312C",
+          "praw_pkdNazwa": "POŚREDNICTWO W SPRZEDAŻY MIEJSCA NA CELE REKLAMOWE W MEDIACH ELEKTRONICZNYCH (INTERNET)",
+          "praw_pkdPrzewazajace": "0"
+        },
+        {
+          "praw_pkdKod": "8292Z",
+          "praw_pkdNazwa": "DZIAŁALNOŚĆ ZWIĄZANA Z PAKOWANIEM",
+          "praw_pkdPrzewazajace": "0"
+        }
+      ]
+    }
+  }
+}

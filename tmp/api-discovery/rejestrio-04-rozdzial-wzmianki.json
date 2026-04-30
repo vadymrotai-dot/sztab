@@ -1,0 +1,136 @@
+{
+  "url": "https://rejestr.io/api/v2/org/0000977768/krs-rozdzialy/wzmianki",
+  "status": 200,
+  "body": {
+    "dokumenty_wzmianka_o_zlozeniu_rocznego_sprawozdania_finansowego": {
+      "_obiekty": {
+        "1": {
+          "_wartosc": {
+            "data": "30.08.2023",
+            "okres": "Od 20. 06. 2022 do 31. 12. 2022"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 7,
+            "wpis_wprowadzajacy_data": "2023-08-30"
+          }
+        },
+        "2": {
+          "_wartosc": {
+            "data": "13.07.2024",
+            "okres": "Od 01. 01. 2023 do 31. 12. 2023"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 9,
+            "wpis_wprowadzajacy_data": "2024-07-13"
+          }
+        },
+        "3": {
+          "_wartosc": {
+            "data": "11.07.2025",
+            "okres": "Od 01. 01. 2024 do 31. 12. 2024"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 13,
+            "wpis_wprowadzajacy_data": "2025-07-11"
+          }
+        }
+      },
+      "_wartosc": {
+        "obiekty": [
+          1,
+          2,
+          3
+        ],
+        "obiekty_liczba_aktualnych": 3,
+        "obiekty_liczba_wszystkich": 3
+      },
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 13,
+        "wpis_wprowadzajacy_data": "2025-07-11"
+      }
+    },
+    "dokumenty_wzmianka_o_zlozeniu_uchwaly_lub_postanowienia_o_zatwierdzeniu_skonsolidowanego_rocznego_sprawozdania_finansowego": {
+      "_obiekty": {
+        "1": {
+          "_wartosc": {
+            "data": null,
+            "okres": "Od 20. 06. 2022 do 31. 12. 2022"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 8,
+            "wpis_wprowadzajacy_data": "2023-08-30"
+          }
+        },
+        "2": {
+          "_wartosc": {
+            "data": null,
+            "okres": "Od 01. 01. 2023 do 31. 12. 2023"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 10,
+            "wpis_wprowadzajacy_data": "2024-07-13"
+          }
+        },
+        "3": {
+          "_wartosc": {
+            "data": null,
+            "okres": "Od 01. 01. 2024 do 31. 12. 2024"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 14,
+            "wpis_wprowadzajacy_data": "2025-07-11"
+          }
+        }
+      },
+      "_wartosc": {
+        "obiekty": [
+          1,
+          2,
+          3
+        ],
+        "obiekty_liczba_aktualnych": 3,
+        "obiekty_liczba_wszystkich": 3
+      },
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 14,
+        "wpis_wprowadzajacy_data": "2025-07-11"
+      }
+    },
+    "dokumenty_wzmianka_o_zlozeniu_sprawozdania_z_dzialalnosci_podmiotu": {
+      "_obiekty": {
+        "1": {
+          "_wartosc": {
+            "data": null,
+            "okres": "Od 01. 01. 2023 do 31. 12. 2023"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 11,
+            "wpis_wprowadzajacy_data": "2024-07-13"
+          }
+        },
+        "2": {
+          "_wartosc": {
+            "data": null,
+            "okres": "Od 01. 01. 2024 do 31. 12. 2024"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 15,
+            "wpis_wprowadzajacy_data": "2025-07-11"
+          }
+        }
+      },
+      "_wartosc": {
+        "obiekty": [
+          1,
+          2
+        ],
+        "obiekty_liczba_aktualnych": 2,
+        "obiekty_liczba_wszystkich": 2
+      },
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 15,
+        "wpis_wprowadzajacy_data": "2025-07-11"
+      }
+    }
+  }
+}

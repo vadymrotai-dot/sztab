@@ -1,0 +1,20 @@
+{
+  "action": "DanePobierzPelnyRaport",
+  "body": {
+    "DanePobierzPelnyRaportResponse": {
+      "DanePobierzPelnyRaportResult": "<root>&#xD;\n  <dane>&#xD;\n    <ErrorCode>4</ErrorCode>&#xD;\n    <ErrorMessagePl>Nie znaleziono wpisu dla podanych kryteriów wyszukiwania.</ErrorMessagePl>&#xD;\n    <ErrorMessageEn>No data found for the specified search criteria.</ErrorMessageEn>&#xD;\n    <pRegon>522340602</pRegon>&#xD;\n    <Typ_podmiotu>P</Typ_podmiotu>&#xD;\n    <Raport>BIR11OsPrawnaListaJednLokalnych</Raport>&#xD;\n  </dane>&#xD;\n</root>"
+    }
+  },
+  "inner": {
+    "root": {
+      "dane": {
+        "ErrorCode": "4",
+        "ErrorMessagePl": "Nie znaleziono wpisu dla podanych kryteriów wyszukiwania.",
+        "ErrorMessageEn": "No data found for the specified search criteria.",
+        "pRegon": "522340602",
+        "Typ_podmiotu": "P",
+        "Raport": "BIR11OsPrawnaListaJednLokalnych"
+      }
+    }
+  }
+}

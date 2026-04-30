@@ -1,0 +1,36 @@
+{
+  "url": "https://rejestr.io/api/v2/org/0000977768/krs-rozdzialy/przeksztalcenia",
+  "status": 200,
+  "body": {
+    "informacja_o_sporzadzeniu_lub_zmianie_umowy": {
+      "_obiekty": {
+        "1": {
+          "_wartosc": "17. 06. 2022r.",
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 1,
+            "wpis_wprowadzajacy_data": "2022-06-20"
+          }
+        },
+        "2": {
+          "_wartosc": "16. 11. 2022r. , zmieniono § 1, § 4, § 5, § 6, § 15",
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 5,
+            "wpis_wprowadzajacy_data": "2022-11-30"
+          }
+        }
+      },
+      "_wartosc": {
+        "obiekty": [
+          1,
+          2
+        ],
+        "obiekty_liczba_aktualnych": 2,
+        "obiekty_liczba_wszystkich": 2
+      },
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 5,
+        "wpis_wprowadzajacy_data": "2022-11-30"
+      }
+    }
+  }
+}

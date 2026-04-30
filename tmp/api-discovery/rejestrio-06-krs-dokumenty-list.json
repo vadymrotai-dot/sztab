@@ -1,0 +1,94 @@
+{
+  "url": "https://rejestr.io/api/v2/org/0000977768/krs-dokumenty",
+  "status": 200,
+  "body": [
+    {
+      "data_start": "2024-01-01",
+      "data_koniec": "2024-12-31",
+      "dokumenty": [
+        {
+          "czy_ma_json": false,
+          "id": 17708198,
+          "nazwa": "Sprawozdanie z działalności"
+        },
+        {
+          "czy_ma_json": true,
+          "id": 17708354,
+          "nazwa": "Rachunek zysków i strat"
+        },
+        {
+          "czy_ma_json": true,
+          "id": 17708357,
+          "nazwa": "Bilans"
+        },
+        {
+          "czy_ma_json": false,
+          "id": 17708204,
+          "nazwa": "Uchwała lub postanowienie o zatwierdzeniu rocznego sprawozdania finansowego"
+        },
+        {
+          "czy_ma_json": false,
+          "id": 17708191,
+          "nazwa": "Informacja dodatkowa KOZAK OLEK 2024"
+        }
+      ]
+    },
+    {
+      "data_start": "2023-01-01",
+      "data_koniec": "2023-12-31",
+      "dokumenty": [
+        {
+          "czy_ma_json": false,
+          "id": 15366538,
+          "nazwa": "Sprawozdanie z działalności"
+        },
+        {
+          "czy_ma_json": true,
+          "id": 15367225,
+          "nazwa": "Rachunek zysków i strat"
+        },
+        {
+          "czy_ma_json": true,
+          "id": 15367228,
+          "nazwa": "Bilans"
+        },
+        {
+          "czy_ma_json": false,
+          "id": 15366561,
+          "nazwa": "Uchwała o podziale zysku bądź pokryciu straty"
+        },
+        {
+          "czy_ma_json": false,
+          "id": 15366579,
+          "nazwa": "Uchwała lub postanowienie o zatwierdzeniu rocznego sprawozdania finansowego"
+        },
+        {
+          "czy_ma_json": false,
+          "id": 15366519,
+          "nazwa": "Propozycje co do sposobu podziału zysku / pokrycia straty"
+        }
+      ]
+    },
+    {
+      "data_start": "2022-06-20",
+      "data_koniec": "2022-12-31",
+      "dokumenty": [
+        {
+          "czy_ma_json": true,
+          "id": 13341754,
+          "nazwa": "Rachunek zysków i strat"
+        },
+        {
+          "czy_ma_json": true,
+          "id": 13341760,
+          "nazwa": "Bilans"
+        },
+        {
+          "czy_ma_json": false,
+          "id": 13315729,
+          "nazwa": "Uchwała o podziale zysku bądź pokryciu straty"
+        }
+      ]
+    }
+  ]
+}

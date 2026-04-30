@@ -1,0 +1,80 @@
+{
+  "url": "https://rejestr.io/api/v2/osoby/3008026/krs-powiazania?aktualnosc=aktualne",
+  "status": 200,
+  "body": [
+    {
+      "adres": {
+        "kod": "47-100",
+        "miejscowosc": "Strzelce Opolskie",
+        "nr_domu": "2",
+        "panstwo": "Polska",
+        "poczta": "Strzelce Opolskie",
+        "teryt": {
+          "gmina": "161105",
+          "powiat": "1611",
+          "wojewodztwo": "16"
+        },
+        "ulica": "Ludowa"
+      },
+      "glowna_osoba": {
+        "id": "3008026",
+        "imiona_i_nazwisko": "Oleksii Ilchenko"
+      },
+      "id": 977768,
+      "krs_powiazania_kwerendowane": [
+        {
+          "data_koniec": null,
+          "data_start": "2023-07-24",
+          "kierunek": "PASYWNY",
+          "opis": "PREZES ZARZĄDU",
+          "typ": "KRS_BOARD"
+        },
+        {
+          "data_koniec": null,
+          "data_start": "2023-07-24",
+          "kierunek": "PASYWNY",
+          "typ": "KRS_SHAREHOLDER"
+        }
+      ],
+      "krs_powiazania_liczby": {
+        "aktualne": 4,
+        "przeszle": 8
+      },
+      "krs_rejestry": {
+        "rejestr_przedsiebiorcow_data_wpisu": "2022-06-20"
+      },
+      "krs_wpisy": {
+        "najnowszy_data": "2025-07-11",
+        "najnowszy_numer": 15,
+        "pierwszy_data": "2022-06-20"
+      },
+      "metadane": {
+        "krs_odpis_synchronizacja_data_czas": "2026-03-19 08:10:57"
+      },
+      "nazwy": {
+        "pelna": "KOZAK OLEK SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ",
+        "skrocona": "KOZAK OLEK"
+      },
+      "numery": {
+        "krs": "0000977768",
+        "nip": "7561993172",
+        "regon": "522340602"
+      },
+      "stan": {
+        "czy_dofinansowana_przez_ue": false,
+        "czy_jest_na_gpw": false,
+        "czy_otrzymala_pomoc_publiczna": false,
+        "czy_pozytku_publicznego": false,
+        "czy_spolka_skarbu_panstwa": false,
+        "czy_wykreslona": false,
+        "forma_prawna": "SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ",
+        "pkd_przewazajace_dzial": "Handel detaliczny, z wyłączeniem handlu detalicznego pojazdami samochodowymi",
+        "w_likwidacji": false,
+        "w_upadlosci": false,
+        "w_zawieszeniu": false,
+        "wielkosc": "duza_srednia"
+      },
+      "typ": "organizacja"
+    }
+  ]
+}

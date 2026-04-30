@@ -1,0 +1,26 @@
+{
+  "url": "https://rejestr.io/api/v2/osoby/3008026",
+  "status": 200,
+  "body": {
+    "id": 3008026,
+    "krs_powiazania_liczby": {
+      "aktualne": 2,
+      "aktualne_organizacje": 1,
+      "przeszle": 4
+    },
+    "tozsamosc": {
+      "data_urodzenia": "1999-02-15",
+      "imie": "Oleksii",
+      "imiona_i_nazwisko": "Oleksii Ilchenko",
+      "nazwisko": "Ilchenko",
+      "plec": "M"
+    },
+    "typ": "osoba",
+    "organizacje_skrot": [
+      {
+        "id": 977768,
+        "nazwa_skrocona": "KOZAK OLEK"
+      }
+    ]
+  }
+}

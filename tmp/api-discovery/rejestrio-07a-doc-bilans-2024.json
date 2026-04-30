@@ -1,0 +1,1250 @@
+{
+  "url": "https://rejestr.io/api/v2/org/0000977768/krs-dokumenty/17708357?format=json",
+  "status": 200,
+  "body": {
+    "id_organizacji": "977768",
+    "id_dokumentu": "17708357",
+    "nazwa": "Bilans",
+    "okres_data_start": "2024-01-01",
+    "okres_data_koniec": "2024-12-31",
+    "zawartosc": {
+      "nazwa_wezla": "BilansJednostkaInna",
+      "etykieta": "Bilans jednostki innej",
+      "podetykieta": null,
+      "pln_rok_obrotowy_biezacy": null,
+      "pln_rok_obrotowy_poprzedni": null,
+      "podobiekty": [
+        {
+          "nazwa_wezla": "Aktywa",
+          "etykieta": "Aktywa razem",
+          "podetykieta": null,
+          "pln_rok_obrotowy_biezacy": "205137.67",
+          "pln_rok_obrotowy_poprzedni": "177535.71",
+          "podobiekty": [
+            {
+              "nazwa_wezla": "Aktywa_A",
+              "etykieta": "Aktywa trwałe",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "0.00",
+              "pln_rok_obrotowy_poprzedni": "6800.00",
+              "podobiekty": [
+                {
+                  "nazwa_wezla": "Aktywa_A_I",
+                  "etykieta": "Wartości niematerialne i prawne",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "Aktywa_A_I_1",
+                      "etykieta": "Koszty zakończonych prac rozwojowych",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_A_I_2",
+                      "etykieta": "Wartość firmy",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_A_I_3",
+                      "etykieta": "Inne wartości niematerialne i prawne",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_A_I_4",
+                      "etykieta": "Zaliczki na wartości niematerialne i prawne",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "Aktywa_A_II",
+                  "etykieta": "Rzeczowe aktywa trwałe",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "Aktywa_A_II_1",
+                      "etykieta": "Środki trwałe",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": [
+                        {
+                          "nazwa_wezla": "Aktywa_A_II_1_A",
+                          "etykieta": "grunty (w tym prawo użytkowania wieczystego gruntu)",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Aktywa_A_II_1_B",
+                          "etykieta": "budynki, lokale, prawa do lokali i obiekty inżynierii lądowej i wodnej",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Aktywa_A_II_1_C",
+                          "etykieta": "urządzenia techniczne i maszyny",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Aktywa_A_II_1_D",
+                          "etykieta": "środki transportu",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Aktywa_A_II_1_E",
+                          "etykieta": "inne środki trwałe",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        }
+                      ]
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_A_II_2",
+                      "etykieta": "Środki trwałe w budowie",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_A_II_3",
+                      "etykieta": "Zaliczki na środki trwałe w budowie",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "Aktywa_A_III",
+                  "etykieta": "Należności długoterminowe",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "6800.00",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "Aktywa_A_III_1",
+                      "etykieta": "Od jednostek powiązanych",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_A_III_2",
+                      "etykieta": "Od pozostałych jednostek, w których jednostka posiada zaangażowanie w kapitale",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_A_III_3",
+                      "etykieta": "Od pozostałych jednostek",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "6800.00",
+                      "podobiekty": null
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "Aktywa_A_IV",
+                  "etykieta": "Inwestycje długoterminowe",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "Aktywa_A_IV_1",
+                      "etykieta": "Nieruchomości",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_A_IV_2",
+                      "etykieta": "Wartości niematerialne i prawne",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_A_IV_3",
+                      "etykieta": "Długoterminowe aktywa finansowe",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": [
+                        {
+                          "nazwa_wezla": "Aktywa_A_IV_3_A",
+                          "etykieta": "w jednostkach powiązanych",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": [
+                            {
+                              "nazwa_wezla": "Aktywa_A_IV_3_A_1",
+                              "etykieta": "– udziały lub akcje",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_A_IV_3_A_2",
+                              "etykieta": "– inne papiery wartościowe",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_A_IV_3_A_3",
+                              "etykieta": "– udzielone pożyczki",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_A_IV_3_A_4",
+                              "etykieta": "– inne długoterminowe aktywa finansowe",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            }
+                          ]
+                        },
+                        {
+                          "nazwa_wezla": "Aktywa_A_IV_3_B",
+                          "etykieta": "w pozostałych jednostkach, w których jednostka posiada zaangażowanie w kapitale",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": [
+                            {
+                              "nazwa_wezla": "Aktywa_A_IV_3_B_1",
+                              "etykieta": "– udziały lub akcje",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_A_IV_3_B_2",
+                              "etykieta": "– inne papiery wartościowe",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_A_IV_3_B_3",
+                              "etykieta": "– udzielone pożyczki",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_A_IV_3_B_4",
+                              "etykieta": "– inne długoterminowe aktywa finansowe",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            }
+                          ]
+                        },
+                        {
+                          "nazwa_wezla": "Aktywa_A_IV_3_C",
+                          "etykieta": "w pozostałych jednostkach",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": [
+                            {
+                              "nazwa_wezla": "Aktywa_A_IV_3_C_1",
+                              "etykieta": "– udziały lub akcje",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_A_IV_3_C_2",
+                              "etykieta": "– inne papiery wartościowe",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_A_IV_3_C_3",
+                              "etykieta": "– udzielone pożyczki",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_A_IV_3_C_4",
+                              "etykieta": "– inne długoterminowe aktywa finansowe",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_A_IV_4",
+                      "etykieta": "Inne inwestycje długoterminowe",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "Aktywa_A_V",
+                  "etykieta": "Długoterminowe rozliczenia międzyokresowe",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "Aktywa_A_V_1",
+                      "etykieta": "Aktywa z tytułu odroczonego podatku dochodowego",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_A_V_2",
+                      "etykieta": "Inne rozliczenia międzyokresowe",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "nazwa_wezla": "Aktywa_B",
+              "etykieta": "Aktywa obrotowe",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "205137.67",
+              "pln_rok_obrotowy_poprzedni": "170735.71",
+              "podobiekty": [
+                {
+                  "nazwa_wezla": "Aktywa_B_I",
+                  "etykieta": "Zapasy",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "66149.97",
+                  "pln_rok_obrotowy_poprzedni": "65636.49",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "Aktywa_B_I_1",
+                      "etykieta": "Materiały",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_B_I_2",
+                      "etykieta": "Półprodukty i produkty w toku",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_B_I_3",
+                      "etykieta": "Produkty gotowe",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_B_I_4",
+                      "etykieta": "Towary",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "66149.97",
+                      "pln_rok_obrotowy_poprzedni": "65636.49",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_B_I_5",
+                      "etykieta": "Zaliczki na dostawy i usługi",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "Aktywa_B_II",
+                  "etykieta": "Należności krótkoterminowe",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "44795.04",
+                  "pln_rok_obrotowy_poprzedni": "69247.25",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "Aktywa_B_II_1",
+                      "etykieta": "Należności od jednostek powiązanych",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": [
+                        {
+                          "nazwa_wezla": "Aktywa_B_II_1_A",
+                          "etykieta": "z tytułu dostaw i usług, o okresie spłaty:",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": [
+                            {
+                              "nazwa_wezla": "Aktywa_B_II_1_A_1",
+                              "etykieta": "– do 12 miesięcy",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_B_II_1_A_2",
+                              "etykieta": "– powyżej 12 miesięcy",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            }
+                          ]
+                        },
+                        {
+                          "nazwa_wezla": "Aktywa_B_II_1_B",
+                          "etykieta": "inne",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        }
+                      ]
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_B_II_2",
+                      "etykieta": "Należności od pozostałych jednostek, w których jednostka posiada zaangażowanie w kapitale",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": [
+                        {
+                          "nazwa_wezla": "Aktywa_B_II_2_A",
+                          "etykieta": "z tytułu dostaw i usług, o okresie spłaty:",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": [
+                            {
+                              "nazwa_wezla": "Aktywa_B_II_2_A_1",
+                              "etykieta": "– do 12 miesięcy",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_B_II_2_A_2",
+                              "etykieta": "– powyżej 12 miesięcy",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            }
+                          ]
+                        },
+                        {
+                          "nazwa_wezla": "Aktywa_B_II_2_B",
+                          "etykieta": "inne",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        }
+                      ]
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_B_II_3",
+                      "etykieta": "Należności od pozostałych jednostek",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "44795.04",
+                      "pln_rok_obrotowy_poprzedni": "69247.25",
+                      "podobiekty": [
+                        {
+                          "nazwa_wezla": "Aktywa_B_II_3_A",
+                          "etykieta": "z tytułu dostaw i usług, o okresie spłaty:",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "36818.04",
+                          "pln_rok_obrotowy_poprzedni": "45035.48",
+                          "podobiekty": [
+                            {
+                              "nazwa_wezla": "Aktywa_B_II_3_A_1",
+                              "etykieta": "– do 12 miesięcy",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "36818.04",
+                              "pln_rok_obrotowy_poprzedni": "45035.48",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_B_II_3_A_2",
+                              "etykieta": "– powyżej 12 miesięcy",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            }
+                          ]
+                        },
+                        {
+                          "nazwa_wezla": "Aktywa_B_II_3_B",
+                          "etykieta": "z tytułu podatków, dotacji, ceł, ubezpieczeń społecznych i zdrowotnych oraz innych tytułów publicznoprawnych",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "7977.00",
+                          "pln_rok_obrotowy_poprzedni": "15441.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Aktywa_B_II_3_C",
+                          "etykieta": "inne",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "8770.77",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Aktywa_B_II_3_D",
+                          "etykieta": "dochodzone na drodze sądowej",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "Aktywa_B_III",
+                  "etykieta": "Inwestycje krótkoterminowe",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "91988.58",
+                  "pln_rok_obrotowy_poprzedni": "35851.97",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "Aktywa_B_III_1",
+                      "etykieta": "Krótkoterminowe aktywa finansowe",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "91988.58",
+                      "pln_rok_obrotowy_poprzedni": "35851.97",
+                      "podobiekty": [
+                        {
+                          "nazwa_wezla": "Aktywa_B_III_1_A",
+                          "etykieta": "w jednostkach powiązanych",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": [
+                            {
+                              "nazwa_wezla": "Aktywa_B_III_1_A_1",
+                              "etykieta": "– udziały lub akcje",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_B_III_1_A_2",
+                              "etykieta": "– inne papiery wartościowe",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_B_III_1_A_3",
+                              "etykieta": "– udzielone pożyczki",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_B_III_1_A_4",
+                              "etykieta": "– inne krótkoterminowe aktywa finansowe",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            }
+                          ]
+                        },
+                        {
+                          "nazwa_wezla": "Aktywa_B_III_1_B",
+                          "etykieta": "w pozostałych jednostkach",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": [
+                            {
+                              "nazwa_wezla": "Aktywa_B_III_1_B_1",
+                              "etykieta": "– udziały lub akcje",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_B_III_1_B_2",
+                              "etykieta": "– inne papiery wartościowe",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_B_III_1_B_3",
+                              "etykieta": "– udzielone pożyczki",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_B_III_1_B_4",
+                              "etykieta": "– inne krótkoterminowe aktywa finansowe",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            }
+                          ]
+                        },
+                        {
+                          "nazwa_wezla": "Aktywa_B_III_1_C",
+                          "etykieta": "Środki pieniężne i inne aktywa pieniężne",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "91988.58",
+                          "pln_rok_obrotowy_poprzedni": "35851.97",
+                          "podobiekty": [
+                            {
+                              "nazwa_wezla": "Aktywa_B_III_1_C_1",
+                              "etykieta": "– środki pieniężne w kasie i na rachunkach",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "91988.58",
+                              "pln_rok_obrotowy_poprzedni": "35851.97",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_B_III_1_C_2",
+                              "etykieta": "– inne środki pieniężne",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Aktywa_B_III_1_C_3",
+                              "etykieta": "– inne aktywa pieniężne",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "nazwa_wezla": "Aktywa_B_III_2",
+                      "etykieta": "Inne inwestycje krótkoterminowe",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "Aktywa_B_IV",
+                  "etykieta": "Krótkoterminowe rozliczenia międzyokresowe",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "2204.08",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": null
+                }
+              ]
+            },
+            {
+              "nazwa_wezla": "Aktywa_C",
+              "etykieta": "Należne wpłaty na kapitał (fundusz) podstawowy",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "0.00",
+              "pln_rok_obrotowy_poprzedni": "0.00",
+              "podobiekty": null
+            },
+            {
+              "nazwa_wezla": "Aktywa_D",
+              "etykieta": "Udziały (akcje) własne",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "0.00",
+              "pln_rok_obrotowy_poprzedni": "0.00",
+              "podobiekty": null
+            }
+          ]
+        },
+        {
+          "nazwa_wezla": "Pasywa",
+          "etykieta": "Pasywa razem",
+          "podetykieta": null,
+          "pln_rok_obrotowy_biezacy": "205137.67",
+          "pln_rok_obrotowy_poprzedni": "177535.71",
+          "podobiekty": [
+            {
+              "nazwa_wezla": "Pasywa_A",
+              "etykieta": "Kapitał (fundusz) własny",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "159475.79",
+              "pln_rok_obrotowy_poprzedni": "65527.92",
+              "podobiekty": [
+                {
+                  "nazwa_wezla": "Pasywa_A_I",
+                  "etykieta": "Kapitał (fundusz) podstawowy",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "5000.00",
+                  "pln_rok_obrotowy_poprzedni": "5000.00",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "Pasywa_A_II",
+                  "etykieta": "Kapitał (fundusz) zapasowy, w tym:",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "17527.92",
+                  "pln_rok_obrotowy_poprzedni": "12361.80",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "Pasywa_A_II_1",
+                      "etykieta": "– nadwyżka wartości sprzedaży (wartości emisyjnej) nad wartością nominalną udziałów (akcji)",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "Pasywa_A_III",
+                  "etykieta": "Kapitał (fundusz) z aktualizacji wyceny, w tym:",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "Pasywa_A_III_1",
+                      "etykieta": "– z tytułu aktualizacji wartości godziwej",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "Pasywa_A_IV",
+                  "etykieta": "Pozostałe kapitały (fundusze) rezerwowe, w tym:",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "Pasywa_A_IV_1",
+                      "etykieta": "– tworzone zgodnie z umową (statutem) spółki",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Pasywa_A_IV_2",
+                      "etykieta": "– na udziały (akcje) własne",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "Pasywa_A_V",
+                  "etykieta": "Zysk (strata) z lat ubiegłych",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "Pasywa_A_VI",
+                  "etykieta": "Zysk (strata) netto",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "136947.87",
+                  "pln_rok_obrotowy_poprzedni": "48166.12",
+                  "podobiekty": null
+                },
+                {
+                  "nazwa_wezla": "Pasywa_A_VII",
+                  "etykieta": "Odpisy z zysku netto w ciągu roku obrotowego (wielkość ujemna)",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": null
+                }
+              ]
+            },
+            {
+              "nazwa_wezla": "Pasywa_B",
+              "etykieta": "Zobowiązania i rezerwy na zobowiązania",
+              "podetykieta": null,
+              "pln_rok_obrotowy_biezacy": "45661.88",
+              "pln_rok_obrotowy_poprzedni": "112007.79",
+              "podobiekty": [
+                {
+                  "nazwa_wezla": "Pasywa_B_I",
+                  "etykieta": "Rezerwy na zobowiązania",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "Pasywa_B_I_1",
+                      "etykieta": "Rezerwa z tytułu odroczonego podatku dochodowego",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Pasywa_B_I_2",
+                      "etykieta": "Rezerwa na świadczenia emerytalne i podobne",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": [
+                        {
+                          "nazwa_wezla": "Pasywa_B_I_2_1",
+                          "etykieta": "– długoterminowa",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_I_2_2",
+                          "etykieta": "– krótkoterminowa",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        }
+                      ]
+                    },
+                    {
+                      "nazwa_wezla": "Pasywa_B_I_3",
+                      "etykieta": "Pozostałe rezerwy",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": [
+                        {
+                          "nazwa_wezla": "Pasywa_B_I_3_1",
+                          "etykieta": "– długoterminowe",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_I_3_2",
+                          "etykieta": "– krótkoterminowe",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "Pasywa_B_II",
+                  "etykieta": "Zobowiązania długoterminowe",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "Pasywa_B_II_1",
+                      "etykieta": "Wobec jednostek powiązanych",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Pasywa_B_II_2",
+                      "etykieta": "Wobec pozostałych jednostek, w których jednostka posiada zaangażowanie w kapitale",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Pasywa_B_II_3",
+                      "etykieta": "Wobec pozostałych jednostek",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": [
+                        {
+                          "nazwa_wezla": "Pasywa_B_II_3_A",
+                          "etykieta": "kredyty i pożyczki",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_II_3_B",
+                          "etykieta": "z tytułu emisji dłużnych papierów wartościowych",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_II_3_C",
+                          "etykieta": "inne zobowiązania finansowe",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_II_3_D",
+                          "etykieta": "zobowiązania wekslowe",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_II_3_E",
+                          "etykieta": "inne",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "Pasywa_B_III",
+                  "etykieta": "Zobowiązania krótkoterminowe",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "45661.88",
+                  "pln_rok_obrotowy_poprzedni": "112007.79",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "Pasywa_B_III_1",
+                      "etykieta": "Zobowiązania wobec jednostek powiązanych",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "45200.00",
+                      "podobiekty": [
+                        {
+                          "nazwa_wezla": "Pasywa_B_III_1_A",
+                          "etykieta": "z tytułu dostaw i usług, o okresie wymagalności:",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": [
+                            {
+                              "nazwa_wezla": "Pasywa_B_III_1_A_1",
+                              "etykieta": "– do 12 miesięcy",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Pasywa_B_III_1_A_2",
+                              "etykieta": "– powyżej 12 miesięcy",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            }
+                          ]
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_III_1_B",
+                          "etykieta": "inne",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "45200.00",
+                          "podobiekty": null
+                        }
+                      ]
+                    },
+                    {
+                      "nazwa_wezla": "Pasywa_B_III_2",
+                      "etykieta": "Zobowiązania wobec pozostałych jednostek, w których jednostka posiada zaangażowanie w kapitale",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": [
+                        {
+                          "nazwa_wezla": "Pasywa_B_III_2_A",
+                          "etykieta": "z tytułu dostaw i usług, o okresie wymagalności:",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": [
+                            {
+                              "nazwa_wezla": "Pasywa_B_III_2_A_1",
+                              "etykieta": "– do 12 miesięcy",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Pasywa_B_III_2_A_2",
+                              "etykieta": "– powyżej 12 miesięcy",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            }
+                          ]
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_III_2_B",
+                          "etykieta": "inne",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        }
+                      ]
+                    },
+                    {
+                      "nazwa_wezla": "Pasywa_B_III_3",
+                      "etykieta": "Zobowiązania wobec pozostałych jednostek",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "45661.88",
+                      "pln_rok_obrotowy_poprzedni": "66807.79",
+                      "podobiekty": [
+                        {
+                          "nazwa_wezla": "Pasywa_B_III_3_A",
+                          "etykieta": "kredyty i pożyczki",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_III_3_B",
+                          "etykieta": "z tytułu emisji dłużnych papierów wartościowych",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_III_3_C",
+                          "etykieta": "inne zobowiązania finansowe",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_III_3_D",
+                          "etykieta": "z tytułu dostaw i usług, o okresie wymagalności:",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "280.10",
+                          "pln_rok_obrotowy_poprzedni": "26900.36",
+                          "podobiekty": [
+                            {
+                              "nazwa_wezla": "Pasywa_B_III_3_D_1",
+                              "etykieta": "– do 12 miesięcy",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "26900.36",
+                              "podobiekty": null
+                            },
+                            {
+                              "nazwa_wezla": "Pasywa_B_III_3_D_2",
+                              "etykieta": "– powyżej 12 miesięcy",
+                              "podetykieta": null,
+                              "pln_rok_obrotowy_biezacy": "0.00",
+                              "pln_rok_obrotowy_poprzedni": "0.00",
+                              "podobiekty": null
+                            }
+                          ]
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_III_3_E",
+                          "etykieta": "zaliczki otrzymane na dostawy i usługi",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_III_3_F",
+                          "etykieta": "zobowiązania wekslowe",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_III_3_G",
+                          "etykieta": "z tytułu podatków, ceł, ubezpieczeń społecznych i zdrowotnych oraz innych tytułów publicznoprawnych",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "28094.61",
+                          "pln_rok_obrotowy_poprzedni": "20395.65",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_III_3_H",
+                          "etykieta": "z tytułu wynagrodzeń",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "17000.82",
+                          "pln_rok_obrotowy_poprzedni": "19511.78",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_III_3_I",
+                          "etykieta": "inne",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "286.35",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        }
+                      ]
+                    },
+                    {
+                      "nazwa_wezla": "Pasywa_B_III_4",
+                      "etykieta": "Fundusze specjalne",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    }
+                  ]
+                },
+                {
+                  "nazwa_wezla": "Pasywa_B_IV",
+                  "etykieta": "Rozliczenia międzyokresowe",
+                  "podetykieta": null,
+                  "pln_rok_obrotowy_biezacy": "0.00",
+                  "pln_rok_obrotowy_poprzedni": "0.00",
+                  "podobiekty": [
+                    {
+                      "nazwa_wezla": "Pasywa_B_IV_1",
+                      "etykieta": "Ujemna wartość firmy",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": null
+                    },
+                    {
+                      "nazwa_wezla": "Pasywa_B_IV_2",
+                      "etykieta": "Inne rozliczenia międzyokresowe",
+                      "podetykieta": null,
+                      "pln_rok_obrotowy_biezacy": "0.00",
+                      "pln_rok_obrotowy_poprzedni": "0.00",
+                      "podobiekty": [
+                        {
+                          "nazwa_wezla": "Pasywa_B_IV_2_1",
+                          "etykieta": "– długoterminowe",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        },
+                        {
+                          "nazwa_wezla": "Pasywa_B_IV_2_2",
+                          "etykieta": "– krótkoterminowe",
+                          "podetykieta": null,
+                          "pln_rok_obrotowy_biezacy": "0.00",
+                          "pln_rok_obrotowy_poprzedni": "0.00",
+                          "podobiekty": null
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

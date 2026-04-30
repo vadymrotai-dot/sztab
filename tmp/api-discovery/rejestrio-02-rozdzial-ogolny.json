@@ -1,0 +1,549 @@
+{
+  "url": "https://rejestr.io/api/v2/org/0000977768/krs-rozdzialy/ogolny",
+  "status": 200,
+  "body": {
+    "forma_prawna": {
+      "_wartosc": "SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ",
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 1,
+        "wpis_wprowadzajacy_data": "2022-06-20"
+      }
+    },
+    "nip": {
+      "_wartosc": "7561993172",
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 2,
+        "wpis_wprowadzajacy_data": "2022-06-20"
+      }
+    },
+    "regon": {
+      "_wartosc": "522340602",
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 3,
+        "wpis_wprowadzajacy_data": "2022-06-21"
+      }
+    },
+    "nazwa_krotka": {
+      "_wartosc": "KOZAK OLEK",
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 1,
+        "wpis_wprowadzajacy_data": "2022-06-20"
+      }
+    },
+    "nazwa": {
+      "_wartosc": "KOZAK OLEK SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ",
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 1,
+        "wpis_wprowadzajacy_data": "2022-06-20"
+      }
+    },
+    "czy_przedsiebiorca_prowadzi_dzialalnosc_gospodarcza_z_innymi_podmiotami": {
+      "_wartosc": false,
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 1,
+        "wpis_wprowadzajacy_data": "2022-06-20"
+      }
+    },
+    "opp": {
+      "_wartosc": false,
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 1,
+        "wpis_wprowadzajacy_data": "2022-06-20"
+      }
+    },
+    "siedziba": {
+      "_wartosc": "kraj POLSKA, woj. OPOLSKIE, powiat STRZELECKI, gmina STRZELCE OPOLSKIE, miejsc. STRZELCE OPOLSKIE",
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 1,
+        "wpis_wprowadzajacy_data": "2022-06-20"
+      }
+    },
+    "adres": {
+      "_wartosc": {
+        "panstwo": "Polska",
+        "poczta": "Strzelce Opolskie",
+        "kod_pocztowy": "47-100",
+        "miasto": "Strzelce Opolskie",
+        "ulica": "Ludowa",
+        "nr_domu": "2",
+        "id": "621056",
+        "nr_mieszkania": null
+      },
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 4,
+        "wpis_wprowadzajacy_data": "2022-09-15"
+      }
+    },
+    "adres_znormalizowany": {
+      "_wartosc": {
+        "panstwo": "Polska",
+        "poczta": "Strzelce Opolskie",
+        "kod_pocztowy": "47-100",
+        "miasto": "Strzelce Opolskie",
+        "ulica": "Ludowa",
+        "nr_domu": "2",
+        "id": "621056",
+        "nr_mieszkania": null,
+        "longitude": 18.30226282293,
+        "latitude": 50.511177316488
+      },
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 4,
+        "wpis_wprowadzajacy_data": "2022-09-15"
+      }
+    },
+    "email": {
+      "_wartosc": "KOZAK.STRZELCE.OPOLSKIE@GMAIL.COM",
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 1,
+        "wpis_wprowadzajacy_data": "2022-06-20"
+      }
+    },
+    "czas_na_jaki_zostala_utworzona_organizacja": {
+      "_wartosc": "NIEOZNACZONY",
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 1,
+        "wpis_wprowadzajacy_data": "2022-06-20"
+      }
+    },
+    "czy_wspolnik_moze_miec": {
+      "_wartosc": "WIĘKSZĄ LICZBĘ UDZIAŁÓW",
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 1,
+        "wpis_wprowadzajacy_data": "2022-06-20"
+      }
+    },
+    "wysokosc_kapitalu_zakladowego": {
+      "_wartosc": {
+        "kwota": 5000,
+        "waluta": "ZŁ"
+      },
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 1,
+        "wpis_wprowadzajacy_data": "2022-06-20"
+      }
+    },
+    "dane_wspolnikow": {
+      "_obiekty": {
+        "5": {
+          "posiadane_przez_wspolnika_udzialy": {
+            "_wartosc": "67 udziałów o łącznej wartości 3.350,00 zł",
+            "_zakres": {
+              "wpis_wprowadzajacy_numer": 6,
+              "wpis_wprowadzajacy_data": "2023-07-24"
+            }
+          },
+          "czy_wspolnik_posiada_calosc_akcji_spolki": {
+            "_wartosc": "NIE",
+            "_zakres": {
+              "wpis_wprowadzajacy_numer": 6,
+              "wpis_wprowadzajacy_data": "2023-07-24"
+            }
+          },
+          "person": {
+            "_wartosc": {
+              "imie": "Oleksii",
+              "nazwisko": "Ilchenko",
+              "nazwa": "Oleksii Ilchenko",
+              "id": "3008026",
+              "plec": "M",
+              "data_urodzenia": "1999-02-15"
+            },
+            "_zakres": {
+              "wpis_wprowadzajacy_numer": 6,
+              "wpis_wprowadzajacy_data": "2023-07-24"
+            }
+          },
+          "posiadane_przez_wspolnika_udzialy__wartosc": {
+            "_wartosc": {
+              "kwota": "3350.00",
+              "waluta": "zł"
+            },
+            "_zakres": {
+              "wpis_wprowadzajacy_numer": 6,
+              "wpis_wprowadzajacy_data": "2023-07-24"
+            }
+          },
+          "posiadane_przez_wspolnika_udzialy__liczba": {
+            "_wartosc": 67,
+            "_zakres": {
+              "wpis_wprowadzajacy_numer": 6,
+              "wpis_wprowadzajacy_data": "2023-07-24"
+            }
+          },
+          "posiadane_przez_wspolnika_udzialy__cena_udzialu": {
+            "_wartosc": {
+              "kwota": "50.00",
+              "waluta": "zł"
+            },
+            "_zakres": {
+              "wpis_wprowadzajacy_numer": 6,
+              "wpis_wprowadzajacy_data": "2023-07-24"
+            }
+          }
+        },
+        "6": {
+          "posiadane_przez_wspolnika_udzialy": {
+            "_wartosc": "33 udziały o łącznej wartości 1.650,00 zł",
+            "_zakres": {
+              "wpis_wprowadzajacy_numer": 6,
+              "wpis_wprowadzajacy_data": "2023-07-24"
+            }
+          },
+          "czy_wspolnik_posiada_calosc_akcji_spolki": {
+            "_wartosc": "NIE",
+            "_zakres": {
+              "wpis_wprowadzajacy_numer": 6,
+              "wpis_wprowadzajacy_data": "2023-07-24"
+            }
+          },
+          "person": {
+            "_wartosc": {
+              "imie": "Olena",
+              "nazwisko": "Ilchenko",
+              "nazwa": "Olena Ilchenko",
+              "id": "3008027",
+              "plec": "F",
+              "data_urodzenia": "1971-04-02"
+            },
+            "_zakres": {
+              "wpis_wprowadzajacy_numer": 6,
+              "wpis_wprowadzajacy_data": "2023-07-24"
+            }
+          },
+          "posiadane_przez_wspolnika_udzialy__wartosc": {
+            "_wartosc": {
+              "kwota": "1650.00",
+              "waluta": "zł"
+            },
+            "_zakres": {
+              "wpis_wprowadzajacy_numer": 6,
+              "wpis_wprowadzajacy_data": "2023-07-24"
+            }
+          },
+          "posiadane_przez_wspolnika_udzialy__liczba": {
+            "_wartosc": 33,
+            "_zakres": {
+              "wpis_wprowadzajacy_numer": 6,
+              "wpis_wprowadzajacy_data": "2023-07-24"
+            }
+          },
+          "posiadane_przez_wspolnika_udzialy__cena_udzialu": {
+            "_wartosc": {
+              "kwota": "50.00",
+              "waluta": "zł"
+            },
+            "_zakres": {
+              "wpis_wprowadzajacy_numer": 6,
+              "wpis_wprowadzajacy_data": "2023-07-24"
+            }
+          }
+        }
+      },
+      "_wartosc": {
+        "obiekty": [
+          5,
+          6
+        ],
+        "obiekty_liczba_aktualnych": 2,
+        "obiekty_liczba_wszystkich": 6
+      },
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 6,
+        "wpis_wprowadzajacy_data": "2023-07-24"
+      }
+    },
+    "organ_reprezentacji": {
+      "_obiekty": {
+        "1": {
+          "nazwa_organu_reprezentacji_podmiotu": {
+            "_wartosc": "Zarząd",
+            "_zakres": {
+              "wpis_wprowadzajacy_numer": 1,
+              "wpis_wprowadzajacy_data": "2022-06-20"
+            }
+          },
+          "sposob_reprezentacji_podmiotu": {
+            "_wartosc": "Do składania oświadczeń w imieniu spółki jest upoważniony każdy z członków zarządu samodzielnie.",
+            "_zakres": {
+              "wpis_wprowadzajacy_numer": 1,
+              "wpis_wprowadzajacy_data": "2022-06-20"
+            }
+          },
+          "dane_osob": {
+            "_obiekty": {
+              "5": {
+                "funkcja_w_organie": {
+                  "_wartosc": {
+                    "nazwa": "PREZES ZARZĄDU",
+                    "cechy": [
+                      "CEO"
+                    ]
+                  },
+                  "_zakres": {
+                    "wpis_wprowadzajacy_numer": 6,
+                    "wpis_wprowadzajacy_data": "2023-07-24"
+                  }
+                },
+                "czy_osoba_wchodzaca_w_sklad_zarzadu_zostala_zawieszona_w_czynnosciach": {
+                  "_wartosc": "NIE",
+                  "_zakres": {
+                    "wpis_wprowadzajacy_numer": 6,
+                    "wpis_wprowadzajacy_data": "2023-07-24"
+                  }
+                },
+                "person": {
+                  "_wartosc": {
+                    "imie": "Oleksii",
+                    "nazwisko": "Ilchenko",
+                    "nazwa": "Oleksii Ilchenko",
+                    "id": "3008026",
+                    "plec": "M",
+                    "data_urodzenia": "1999-02-15"
+                  },
+                  "_zakres": {
+                    "wpis_wprowadzajacy_numer": 6,
+                    "wpis_wprowadzajacy_data": "2023-07-24"
+                  }
+                }
+              },
+              "6": {
+                "funkcja_w_organie": {
+                  "_wartosc": {
+                    "nazwa": "CZŁONEK ZARZĄDU"
+                  },
+                  "_zakres": {
+                    "wpis_wprowadzajacy_numer": 6,
+                    "wpis_wprowadzajacy_data": "2023-07-24"
+                  }
+                },
+                "czy_osoba_wchodzaca_w_sklad_zarzadu_zostala_zawieszona_w_czynnosciach": {
+                  "_wartosc": "NIE",
+                  "_zakres": {
+                    "wpis_wprowadzajacy_numer": 6,
+                    "wpis_wprowadzajacy_data": "2023-07-24"
+                  }
+                },
+                "person": {
+                  "_wartosc": {
+                    "imie": "Olena",
+                    "nazwisko": "Ilchenko",
+                    "nazwa": "Olena Ilchenko",
+                    "id": "3008027",
+                    "plec": "F",
+                    "data_urodzenia": "1971-04-02"
+                  },
+                  "_zakres": {
+                    "wpis_wprowadzajacy_numer": 6,
+                    "wpis_wprowadzajacy_data": "2023-07-24"
+                  }
+                }
+              }
+            },
+            "_wartosc": {
+              "obiekty": [
+                5,
+                6
+              ],
+              "obiekty_liczba_aktualnych": 2,
+              "obiekty_liczba_wszystkich": 6
+            },
+            "_zakres": {
+              "wpis_wprowadzajacy_numer": 6,
+              "wpis_wprowadzajacy_data": "2023-07-24"
+            }
+          }
+        }
+      },
+      "_wartosc": {
+        "obiekty": [
+          1
+        ],
+        "obiekty_liczba_aktualnych": 1,
+        "obiekty_liczba_wszystkich": 1
+      },
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 1,
+        "wpis_wprowadzajacy_data": "2022-06-20"
+      }
+    },
+    "dzien_konczacy_pierwszy_rok_obrotowy_za_ktory_nalezy_zlozyc_sprawozdanie_finansowe": {
+      "_wartosc": "31.12.2022",
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 1,
+        "wpis_wprowadzajacy_data": "2022-06-20"
+      }
+    },
+    "przedmiot_przewazajacej_dzialalnosci_przedsiebiorcy": {
+      "_obiekty": {
+        "1": {
+          "_wartosc": {
+            "symbol": [
+              "47",
+              "19",
+              "Z"
+            ],
+            "opis": "Pozostała sprzedaż detaliczna prowadzona w niewyspecjalizowanych sklepach",
+            "scheme": "pkd2007"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 1,
+            "wpis_wprowadzajacy_data": "2022-06-20"
+          }
+        }
+      },
+      "_wartosc": {
+        "obiekty": [
+          1
+        ],
+        "obiekty_liczba_aktualnych": 1,
+        "obiekty_liczba_wszystkich": 1
+      },
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 1,
+        "wpis_wprowadzajacy_data": "2022-06-20"
+      }
+    },
+    "przedmiot_pozostalej_dzialalnosci_przedsiebiorcy": {
+      "_obiekty": {
+        "1": {
+          "_wartosc": {
+            "symbol": [
+              "10"
+            ],
+            "opis": "Produkcja artykułów spożywczych",
+            "scheme": "pkd2007"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 1,
+            "wpis_wprowadzajacy_data": "2022-06-20"
+          }
+        },
+        "2": {
+          "_wartosc": {
+            "symbol": [
+              "13",
+              "30",
+              "Z"
+            ],
+            "opis": "Wykończanie wyrobów włókienniczych",
+            "scheme": "pkd2007"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 1,
+            "wpis_wprowadzajacy_data": "2022-06-20"
+          }
+        },
+        "3": {
+          "_wartosc": {
+            "symbol": [
+              "46"
+            ],
+            "opis": "Handel hurtowy, z wyłączeniem handlu pojazdami samochodowymi",
+            "scheme": "pkd2007"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 1,
+            "wpis_wprowadzajacy_data": "2022-06-20"
+          }
+        },
+        "4": {
+          "_wartosc": {
+            "symbol": [
+              "47"
+            ],
+            "opis": "Handel detaliczny, z wyłączeniem handlu detalicznego pojazdami samochodowymi",
+            "scheme": "pkd2007"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 1,
+            "wpis_wprowadzajacy_data": "2022-06-20"
+          }
+        },
+        "6": {
+          "_wartosc": {
+            "symbol": [
+              "73",
+              "12",
+              "C"
+            ],
+            "opis": "Pośrednictwo w sprzedaży miejsca na cele reklamowe w mediach elektronicznych (internet)",
+            "scheme": "pkd2007"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 1,
+            "wpis_wprowadzajacy_data": "2022-06-20"
+          }
+        },
+        "7": {
+          "_wartosc": {
+            "symbol": [
+              "82",
+              "92",
+              "Z"
+            ],
+            "opis": "Działalność związana z pakowaniem",
+            "scheme": "pkd2007"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 1,
+            "wpis_wprowadzajacy_data": "2022-06-20"
+          }
+        },
+        "8": {
+          "_wartosc": {
+            "symbol": [
+              "53",
+              "20",
+              "Z"
+            ],
+            "opis": "Pozostała działalność pocztowa i kurierska",
+            "scheme": "pkd2007"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 5,
+            "wpis_wprowadzajacy_data": "2022-11-30"
+          }
+        },
+        "9": {
+          "_wartosc": {
+            "symbol": [
+              "56"
+            ],
+            "opis": "Działalność usługowa związana z wyżywieniem",
+            "scheme": "pkd2007"
+          },
+          "_zakres": {
+            "wpis_wprowadzajacy_numer": 5,
+            "wpis_wprowadzajacy_data": "2022-11-30"
+          }
+        }
+      },
+      "_wartosc": {
+        "obiekty": [
+          1,
+          2,
+          3,
+          4,
+          6,
+          7,
+          8,
+          9
+        ],
+        "obiekty_liczba_aktualnych": 8,
+        "obiekty_liczba_wszystkich": 9
+      },
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 5,
+        "wpis_wprowadzajacy_data": "2022-11-30"
+      }
+    },
+    "krs": {
+      "_wartosc": "0000977768",
+      "_zakres": {
+        "wpis_wprowadzajacy_numer": 1,
+        "wpis_wprowadzajacy_data": "2022-06-20"
+      }
+    }
+  }
+}

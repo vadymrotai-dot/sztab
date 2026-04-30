@@ -1,0 +1,15 @@
+{
+  "action": "DanePobierzPelnyRaport",
+  "body": {
+    "DanePobierzPelnyRaportResponse": {
+      "DanePobierzPelnyRaportResult": "<root>&#xD;\n  <dane>&#xD;\n    <Typ>P</Typ>&#xD;\n  </dane>&#xD;\n</root>"
+    }
+  },
+  "inner": {
+    "root": {
+      "dane": {
+        "Typ": "P"
+      }
+    }
+  }
+}

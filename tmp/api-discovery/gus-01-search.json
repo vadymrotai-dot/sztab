@@ -1,0 +1,30 @@
+{
+  "action": "DaneSzukajPodmioty",
+  "body": {
+    "DaneSzukajPodmiotyResponse": {
+      "DaneSzukajPodmiotyResult": "<root>&#xD;\n  <dane>&#xD;\n    <Regon>522340602</Regon>&#xD;\n    <Nip>7561993172</Nip>&#xD;\n    <StatusNip />&#xD;\n    <Nazwa>KOZAK OLEK SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ</Nazwa>&#xD;\n    <Wojewodztwo>OPOLSKIE</Wojewodztwo>&#xD;\n    <Powiat>strzelecki</Powiat>&#xD;\n    <Gmina>Strzelce Opolskie</Gmina>&#xD;\n    <Miejscowosc>Strzelce Opolskie</Miejscowosc>&#xD;\n    <KodPocztowy>47-100</KodPocztowy>&#xD;\n    <Ulica>ul. Ludowa</Ulica>&#xD;\n    <NrNieruchomosci>2</NrNieruchomosci>&#xD;\n    <NrLokalu />&#xD;\n    <Typ>P</Typ>&#xD;\n    <SilosID>6</SilosID>&#xD;\n    <DataZakonczeniaDzialalnosci />&#xD;\n    <MiejscowoscPoczty>Strzelce Opolskie</MiejscowoscPoczty>&#xD;\n  </dane>&#xD;\n</root>"
+    }
+  },
+  "inner": {
+    "root": {
+      "dane": {
+        "Regon": "522340602",
+        "Nip": "7561993172",
+        "StatusNip": "",
+        "Nazwa": "KOZAK OLEK SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ",
+        "Wojewodztwo": "OPOLSKIE",
+        "Powiat": "strzelecki",
+        "Gmina": "Strzelce Opolskie",
+        "Miejscowosc": "Strzelce Opolskie",
+        "KodPocztowy": "47-100",
+        "Ulica": "ul. Ludowa",
+        "NrNieruchomosci": "2",
+        "NrLokalu": "",
+        "Typ": "P",
+        "SilosID": "6",
+        "DataZakonczeniaDzialalnosci": "",
+        "MiejscowoscPoczty": "Strzelce Opolskie"
+      }
+    }
+  }
+}
