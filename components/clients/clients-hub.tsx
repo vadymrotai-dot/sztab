@@ -9,6 +9,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,9 +29,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ChevronDownIcon, ZapIcon, BriefcaseIcon } from 'lucide-react'
+import {
+  ChevronDownIcon,
+  SearchIcon,
+  PlusIcon,
+  UploadIcon,
+  MoreHorizontalIcon,
+} from 'lucide-react'
 import { ClientsTable } from '@/components/clients/clients-table'
 import { AddCompanyButton } from '@/components/clients/add-company-button'
+import { BulkActionBar } from '@/components/clients/bulk-action-bar'
 import type { Client } from '@/lib/types'
 
 export interface UnifiedRow {
@@ -65,6 +73,9 @@ export function ClientsHub({ clients, unifiedRows }: Props) {
   const router = useRouter()
   const params = useSearchParams()
   const tab = params.get('tab') ?? 'klienci'
+
+  // Search
+  const [searchQuery, setSearchQuery] = useState('')
 
   // Chip filters
   const [onlyWithContact, setOnlyWithContact] = useState(false)
@@ -103,6 +114,15 @@ export function ClientsHub({ clients, unifiedRows }: Props) {
     let rows: UnifiedRow[] = unifiedRows
     if (tab === 'prospекti') rows = rows.filter((r) => r.type === 'prospect')
     else if (tab === 'klienci') rows = rows.filter((r) => r.type === 'client')
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase()
+      rows = rows.filter(
+        (r) =>
+          r.name.toLowerCase().includes(q) ||
+          (r.nip ?? '').includes(q) ||
+          (r.city ?? '').toLowerCase().includes(q),
+      )
+    }
     if (onlyWithContact) rows = rows.filter((r) => r.has_contact)
     if (onlyHighMatch) rows = rows.filter((r) => (r.top_match_score ?? 0) >= 70)
     if (onlyNeedsReview) rows = rows.filter((r) => r.status === 'pending')
@@ -116,7 +136,19 @@ export function ClientsHub({ clients, unifiedRows }: Props) {
       rows = [...rows].sort((a, b) => a.name.localeCompare(b.name, 'pl'))
     }
     return rows
-  }, [unifiedRows, tab, onlyWithContact, onlyHighMatch, onlyNeedsReview, activeIndustries, sortBy])
+  }, [unifiedRows, tab, searchQuery, onlyWithContact, onlyHighMatch, onlyNeedsReview, activeIndustries, sortBy])
+
+  // Filter onlyClients (Klienci tab) by search query
+  const filteredOnlyClients = useMemo(() => {
+    if (!searchQuery.trim()) return onlyClients
+    const q = searchQuery.trim().toLowerCase()
+    return onlyClients.filter(
+      (c) =>
+        c.title.toLowerCase().includes(q) ||
+        (c.nip ?? '').includes(q) ||
+        (c.city ?? '').toLowerCase().includes(q),
+    )
+  }, [onlyClients, searchQuery])
 
   function toggleIndustry(name: string) {
     setActiveIndustries((prev) => {
@@ -134,55 +166,47 @@ export function ClientsHub({ clients, unifiedRows }: Props) {
     clearSelection()
   }
 
-  async function exportCohort() {
-    if (selectedCount === 0) return
-    const ids = Array.from(selected)
-    const name = prompt(
-      `Eksport ${ids.length} firm jako kohorta. Podaj nazwę:`,
-      `Manualna kohorta ${new Date().toISOString().slice(0, 10)}`,
-    )
-    if (!name) return
-    const res = await fetch('/api/handoff/cohort', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cohort_name: name, entity_ids: ids, source: 'manual_select' }),
-    })
-    const json = (await res.json()) as { ok: boolean; redirect?: string; error?: string }
-    if (json.ok && json.redirect) router.push(json.redirect)
-    else alert(json.error ?? 'Błąd eksportu')
-  }
-
-  async function bulkUpdate(field: 'size_tier' | 'status', value: string) {
-    if (selectedCount === 0) return
-    const ids = Array.from(selected)
-    if (!confirm(`Zmienić ${field} dla ${ids.length} firm na "${value}"?`)) return
-    const res = await fetch('/api/clients/bulk-update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids, field, value }),
-    })
-    const json = (await res.json()) as { ok: boolean; updated?: number; error?: string }
-    if (json.ok) {
-      alert(`Zaktualizowano ${json.updated ?? ids.length} firm`)
-      router.refresh()
-      clearSelection()
-    } else {
-      alert(json.error ?? 'Błąd aktualizacji')
-    }
-  }
-
-  async function changeTier() {
-    const value = prompt('Nowy tier (mały/średni/duży/strategic_partner):')
-    if (value) await bulkUpdate('size_tier', value)
-  }
-  async function changeStatus() {
-    const value = prompt('Nowy status (nowy/aktywny/nieaktywny/lost):')
-    if (value) await bulkUpdate('status', value)
-  }
+  // S4 Phase 2: bulk actions handled by BulkActionBar component.
 
   return (
     <div className="flex flex-col">
-      {/* Tabs + Add CTA */}
+      {/* S4 Phase 2A: top bar з search prominent + Add primary + Import + ⋯ */}
+      <div className="flex items-center gap-3 border-b bg-white px-6 py-3">
+        <div className="relative flex-1 max-w-md">
+          <SearchIcon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#888]" />
+          <Input
+            type="search"
+            placeholder="Szukaj firmy, NIP lub miasta…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-9 pl-9"
+          />
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <AddCompanyButton />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => alert('Importuj CSV — wkrótce (Sprint S5)')}
+          >
+            <UploadIcon className="mr-1.5 size-3.5" />
+            Importuj CSV
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" aria-label="Więcej akcji">
+                <MoreHorizontalIcon className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem disabled>Eksportuj wszystko (CSV) — soon</DropdownMenuItem>
+              <DropdownMenuItem disabled>Konfiguracja kolumn — soon</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {/* Tabs */}
       <div className="flex items-end justify-between border-b px-6">
         <nav className="flex gap-1 -mb-px">
           {TABS.map((t) => {
@@ -293,54 +317,14 @@ export function ClientsHub({ clients, unifiedRows }: Props) {
           <option value="created">Data utworzenia</option>
         </select>
 
-        <div className="ml-auto flex items-center gap-2">
-          {selectedCount > 0 && (
-            <span className="text-xs text-muted-foreground">
-              Wybrano <strong>{selectedCount}</strong> firm
-            </span>
-          )}
-          {/* Sprint Q FIX B: dropdown always rendered, items disabled когда 0 selected */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" variant={selectedCount > 0 ? 'default' : 'outline'}>
-                <ZapIcon className="mr-1 size-3" />
-                Akcje grupowe
-                <ChevronDownIcon className="ml-1 size-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={exportCohort} disabled={selectedCount === 0}>
-                <BriefcaseIcon className="mr-2 size-4" />
-                Eksport jako kohorta Pikniko
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={changeTier} disabled={selectedCount === 0}>
-                Zmień tier
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={changeStatus} disabled={selectedCount === 0}>
-                Zmień status
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled>
-                Wzbogać kontakty (Apify) — soon
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled>
-                Wygeneruj cold openery — soon
-              </DropdownMenuItem>
-              {selectedCount > 0 && (
-                <DropdownMenuItem onClick={clearSelection}>
-                  Wyczyść zaznaczenie
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <AddCompanyButton />
-        </div>
+        {/* Selection count moved to BulkActionBar (sticky bottom). */}
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto pb-20">
         {tab === 'klienci' && (
           <ClientsTable
-            clients={onlyClients}
+            clients={filteredOnlyClients}
             selected={selected}
             onToggleSelect={toggleOne}
             onToggleSelectAll={(ids) => {
@@ -387,6 +371,11 @@ export function ClientsHub({ clients, unifiedRows }: Props) {
           />
         )}
       </div>
+
+      {/* S4 Phase 2B: BulkActionBar appears when ≥1 row selected. */}
+      {selectedCount > 0 && (
+        <BulkActionBar selectedIds={Array.from(selected)} onClear={clearSelection} />
+      )}
     </div>
   )
 }
@@ -459,7 +448,10 @@ function UnifiedTable({
           {rows.map((r) => {
             const checked = selected.has(r.id)
             return (
-              <TableRow key={r.id}>
+              <TableRow
+                key={r.id}
+                className={checked ? 'bg-[#EEEDFE]' : undefined}
+              >
                 <TableCell>
                   <Checkbox checked={checked} onCheckedChange={() => onToggle(r.id)} />
                 </TableCell>

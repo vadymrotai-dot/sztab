@@ -392,7 +392,7 @@ function ClientRow({
   const router = useRouter()
   return (
     <TableRow
-      className="cursor-pointer hover:bg-muted/50"
+      className={`cursor-pointer hover:bg-muted/50 ${selected ? 'bg-[#EEEDFE] hover:bg-[#E0DEFD]' : ''}`}
       onClick={() => router.push(`/clients/${client.id}`)}
     >
       {onToggleSelect && (
