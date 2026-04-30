@@ -15,13 +15,21 @@ const TAVILY_BASE = 'https://api.tavily.com'
 const REQUEST_TIMEOUT_MS = 25_000
 const COST_PER_BASIC_SEARCH_USD = 0.005
 
-/** Sprint M FIX 6 — PL business directory / aggregator domains.
- *  Tavily rangiert їх highly bo content quality, але це не company website.
- *  Match tested via host.includes() — handle subdomains та variations. */
-const AGGREGATOR_BLOCKLIST = [
+/** Sprint M FIX 6 + Sprint S2A Phase 2 — PL business directory /
+ *  aggregator domains. Tavily ranks ich highly bo content quality, але
+ *  це не company website. Match tested via host.includes() — handle
+ *  subdomains та variations. */
+export const AGGREGATOR_BLOCKLIST = [
+  // Job aggregators (Sprint S2A added)
+  'gowork.pl',
+  'pracuj.pl',
+  'olx.pl',
+  'indeed.pl',
+  // KRS / business registries
   'krs-pobierz.pl',
   'panoramafirm.pl',
   'aleo.com',
+  'aleobiznes.pl',
   'biznesfinder.pl',
   'mojepanstwo.pl',
   'bisnode.pl',
@@ -31,19 +39,31 @@ const AGGREGATOR_BLOCKLIST = [
   'rejestrio.pl',
   'rejestr.io',
   'krs.pl',
-  'bzp.uzp.gov.pl',
-  'ezamowienia.gov.pl',
-  'ceidg.gov.pl',
-  'gov.pl',
-  'aleobiznes.pl',
   'firmy.net',
   'pkt.pl',
   'biznesradar.pl',
+  // Government directories (Sprint S2A added — catch any *.gov.pl
+  // aggregator outside of registered API endpoints)
+  'bzp.uzp.gov.pl',
+  'ezamowienia.gov.pl',
+  'ceidg.gov.pl',
+  'ekrs.ms.gov.pl',
+  'mfa.gov.pl',
+  'gov.pl',
 ]
 
-function isAggregator(host: string): boolean {
+export function isAggregator(host: string): boolean {
   const h = host.toLowerCase().replace(/^www\./, '')
-  return AGGREGATOR_BLOCKLIST.some((b) => h === b || h.endsWith('.' + b) || h.includes(b))
+  return AGGREGATOR_BLOCKLIST.some((b) => h === b || h.endsWith('.' + b))
+}
+
+/** Sprint S2A Phase 2 — accepts full URL (extracts hostname). */
+export function isAggregatorUrl(url: string): boolean {
+  try {
+    return isAggregator(new URL(url).hostname)
+  } catch {
+    return false
+  }
 }
 
 export interface NewsMention {
@@ -94,6 +114,10 @@ async function tavilySearch(
         search_depth: 'basic',
         max_results: maxResults,
         include_answer: false,
+        // Sprint S2A Phase 2: prefer PL-domain results (tavily 0.5+ supports
+        // country param). Filters out global aggregators like gowork.pl
+        // (.pl domain but not company-specific).
+        country: 'pl',
       }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
