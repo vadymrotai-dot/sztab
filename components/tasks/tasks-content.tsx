@@ -446,7 +446,7 @@ export function TasksContent({
               <h3 className="text-[16px] font-medium">{emptyMessage[filter]}</h3>
               {hotLeads.length > 0 ? (
                 <p className="mt-1 text-[13px] text-[#555]">
-                  Co dalej? Skorzystaj z hot leadów и zaplanuj kontakt.
+                  Co dalej? Skorzystaj z hot leadów i zaplanuj kontakt.
                 </p>
               ) : (
                 <p className="mt-1 text-[13px] text-[#888]">
