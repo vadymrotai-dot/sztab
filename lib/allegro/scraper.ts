@@ -9,11 +9,13 @@ import 'server-only'
 // що returns identical AllegroOfferListingResponse shape so downstream
 // callers don't care which path produced data.
 //
-// Actor: automation-lab~allegro-scraper (battle-tested, 1.7k+ runs,
-// explicit listings extraction with title/price/seller/images).
+// Actor: parseforge~allegro-scraper (selected after automation-lab~
+// allegro-scraper failed на DataDome anti-bot 2/2 attempts including
+// з RESIDENTIAL proxy). parseforge build 1.0.8 (2026-04-24, 6 days
+// old at swap) має fresh DataDome bypass + native searchQuery field.
 //
-// Cost: ~$0.00345/product + $0.005/run start fee (free plan).
-// Rate-limit/concurrency handled by Apify side.
+// Cost: ~$0.0075/result (FREE tier) + $0/start. ~$0.038 для 5-item query.
+// Free tier maxItems hard-capped at 10 by actor.
 
 import { createClient } from '@/lib/supabase/server'
 import { runApifyActor } from '@/lib/integrations/apify'
@@ -23,60 +25,58 @@ import type {
   SearchOffersOptions,
 } from './types'
 
-const ALLEGRO_ACTOR_ID = 'automation-lab~allegro-scraper'
-const RUN_TIMEOUT_SECS = 180 // 3 min — actor cold-start + scrape
+const ALLEGRO_ACTOR_ID = 'parseforge~allegro-scraper'
+const RUN_TIMEOUT_SECS = 240 // 4 min — actor cold-start + scrape
+const FREE_TIER_MAX_ITEMS = 10
 
 /**
- * Apify actor output item (subset of fields we map). Actor returns
- * ~20+ fields per product; we extract only those needed for AllegroOffer.
+ * Apify actor output item (parseforge schema). Documented fields:
+ *   imageUrl, title, url, price, priceText, currency, seller, rating,
+ *   reviewCount, freeShipping, isSmart, scrapedAt, error
  */
 interface ApifyAllegroItem {
-  id?: string
+  imageUrl?: string | null
   title?: string
   url?: string
-  price?: number | string | null
+  price?: number | null
+  priceText?: string | null
   currency?: string | null
-  category?: string | null
-  categoryPath?: string | null
-  images?: string[] | null
-  image?: string | null
-  sellerLogin?: string | null
-  sellerName?: string | null
-  sellerUrl?: string | null
-  superSeller?: boolean | null
-  isSuperSeller?: boolean | null
-  sponsored?: boolean | null
+  seller?: string | null
+  rating?: string | number | null
+  reviewCount?: string | number | null
+  freeShipping?: boolean
+  isSmart?: boolean
+  scrapedAt?: string
+  error?: string
 }
 
 function adaptItem(item: ApifyAllegroItem, fallbackIndex: number): AllegroOffer {
-  const id = item.id ?? `apify-${fallbackIndex}`
+  // Allegro offer URLs end з numeric ID: ".../oferta/...-12375564256".
+  const idFromUrl = item.url?.match(/-(\d{6,})(?:[?#]|$)/)?.[1]
+  const id = idFromUrl ?? `apify-${fallbackIndex}`
   const name = item.title ?? '(no title)'
-  const categoryStr =
-    item.categoryPath ?? item.category ?? ''
+
   const priceAmount =
     typeof item.price === 'number'
       ? item.price.toFixed(2)
-      : typeof item.price === 'string' && item.price.length > 0
-        ? item.price
+      : typeof item.priceText === 'string' && item.priceText.length > 0
+        ? item.priceText
         : '0.00'
   const currency = item.currency ?? 'PLN'
-  const imagesRaw = Array.isArray(item.images)
-    ? item.images
-    : item.image
-      ? [item.image]
-      : []
-  const sellerLogin = item.sellerLogin ?? item.sellerName ?? 'unknown'
+
+  const seller = item.seller ?? 'unknown'
+  const images = item.imageUrl ? [{ url: item.imageUrl }] : []
 
   return {
     id,
     name,
-    category: { id: categoryStr },
-    images: imagesRaw.filter((u): u is string => typeof u === 'string').map((url) => ({ url })),
+    category: { id: '' }, // parseforge не returns category
+    images,
     sellingMode: { price: { amount: priceAmount, currency } },
     seller: {
-      id: sellerLogin,
-      login: sellerLogin,
-      superSeller: Boolean(item.superSeller ?? item.isSuperSeller ?? false),
+      id: seller,
+      login: seller,
+      superSeller: false, // parseforge не returns this flag
     },
   }
 }
@@ -114,21 +114,20 @@ export async function searchOffersViaApify(
     )
   }
 
-  const limit = Math.min(100, Math.max(1, opts.limit ?? 24))
+  const requested = Math.max(1, opts.limit ?? 5)
+  const maxItems = Math.min(requested, FREE_TIER_MAX_ITEMS)
 
   const run = await runApifyActor<ApifyAllegroItem>(token, {
     actorId: ALLEGRO_ACTOR_ID,
     input: {
-      searchQueries: [phrase],
-      maxItemsPerQuery: limit,
-      proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ['RESIDENTIAL'] },
+      searchQuery: phrase,
+      maxItems,
+      sortBy: '',
     },
     timeoutSecs: RUN_TIMEOUT_SECS,
   })
 
   if (run.status !== 'SUCCEEDED') {
-    // Sanitize potential token echoed in error (defensive — actor errors
-    // don't typically echo it but keep symmetric з client.ts redaction).
     const safe = (run.error ?? `actor status ${run.status}`)
       .slice(0, 300)
       .replace(/[a-zA-Z0-9._-]{20,}/g, '<redacted>')
