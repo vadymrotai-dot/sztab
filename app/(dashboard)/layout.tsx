@@ -16,19 +16,40 @@ export default async function DashboardLayout({
     redirect('/auth/login')
   }
 
+  // Sprint S2B Phase 1B — counter badges на sidebar nav.
   // Hot prospect badge (horeca_meta_score >= 70 AND filter_passed).
-  // Fetches via scored_prospects view (security_invoker → RLS applies).
   // Failures degrade to 0 — no badge rather than crash layout.
   let prospectHotCount = 0
+  let clientsCount = 0
+  let dealsCount = 0
+  let productsCount = 0
+  let handoffCount = 0
   try {
-    const { count } = await supabase
-      .from('scored_prospects')
-      .select('id', { count: 'exact', head: true })
-      .gte('horeca_meta_score', 70)
-      .eq('filter_passed', true)
-    prospectHotCount = count ?? 0
+    const [{ count: pH }, { count: cl }, { count: dl }, { count: pr }, { count: hc }] =
+      await Promise.all([
+        supabase
+          .from('scored_prospects')
+          .select('id', { count: 'exact', head: true })
+          .gte('horeca_meta_score', 70)
+          .eq('filter_passed', true),
+        supabase.from('clients').select('id', { count: 'exact', head: true }),
+        supabase
+          .from('deals')
+          .select('id', { count: 'exact', head: true })
+          .neq('stage', 'lost'),
+        supabase
+          .from('products')
+          .select('id', { count: 'exact', head: true })
+          .not('family_id', 'is', null),
+        supabase.from('pikniko_handoff_cohorts').select('id', { count: 'exact', head: true }),
+      ])
+    prospectHotCount = pH ?? 0
+    clientsCount = cl ?? 0
+    dealsCount = dl ?? 0
+    productsCount = pr ?? 0
+    handoffCount = hc ?? 0
   } catch {
-    prospectHotCount = 0
+    /* counts default 0 */
   }
 
   // Sprint R FIX: removed inner <main className="flex-1 overflow-auto"> wrapper.
@@ -46,7 +67,16 @@ export default async function DashboardLayout({
   // (invalid HTML).
   return (
     <SidebarProvider>
-      <AppSidebar user={user} prospectHotCount={prospectHotCount} />
+      <AppSidebar
+        user={user}
+        prospectHotCount={prospectHotCount}
+        counts={{
+          clients: clientsCount,
+          deals: dealsCount,
+          products: productsCount,
+          handoff: handoffCount,
+        }}
+      />
       <SidebarInset>{children}</SidebarInset>
       <CommandBar />
     </SidebarProvider>

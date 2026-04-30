@@ -61,6 +61,13 @@ interface NavItem {
 interface AppSidebarProps {
   user: User
   prospectHotCount?: number
+  /** Sprint S2B Phase 1B — counter badges на sidebar nav. */
+  counts?: {
+    clients?: number
+    deals?: number
+    products?: number
+    handoff?: number
+  }
 }
 
 function renderNav(items: NavItem[], pathname: string) {
@@ -89,16 +96,16 @@ function renderNav(items: NavItem[], pathname: string) {
   })
 }
 
-export function AppSidebar({ user, prospectHotCount = 0 }: AppSidebarProps) {
+export function AppSidebar({ user, prospectHotCount = 0, counts = {} }: AppSidebarProps) {
   // Sprint O Phase 1 — consolidated navigation: 5 main + Organizer + Ustawienia.
-  // Old routes (intelligence, matches, kp-generator, tasks, etc.) remain
-  // accessible via direct URL for backward compat.
+  // Sprint S2B Phase 1B — counter badges (Klienci 261, Sprzedaż 7, Produkty 35,
+  // Handoff 29 у KOZAK pre-prod state).
   void prospectHotCount // surface badge moved into /clients tab у Phase 5
   const mainNav: NavItem[] = [
     { name: 'Dziś', href: '/pulpit/dzisiaj', icon: LayoutDashboardIcon },
-    { name: 'Klienci', href: '/clients', icon: UsersIcon },
-    { name: 'Sprzedaż', href: '/sprzedaz', icon: BriefcaseIcon },
-    { name: 'Produkty', href: '/products', icon: PackageIcon },
+    { name: 'Klienci', href: '/clients', icon: UsersIcon, badgeCount: counts.clients },
+    { name: 'Sprzedaż', href: '/sprzedaz', icon: BriefcaseIcon, badgeCount: counts.deals },
+    { name: 'Produkty', href: '/products', icon: PackageIcon, badgeCount: counts.products },
     { name: 'Dostawcy', href: '/suppliers', icon: TruckIcon },
   ]
   const utilNav: NavItem[] = [
