@@ -188,9 +188,12 @@ export type ReportType =
   | 'BIR11OsFizycznaDaneOgolne'
   | 'BIR11OsFizycznaDzialalnoscCeidg'
   | 'BIR11OsFizycznaPkd'
+  | 'BIR11OsFizycznaListaJednLokalnych'
   | 'BIR11OsPrawna'
   | 'BIR11OsPrawnaPkd'
   | 'BIR11OsPrawnaListaJednLokalnych'
+  | 'BIR11OsPrawnaSpCywilnaWspolnicy'
+  | 'BIR11TypPodmiotu'
 
 /** Pick report dla SilosID. */
 export function reportTypeForSilos(silosId: string | undefined): ReportType {
