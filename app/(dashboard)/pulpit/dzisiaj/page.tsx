@@ -1,127 +1,157 @@
 // app/(dashboard)/pulpit/dzisiaj/page.tsx
-// Sprint K / Phase 6 — Daily dashboard для Pikniko sales вранці.
+// Sprint S4 Phase 3 — operational dashboard.
+//
+// DROP from old: 6 colored cards з '0', cron debug talk
+// (e.g. "Cron bzp-monitor uruchamia się o 03:00."), TODO Pikniko placeholder.
+//
+// NEW: Header + warnings panel (auto-hide gdy 0) + calendar widget
+// з toggle Split focus / Time grid + Hot leady chips.
 
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/page-header'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import {
-  CakeIcon,
-  CalendarIcon,
-  TrophyIcon,
-  TrendingUpIcon,
-  UsersIcon,
-  ListTodoIcon,
-} from 'lucide-react'
+import { WarningsPanel } from '@/components/dzis/warnings-panel'
+import { CalendarShell } from '@/components/dzis/calendar-shell'
+import { HotLeadyChips, type HotLead } from '@/components/dzis/hot-leady-chips'
+import type { CalendarEvent, EventSeverity } from '@/components/dzis/calendar-types'
 
 export const dynamic = 'force-dynamic'
+
+function severityForTask(t: { priority: string | null; time: string | null; done: boolean | null }): EventSeverity {
+  if (t.done) return 'done'
+  if (t.priority === 'high') return 'urgent'
+  if (t.priority === 'normal' && t.time) return 'progress'
+  return 'planned'
+}
 
 export default async function DailyDashboardPage() {
   const supabase = await createClient()
   const today = new Date()
+  const todayISO = today.toISOString().slice(0, 10)
+  const next7DaysISO = new Date(today.getTime() + 7 * 86_400_000).toISOString().slice(0, 10)
+  const last24h = new Date(today.getTime() - 24 * 3_600_000).toISOString()
+  const stale30dThreshold = new Date(today.getTime() - 30 * 86_400_000).toISOString().slice(0, 10)
   const month = today.getMonth() + 1
   const day = today.getDate()
-  const last7Days = new Date(today.getTime() - 7 * 86_400_000).toISOString().slice(0, 10)
-  const next7Days = new Date(today.getTime() + 7 * 86_400_000).toISOString().slice(0, 10)
-  const last24h = new Date(today.getTime() - 24 * 3_600_000).toISOString()
-  const last30Days = new Date(today.getTime() - 30 * 86_400_000).toISOString().slice(0, 10)
 
   const [
+    { count: clientsNoAiCount },
+    { count: staleClientsCount },
+    { count: bzpRecentCount },
+    { data: tasks },
     { data: birthdaysToday },
-    { data: upcomingEvents },
-    { data: bzpRecent },
-    { data: financialsRecent },
-    { data: msigRecent },
+    { data: topMatches },
+    { data: clientsWithProfile },
   ] = await Promise.all([
-    // 1. Dziś urodziny / imieniny / rocznica
+    // 1. Clients без AI analizy
+    supabase
+      .from('clients')
+      .select('id', { count: 'exact', head: true })
+      .is('business_profile', null),
+    // 2. Stale data >30 dni
+    supabase
+      .from('clients')
+      .select('id', { count: 'exact', head: true })
+      .lt('last_filing_date', stale30dThreshold),
+    // 3. Nowe BZP w ostatnich 24h
+    supabase
+      .from('bzp_tenders')
+      .select('id', { count: 'exact', head: true })
+      .gte('fetched_at', last24h),
+    // 4. Tasks дla calendar (today + next 7 days)
+    supabase
+      .from('tasks')
+      .select('id, title, due, time, priority, done, client_id')
+      .gte('due', todayISO)
+      .lte('due', next7DaysISO),
+    // 5. Person events today (urodziny / imieniny)
     supabase
       .from('person_events')
-      .select(
-        'id, typ, opis, person:persons(id, imie, nazwisko, email_glowny, telefon_komorkowy)',
-      )
+      .select('id, typ, opis, miesiac, dzien, person:persons(id, imie, nazwisko)')
       .eq('miesiac', month)
       .eq('dzien', day)
       .eq('repeat_yearly', true),
-    // 2. Najbliższe rocznice (7 dni — current month/day +7)
+    // 6. Top matches дla Hot leady
     supabase
-      .from('person_events')
-      .select(
-        'id, typ, miesiac, dzien, opis, person:persons(id, imie, nazwisko)',
-      )
-      .eq('repeat_yearly', true)
-      .order('miesiac', { ascending: true })
-      .order('dzien', { ascending: true })
+      .from('matches')
+      .select('client_id, combined_score')
+      .gte('combined_score', 80)
+      .order('combined_score', { ascending: false })
       .limit(50),
-    // 3. Nowe BZP wins last 24h
+    // 7. Clients з business_profile (AI done)
     supabase
-      .from('bzp_tenders')
-      .select(
-        'id, bzp_notice_id, winner_name, ordering_party, subject, award_value_pln, award_date, client_id, prospect_id',
-      )
-      .gte('fetched_at', last24h)
-      .order('fetched_at', { ascending: false })
-      .limit(20),
-    // 4. Świeże sprawozdania (filed_at last 30 days)
-    supabase
-      .from('company_financials')
-      .select('id, rok, przychody_pln, zysk_netto_pln, filed_at, client_id, prospect_id')
-      .gte('filed_at', last30Days)
-      .order('filed_at', { ascending: false })
-      .limit(20),
-    // 5. Zmiany w zarządach (MSiG last 7 days, change_type=zarząd)
-    supabase
-      .from('msig_changes')
-      .select(
-        'id, change_type, publication_date, description, client_id, prospect_id',
-      )
-      .eq('change_type', 'zarząd')
-      .gte('publication_date', last7Days)
-      .order('publication_date', { ascending: false })
-      .limit(20),
+      .from('clients')
+      .select('id, title, business_profile')
+      .not('business_profile', 'is', null)
+      .limit(500),
   ])
 
-  // Filter upcoming to next 7 days (handles month-rollover з naive logic)
-  const upcomingInRange = ((upcomingEvents ?? []) as Array<{
+  // Build hot leady — clients з AI profile + top match >= 80.
+  // (Note: "no contact >7d" filter deferred to Sprint S5 — wymaga
+  // contact recency join.)
+  const profileIds = new Set(
+    ((clientsWithProfile ?? []) as Array<{ id: string; title: string }>).map((c) => c.id),
+  )
+  const titleById = new Map<string, string>()
+  for (const c of (clientsWithProfile ?? []) as Array<{ id: string; title: string }>) {
+    titleById.set(c.id, c.title)
+  }
+  const seenLeads = new Set<string>()
+  const hotLeads: HotLead[] = []
+  for (const m of (topMatches ?? []) as Array<{ client_id: string | null; combined_score: number }>) {
+    if (!m.client_id) continue
+    if (seenLeads.has(m.client_id)) continue
+    if (!profileIds.has(m.client_id)) continue
+    const name = titleById.get(m.client_id)
+    if (!name) continue
+    seenLeads.add(m.client_id)
+    hotLeads.push({ id: m.client_id, name, score: m.combined_score })
+    if (hotLeads.length >= 8) break
+  }
+
+  // Build calendar events
+  const calendarEvents: CalendarEvent[] = []
+  for (const t of (tasks ?? []) as Array<{
     id: string
-    miesiac: number
-    dzien: number
+    title: string
+    due: string | null
+    time: string | null
+    priority: string | null
+    done: boolean | null
+    client_id: string | null
+  }>) {
+    if (!t.due) continue
+    calendarEvents.push({
+      id: `task-${t.id}`,
+      title: t.title,
+      date: t.due.slice(0, 10),
+      time: t.time ? t.time.slice(0, 5) : null,
+      severity: severityForTask(t),
+      href: t.client_id ? `/clients/${t.client_id}` : '/tasks',
+      badge: t.client_id ? titleById.get(t.client_id) ?? null : null,
+    })
+  }
+  type PersonEventRow = {
+    id: string
     typ: string
     opis: string | null
-    person: { id: string; imie: string; nazwisko: string }
-  }>).filter((e) => {
-    const eventThisYear = new Date(today.getFullYear(), e.miesiac - 1, e.dzien)
-    if (eventThisYear < today) {
-      // Already passed — check next year
-      const eventNextYear = new Date(today.getFullYear() + 1, e.miesiac - 1, e.dzien)
-      const diffDays = (eventNextYear.getTime() - today.getTime()) / 86_400_000
-      return diffDays <= 7 && diffDays > 0
-    }
-    const diffDays = (eventThisYear.getTime() - today.getTime()) / 86_400_000
-    return diffDays <= 7 && diffDays >= 0
-  })
-  // Resolve client names for BZP/financials/msig
-  const clientIds = Array.from(
-    new Set(
-      [
-        ...((bzpRecent ?? []) as Array<{ client_id: string | null }>),
-        ...((financialsRecent ?? []) as Array<{ client_id: string | null }>),
-        ...((msigRecent ?? []) as Array<{ client_id: string | null }>),
-      ]
-        .map((r) => r.client_id)
-        .filter((x): x is string => Boolean(x)),
-    ),
-  )
-  const clientMap = new Map<string, string>()
-  if (clientIds.length > 0) {
-    const { data: cs } = await supabase
-      .from('clients')
-      .select('id, title')
-      .in('id', clientIds)
-    for (const c of (cs ?? []) as Array<{ id: string; title: string }>) {
-      clientMap.set(c.id, c.title)
-    }
+    miesiac: number
+    dzien: number
+    person: { id: string; imie: string; nazwisko: string } | { id: string; imie: string; nazwisko: string }[]
   }
+  for (const ev of (birthdaysToday ?? []) as PersonEventRow[]) {
+    const p = Array.isArray(ev.person) ? ev.person[0] : ev.person
+    if (!p) continue
+    calendarEvents.push({
+      id: `pe-${ev.id}`,
+      title: `${ev.typ}: ${p.imie} ${p.nazwisko}`,
+      date: todayISO,
+      time: null,
+      severity: 'planned',
+      href: `/persons/${p.id}`,
+      badge: ev.opis ?? null,
+    })
+  }
+
   const todayPl = today.toLocaleDateString('pl-PL', {
     weekday: 'long',
     day: 'numeric',
@@ -130,263 +160,69 @@ export default async function DailyDashboardPage() {
   })
 
   return (
-    <div className="flex flex-col">
-      <PageHeader
-        title="Dziś"
-        breadcrumbs={[{ label: 'Dziś' }]}
-      />
+    <div className="flex flex-col bg-[#FAFAF7] min-h-screen">
+      <PageHeader title="Dziś" breadcrumbs={[{ label: 'Dziś' }]} />
       <div className="flex flex-1 flex-col gap-4 p-6">
-        <p className="text-sm text-muted-foreground">{todayPl}</p>
+        {/* Header row: date + hot leady */}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-[22px] font-medium leading-tight">Dziś</h1>
+            <p className="mt-0.5 text-[13px] text-[#555]">{todayPl}</p>
+          </div>
+          {hotLeads.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-wider text-[#888]">
+                Hot leady ({hotLeads.length})
+              </span>
+              <HotLeadyChips leads={hotLeads.slice(0, 5)} compact />
+            </div>
+          )}
+        </div>
 
-        {/* 1. Dziś urodziny */}
-        <Card className="border-l-4 border-l-orange-400 bg-orange-50/30">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CakeIcon className="size-5 text-orange-500" />
-              Dziś urodziny / wydarzenia ({(birthdaysToday ?? []).length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {(!birthdaysToday || birthdaysToday.length === 0) ? (
-              <p className="text-sm text-muted-foreground">
-                Brak wydarzeń dzisiaj. Dodaj urodziny osób przez panel /persons/[id].
-              </p>
-            ) : (
-              <ul className="divide-y">
-                {(birthdaysToday as Array<{
-                  id: string
-                  typ: string
-                  opis: string | null
-                  person: { id: string; imie: string; nazwisko: string; email_glowny: string | null; telefon_komorkowy: string | null }
-                }>).map((e) => (
-                  <li key={e.id} className="flex items-center gap-3 py-2">
-                    <Badge className="bg-orange-500 text-white">{e.typ}</Badge>
-                    <Link href={`/persons/${e.person.id}`} className="font-medium hover:underline">
-                      {e.person.imie} {e.person.nazwisko}
-                    </Link>
-                    <div className="ml-auto flex gap-2 text-xs">
-                      {e.person.email_glowny && (
-                        <a href={`mailto:${e.person.email_glowny}`} className="text-emerald-700 hover:underline">
-                          ✉ Wyślij życzenia
-                        </a>
-                      )}
-                      {e.person.telefon_komorkowy && (
-                        <a href={`tel:${e.person.telefon_komorkowy}`} className="text-emerald-700 hover:underline">
-                          ☏ Zadzwoń
-                        </a>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        {/* Warnings panel — auto-hides gdy wszystko 0 */}
+        <WarningsPanel
+          warnings={[
+            {
+              count: clientsNoAiCount ?? 0,
+              message: 'klientów bez analizy AI',
+              actionLabel: 'Analizuj wszystkie',
+              actionHref: '/clients?tab=klienci',
+              variant: 'primary',
+              icon: 'analyze',
+            },
+            {
+              count: staleClientsCount ?? 0,
+              message: 'klientów z stale data >30 dni',
+              actionLabel: 'Odśwież z KRS',
+              actionHref: '/clients?tab=klienci',
+              variant: 'secondary',
+              icon: 'refresh',
+            },
+            {
+              count: bzpRecentCount ?? 0,
+              message: 'nowych sygnałów BZP (24h)',
+              actionLabel: 'Zobacz',
+              actionHref: '/intelligence/lookup',
+              variant: 'secondary',
+              icon: 'search',
+            },
+          ]}
+        />
 
-        {/* 2. Najbliższe rocznice (7 dni) */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CalendarIcon className="size-5 text-blue-500" />
-              Najbliższe rocznice (7 dni) ({upcomingInRange.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {upcomingInRange.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Brak rocznic w najbliższym tygodniu.</p>
-            ) : (
-              <ul className="divide-y">
-                {upcomingInRange.slice(0, 10).map((e) => (
-                  <li key={e.id} className="grid grid-cols-12 items-center gap-2 py-2 text-sm">
-                    <div className="col-span-2 font-mono text-xs text-muted-foreground">
-                      {e.dzien.toString().padStart(2, '0')}-{e.miesiac.toString().padStart(2, '0')}
-                    </div>
-                    <div className="col-span-2">
-                      <Badge variant="outline" className="text-[10px]">
-                        {e.typ}
-                      </Badge>
-                    </div>
-                    <div className="col-span-8">
-                      <Link href={`/persons/${e.person.id}`} className="hover:underline">
-                        {e.person.imie} {e.person.nazwisko}
-                      </Link>
-                      {e.opis && <span className="ml-2 text-xs text-muted-foreground">{e.opis}</span>}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        {/* Calendar з toggle Focus / Grid */}
+        <CalendarShell events={calendarEvents} todayISO={todayISO} />
 
-        {/* 3. Nowe BZP wins */}
-        <Card className="border-l-4 border-l-orange-300">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <TrophyIcon className="size-5 text-orange-500" />
-              Nowe sygnały kupieckie z BZP (24h) ({(bzpRecent ?? []).length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {(!bzpRecent || bzpRecent.length === 0) ? (
-              <p className="text-sm text-muted-foreground">
-                Brak nowych BZP wins w ostatnich 24h. Cron bzp-monitor uruchamia się o 03:00.
-              </p>
-            ) : (
-              <ul className="divide-y">
-                {(bzpRecent as Array<{
-                  id: string
-                  bzp_notice_id: string
-                  winner_name: string | null
-                  ordering_party: string | null
-                  subject: string | null
-                  award_value_pln: number | null
-                  award_date: string | null
-                  client_id: string | null
-                }>).map((b) => (
-                  <li key={b.id} className="grid grid-cols-12 items-start gap-2 py-2 text-sm">
-                    <div className="col-span-2 text-xs font-mono text-muted-foreground">
-                      {b.award_date ? new Date(b.award_date).toLocaleDateString('pl-PL') : '—'}
-                    </div>
-                    <div className="col-span-7 min-w-0 space-y-0.5">
-                      <div className="font-medium truncate" title={b.subject ?? ''}>
-                        {b.subject ?? '—'}
-                      </div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {b.client_id ? (
-                          <Link href={`/clients/${b.client_id}`} className="hover:underline">
-                            {clientMap.get(b.client_id) ?? b.winner_name}
-                          </Link>
-                        ) : (
-                          <span>{b.winner_name ?? '—'}</span>
-                        )}
-                        {' · '}
-                        {b.ordering_party ?? '—'}
-                      </div>
-                    </div>
-                    <div className="col-span-3 text-right text-xs font-semibold">
-                      {b.award_value_pln
-                        ? `${Math.round(b.award_value_pln).toLocaleString('pl-PL')} PLN`
-                        : '—'}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 4. Świeże sprawozdania */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <TrendingUpIcon className="size-5 text-emerald-500" />
-              Świeże sprawozdania KRS (30 dni) ({(financialsRecent ?? []).length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {(!financialsRecent || financialsRecent.length === 0) ? (
-              <p className="text-sm text-muted-foreground">
-                Brak świeżych sprawozdań w bazie. Uruchom Intelligence Lookup на znanej sp.z o.o./S.A.
-              </p>
-            ) : (
-              <ul className="divide-y">
-                {(financialsRecent as Array<{
-                  id: string
-                  rok: number
-                  przychody_pln: number | null
-                  zysk_netto_pln: number | null
-                  filed_at: string | null
-                  client_id: string | null
-                }>).map((f) => (
-                  <li key={f.id} className="grid grid-cols-12 items-center gap-2 py-2 text-sm">
-                    <div className="col-span-2 text-xs font-mono text-muted-foreground">
-                      {f.filed_at ? new Date(f.filed_at).toLocaleDateString('pl-PL') : '—'}
-                    </div>
-                    <div className="col-span-1 font-mono">{f.rok}</div>
-                    <div className="col-span-5">
-                      {f.client_id ? (
-                        <Link href={`/clients/${f.client_id}`} className="hover:underline">
-                          {clientMap.get(f.client_id) ?? '—'}
-                        </Link>
-                      ) : (
-                        '—'
-                      )}
-                    </div>
-                    <div className="col-span-2 text-right text-xs">
-                      {f.przychody_pln
-                        ? `${(f.przychody_pln / 1_000_000).toFixed(1)}M PLN`
-                        : '—'}
-                    </div>
-                    <div className="col-span-2 text-right text-xs text-muted-foreground">
-                      {f.zysk_netto_pln !== null ? `zysk: ${(f.zysk_netto_pln / 1_000).toFixed(0)}K` : '—'}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 5. Zmiany w zarządach */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <UsersIcon className="size-5 text-purple-500" />
-              Zmiany w zarządach (MSiG, 7 dni) ({(msigRecent ?? []).length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {(!msigRecent || msigRecent.length === 0) ? (
-              <p className="text-sm text-muted-foreground">
-                Brak zmian w zarządach. Cron MSiG monitor (TODO — Sprint L).
-              </p>
-            ) : (
-              <ul className="divide-y">
-                {(msigRecent as Array<{
-                  id: string
-                  publication_date: string | null
-                  description: string | null
-                  client_id: string | null
-                }>).map((m) => (
-                  <li key={m.id} className="grid grid-cols-12 items-start gap-2 py-2 text-sm">
-                    <div className="col-span-2 text-xs font-mono text-muted-foreground">
-                      {m.publication_date
-                        ? new Date(m.publication_date).toLocaleDateString('pl-PL')
-                        : '—'}
-                    </div>
-                    <div className="col-span-3">
-                      {m.client_id ? (
-                        <Link href={`/clients/${m.client_id}`} className="hover:underline">
-                          {clientMap.get(m.client_id) ?? '—'}
-                        </Link>
-                      ) : (
-                        '—'
-                      )}
-                    </div>
-                    <div className="col-span-7 text-xs">{m.description ?? '—'}</div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 6. TODO Pikniko (placeholder — Sprint L feedback loop) */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ListTodoIcon className="size-5 text-gray-500" />
-              TODO Pikniko (Sprint L)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Sekcja będzie pokazywać leadów wymagających follow-up на base of last interaction date.
-              Pojawi się po dodaniu interaction tracking (Sprint L).
+        {/* Empty-state hint na dole gdy żadnych eventów + hot leady są */}
+        {calendarEvents.length === 0 && hotLeads.length > 0 && (
+          <div className="rounded-lg border border-dashed border-[#E5E1D8] bg-white px-5 py-6 text-center">
+            <p className="text-[13px] text-[#555]">
+              Brak zaplanowanych zadań na dziś. Może zaplanuj kontakt z hot leadem?
             </p>
-          </CardContent>
-        </Card>
+            <div className="mt-3 flex justify-center">
+              <HotLeadyChips leads={hotLeads.slice(0, 3)} compact />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

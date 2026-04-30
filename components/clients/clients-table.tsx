@@ -205,22 +205,12 @@ export function ClientsTable({
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[220px] flex-1 max-w-md">
-          <SearchIcon className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Szukaj po nazwie, NIP, mieście, branży..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-
-        <div className="ml-auto text-xs text-muted-foreground">
-          {totalShown === totalAll
-            ? `${totalAll} klientów`
-            : `${totalShown} z ${totalAll}`}
-        </div>
+      {/* S4 Phase 2 NIT: search dropped — top bar search in ClientsHub
+          jest primary. Wewnętrzny dubel byłby сumbersome. */}
+      <div className="flex justify-end text-xs text-muted-foreground">
+        {totalShown === totalAll
+          ? `${totalAll} klientów`
+          : `${totalShown} z ${totalAll}`}
       </div>
 
       {totalShown === 0 ? (
