@@ -8,6 +8,12 @@ export type ParamsKeyUpdate = {
   gemini_key?: string | null
   apify_api_token?: string | null
   krs_rejestr_api_token?: string | null
+  // Sprint S3 prep — Allegro REST API credentials. Format у Allegro może
+  // się zmieniać (zmiana per Vadym decision: trim only, no length checks
+  // dla forward-compat — false-rejects na rotacji klucza są niepotrzebnym
+  // tarciem).
+  allegro_client_id?: string | null
+  allegro_client_secret?: string | null
 }
 
 export type ParamsKeyResult =
@@ -85,6 +91,19 @@ export async function updateParamsKeys(
     updated.push('krs_rejestr_api_token')
   }
 
+  // Sprint S3 prep — Allegro creds. Trim only (no length validation per
+  // Vadym; mirror existing pattern but бeз validateXxx() helper call).
+  if (input.allegro_client_id !== undefined) {
+    const trimmed = input.allegro_client_id?.trim()
+    updates.allegro_client_id = trimmed || null
+    updated.push('allegro_client_id')
+  }
+  if (input.allegro_client_secret !== undefined) {
+    const trimmed = input.allegro_client_secret?.trim()
+    updates.allegro_client_secret = trimmed || null
+    updated.push('allegro_client_secret')
+  }
+
   if (updated.length === 0) {
     return { ok: false, error: 'Brak zmian.' }
   }
@@ -120,6 +139,9 @@ export interface MaskedKeys {
   gemini_key: string | null
   apify_api_token: string | null
   krs_rejestr_api_token: string | null
+  // Sprint S3 prep — Allegro creds masked previews
+  allegro_client_id: string | null
+  allegro_client_secret: string | null
 }
 
 function mask(key: string | null | undefined): string | null {
@@ -137,12 +159,16 @@ export async function getMaskedParamsKeys(): Promise<MaskedKeys> {
       gemini_key: null,
       apify_api_token: null,
       krs_rejestr_api_token: null,
+      allegro_client_id: null,
+      allegro_client_secret: null,
     }
   }
 
   const { data } = await supabase
     .from('params')
-    .select('gemini_key, apify_api_token, krs_rejestr_api_token')
+    .select(
+      'gemini_key, apify_api_token, krs_rejestr_api_token, allegro_client_id, allegro_client_secret',
+    )
     .eq('owner_id', user.id)
     .maybeSingle()
 
@@ -151,6 +177,10 @@ export async function getMaskedParamsKeys(): Promise<MaskedKeys> {
     apify_api_token: mask(data?.apify_api_token as string | null | undefined),
     krs_rejestr_api_token: mask(
       data?.krs_rejestr_api_token as string | null | undefined,
+    ),
+    allegro_client_id: mask(data?.allegro_client_id as string | null | undefined),
+    allegro_client_secret: mask(
+      data?.allegro_client_secret as string | null | undefined,
     ),
   }
 }

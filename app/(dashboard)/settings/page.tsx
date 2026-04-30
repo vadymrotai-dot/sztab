@@ -24,6 +24,8 @@ export default async function SettingsPage() {
             geminiMasked: masked.gemini_key,
             apifyMasked: masked.apify_api_token,
             krsMasked: masked.krs_rejestr_api_token,
+            allegroIdMasked: masked.allegro_client_id,
+            allegroSecretMasked: masked.allegro_client_secret,
           }}
         />
       </div>

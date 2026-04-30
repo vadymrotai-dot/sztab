@@ -16,10 +16,21 @@ export interface ApiKeysFormProps {
   geminiMasked: string | null
   apifyMasked: string | null
   krsMasked: string | null
+  // Sprint S3 prep — Allegro REST API credentials (Sprint S3 będzie
+  // używać do Allegro Analytics module).
+  allegroIdMasked: string | null
+  allegroSecretMasked: string | null
 }
 
+type FieldId =
+  | 'gemini_key'
+  | 'apify_api_token'
+  | 'krs_rejestr_api_token'
+  | 'allegro_client_id'
+  | 'allegro_client_secret'
+
 interface KeyField {
-  id: 'gemini_key' | 'apify_api_token' | 'krs_rejestr_api_token'
+  id: FieldId
   label: string
   placeholder: string
   helpText: string
@@ -48,28 +59,50 @@ const FIELDS: KeyField[] = [
     helpText: 'Wymagane dla Deep Discovery (NIP/KRS verification).',
     helpUrl: 'https://rejestr.io/',
   },
+  {
+    id: 'allegro_client_id',
+    label: 'Allegro Client ID',
+    placeholder: '31a9...',
+    helpText: 'ID aplikacji z apps.developer.allegro.pl (Sprint S3 — Allegro Analytics).',
+    helpUrl: 'https://apps.developer.allegro.pl',
+  },
+  {
+    id: 'allegro_client_secret',
+    label: 'Allegro Client Secret',
+    placeholder: '...',
+    helpText: 'Sekretny klucz aplikacji Allegro (rotacja w panelu deweloperskim).',
+    helpUrl: 'https://apps.developer.allegro.pl',
+  },
 ]
 
 export function ApiKeysForm({
   geminiMasked,
   apifyMasked,
   krsMasked,
+  allegroIdMasked,
+  allegroSecretMasked,
 }: ApiKeysFormProps) {
   const [pending, startTransition] = useTransition()
-  const [values, setValues] = useState<Record<KeyField['id'], string>>({
+  const [values, setValues] = useState<Record<FieldId, string>>({
     gemini_key: '',
     apify_api_token: '',
     krs_rejestr_api_token: '',
+    allegro_client_id: '',
+    allegro_client_secret: '',
   })
-  const [show, setShow] = useState<Record<KeyField['id'], boolean>>({
+  const [show, setShow] = useState<Record<FieldId, boolean>>({
     gemini_key: false,
     apify_api_token: false,
     krs_rejestr_api_token: false,
+    allegro_client_id: false,
+    allegro_client_secret: false,
   })
-  const [maskedState, setMaskedState] = useState({
+  const [maskedState, setMaskedState] = useState<Record<FieldId, string | null>>({
     gemini_key: geminiMasked,
     apify_api_token: apifyMasked,
     krs_rejestr_api_token: krsMasked,
+    allegro_client_id: allegroIdMasked,
+    allegro_client_secret: allegroSecretMasked,
   })
 
   const handleSave = () => {
@@ -99,8 +132,7 @@ export function ApiKeysForm({
       for (const key of result.updated) {
         const fresh = update[key]
         if (fresh && fresh.length >= 12) {
-          newMasked[key as KeyField['id']] =
-            `${fresh.slice(0, 4)}...${fresh.slice(-4)}`
+          newMasked[key as FieldId] = `${fresh.slice(0, 4)}...${fresh.slice(-4)}`
         }
       }
       setMaskedState(newMasked)
@@ -108,6 +140,8 @@ export function ApiKeysForm({
         gemini_key: '',
         apify_api_token: '',
         krs_rejestr_api_token: '',
+        allegro_client_id: '',
+        allegro_client_secret: '',
       })
       toast.success(`Zapisano klucze: ${result.updated.join(', ')}`)
     })
