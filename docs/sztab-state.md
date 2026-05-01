@@ -358,3 +358,42 @@ Cohort: "Pierwsza partia HoReCa kiszonki/buraki" (29.04.2026, 12:32:23)
   - app/api/contact-enrichment/route.ts — заповнити logic
   - UI button "Znajdź kontakt" на /clients/[id] де kontakt empty
 
+
+---
+
+## Sprint S5B Legacy Routes Audit (2026-05-01)
+
+8 legacy English routes audited — `app/(dashboard)/{dashboard,products,deals,tasks,goals,habits,calculator,kp-generator}/page.tsx`. Sidebar теper points до nowych Polish routes (S5A), але legacy subtrees mogą być wciąż wired через internal references і edit/create sub-pages.
+
+### KEEP (live wiring, do NOT delete)
+
+| Route | Why keep |
+|---|---|
+| `/dashboard` (135 lines) | Real production sales pipeline dashboard z 10 distinct queries (overdue actions, won/lost MTD, stuck negotiations, closing-soon, tasks today, habits week-grid). NOT duplicate of `/pulpit/dzisiaj` — different scope (pipeline-focused vs daily ops). **Login flow redirects here** (`app/auth/login/page.tsx:35`). Future: consider merging or splitting in S5C+. |
+| `/deals` subtree (`/deals`, `/deals/new`, `/deals/[id]`, `/deals/[id]/edit`, `/deals/[id]/margin`) | `deal-modal` navigates `router.push('/deals')` after cancel, `router.push('/deals/${id}')` after create. `new-deal-button` from /clients/[id] navigates `/deals/${id}`. /sprzedaz?tab=umowy renders DealsKanban inside wrapper, але `/deals/new` is LIVE create flow. Heavy coupling — deletion requires refactor. |
+| `/products` subtree (`/products`, `/products/new`, `/products/[id]/edit`) | /produkty (S4) zastąpiło main view, але /products top-level wciąż renderuje Katalog + Dopasowania tabs (Dopasowania reachable z MatchesGlobalView). /products/new + /products/[id]/edit are real CRUD pages. /produkty не ma edit forms. |
+
+### CANDIDATES FOR DELETION (orphan, no internal refs)
+
+| Route | Lines | Equivalent | Refs |
+|---|---|---|---|
+| `/goals` | 19 | /organizer?tab=cele | 0 |
+| `/calculator` | 19 | /organizer?tab=kalkulator | 0 |
+| `/kp-generator` | 24 | /sprzedaz?tab=kp | 0 |
+
+Each is a thin wrapper rendering shared component already used by Polish replacement. Safe to delete без impact.
+
+### CANDIDATES FOR REDIRECT (1 internal ref each)
+
+| Route | Lines | Used by | Suggested redirect |
+|---|---|---|---|
+| `/tasks` | 31 | `dashboard-content.tsx:301` `/tasks?focus=${task.id}` | `redirect('/organizer?tab=zadania')` — but loses ?focus param. Better: change dashboard-content link до /organizer?tab=zadania&focus=... + verify TasksContent reads ?focus (currently does NOT — `Grep "focus"` returned 0). Drop deep-link feature OR add focus support до TasksContent. |
+| `/habits` | 19 | `dashboard-content.tsx:658` `/habits` | `redirect('/organizer?tab=nawyki')` — lossless redirect. /organizer renders HabitsContent в Nawyki tab. Safe. |
+
+### TODO Sprint S5C+
+
+- [ ] Decide: delete /goals, /calculator, /kp-generator (orphans). Cost: 3 lines × 3 commits or 1 batch commit.
+- [ ] Decide: redirect /habits → /organizer?tab=nawyki. Verify dashboard-content link still works.
+- [ ] Decide: redirect /tasks → /organizer?tab=zadania (lossy: ?focus param) OR keep /tasks until TasksContent supports ?focus.
+- [ ] Audit how /dashboard relates to /pulpit/dzisiaj — merge as Sales tab or keep separate? Update auth/login redirect target.
+- [ ] /products top-level: keep як landing для Dopasowania tab чи delete after migrating MatchesGlobalView consumers до /matches?
