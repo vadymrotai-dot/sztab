@@ -3,8 +3,8 @@
 
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -46,18 +46,30 @@ function isValidNip(raw: string): boolean {
 
 export function LookupForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [nip, setNip] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<LookupResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const autoTriggeredRef = useRef(false)
 
   const nipValid = isValidNip(nip)
 
-  async function handleSubmit() {
-    if (!nipValid) {
-      setError('Niepoprawny NIP')
-      return
-    }
+  // Sprint S5B-2 — read ?nip= URL param na mount + auto-trigger lookup
+  // gdy NIP valid (10-cyfr + checksum). Якщо invalid — set input value
+  // тilko, без trigger. Idempotent — fires once per nip param.
+  useEffect(() => {
+    const param = searchParams.get('nip') ?? ''
+    if (!param) return
+    setNip(param)
+    if (autoTriggeredRef.current) return
+    if (!isValidNip(param)) return
+    autoTriggeredRef.current = true
+    void runLookup(param.replace(/\D/g, ''))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+
+  async function runLookup(normalizedNip: string) {
     setLoading(true)
     setError(null)
     setResult(null)
@@ -65,7 +77,7 @@ export function LookupForm() {
       const res = await fetch('/api/intelligence/lookup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nip: nip.replace(/\D/g, '') }),
+        body: JSON.stringify({ nip: normalizedNip }),
       })
       const json = await res.json()
       if (!json.ok) {
@@ -79,6 +91,14 @@ export function LookupForm() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function handleSubmit() {
+    if (!nipValid) {
+      setError('Niepoprawny NIP')
+      return
+    }
+    await runLookup(nip.replace(/\D/g, ''))
   }
 
   return (
