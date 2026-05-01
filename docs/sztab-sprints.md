@@ -206,3 +206,30 @@ END OF SPRINTS.
 - S5B: Quick UX fixes (KRS refresh, ?nip= prefill, /admin index, legacy routes) — наступне
 - S5C: Tavily contact enrichment — після S5B
 
+
+
+---
+
+## S5B SHIPPED 01.05.2026 — Quick UX Fixes (5 commits)
+
+### Final commits:
+- da4dc90 KRS refresh button + endpoint
+- b356fd7 ?nip= prefill + auto-trigger
+- 894f536 /admin redirect + sidebar logo fix
+- 7318931 Legacy routes audit doc
+- 4765198 Legacy cleanup (3 delete + 2 redirect)
+
+### Post-ship: 9/9 PASS via browser MCP
+TASK 1 KRS button: toast feedback works
+TASK 2 ?nip= prefill: auto-trigger confirmed
+TASK 3 /admin redirect: works
+BONUS sidebar logo: /pulpit/dzisiaj
+TASK 4a /habits → /organizer
+TASK 4b /tasks → /organizer
+TASK 4c /goals 404
+TASK 4d /calculator 404
+TASK 4e /kp-generator 404
+
+### Sprint S5 status: S5A + S5B = COMPLETE
+S5C (Tavily) — наступним днем свіжим.
+

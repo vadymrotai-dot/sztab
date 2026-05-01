@@ -397,3 +397,43 @@ Each is a thin wrapper rendering shared component already used by Polish replace
 - [ ] Decide: redirect /tasks → /organizer?tab=zadania (lossy: ?focus param) OR keep /tasks until TasksContent supports ?focus.
 - [ ] Audit how /dashboard relates to /pulpit/dzisiaj — merge as Sales tab or keep separate? Update auth/login redirect target.
 - [ ] /products top-level: keep як landing для Dopasowania tab чи delete after migrating MatchesGlobalView consumers до /matches?
+
+
+---
+
+## S5B SHIP STATUS — 01.05.2026 (post-ship verified)
+
+**Commits (5):**
+- da4dc90 — KRS-only refresh endpoint + button (toast feedback)
+- b356fd7 — /intelligence/lookup ?nip= prefill + auto-trigger
+- 894f536 — /admin redirect + sidebar logo /dashboard → /pulpit/dzisiaj
+- 7318931 — Legacy routes audit appended до docs/sztab-state.md
+- 4765198 — Legacy routes cleanup (3 delete + 2 redirect)
+
+**Verification by:** Claude через browser MCP (9/9 PASS)
+
+### Що тепер працює:
+- "Pobierz z KRS" buttons на /clients/[id] — actual KRS-only refresh (~20-40s)
+- /intelligence/lookup?nip=XXX — input pre-filled, lookup auto-triggered
+- /admin URL — redirect to /admin/health
+- Sidebar logo "Sztab CRM" → /pulpit/dzisiaj (не legacy /dashboard)
+- /habits, /tasks → redirect /organizer (для bookmarks compat)
+
+### Що delete-нуто:
+- /goals, /calculator, /kp-generator — orphan routes (нічого не лінкувало)
+
+### Що залишається в Sprint S5C (preserved для подальшого audit):
+- /dashboard subtree (used by old code paths)
+- /products + /products/new + /products/[id]/edit (legacy CRUD)
+- /deals + /deals/* (legacy CRUD з /deals/[id]/margin)
+
+### Сумарно через Sprint S5 (S5A + S5B):
+- 5 раніше прихованих сторінок тепер findable в sidebar
+- 4 UX bugs виправлено
+- 5 legacy routes обcлужено (3 delete + 2 redirect)
+- 0 нових features (sprint був суто навігаційно-cosmetic)
+
+### Залишилось у Sprint S5C (не shipped сьогодні):
+- Tavily contact enrichment (Settings + endpoint + UI button)
+- Deeper audit /dashboard, /products, /deals
+
