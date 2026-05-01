@@ -266,3 +266,47 @@ S5C (Tavily) — наступним днем свіжим.
 ### Залежності:
 - Sprint S5C (Tavily в params pattern) має бути shipped — інакше Tavily в orchestrator не працюватиме
 
+
+
+---
+
+## S5C SHIPPED 01.05.2026 evening — Tavily Migration to params Pattern
+
+**Status:** GREEN ✅ — verified live by Claude (browser MCP) + enrichment_log
+
+### Commits (3):
+- 2382a63 — S5C-1: migration 045 + apply (column verified text)
+- 995683e — S5C-2: actions/params + api-keys-form + settings page  
+- c17ef1f — S5C-3: lookup/route.ts params first з env fallback
+
+### Що тепер працює:
+- params.tavily_api_key column в DB
+- Settings UI Klucze API tab — нове поле "Tavily API key" з save/mask
+- lookup/route.ts читає params.tavily_api_key першим, fallback на 
+  process.env.TAVILY_API_KEY (legacy compat)
+- Tavily запускається в Phase B (5 successful runs за 6h verified)
+- AI business analysis use Tavily output (видно "tavily" в "Źródła analizy" 
+  на KOZAK profile)
+
+### Verification process (включає мій failure):
+
+Я (Claude in claude.ai) спершу думав Tavily НЕ працює, бо не бачив його в
+response.sources_completed на /intelligence/lookup. Це було Protocol 8 
+failure mode #5 (вірити звітам без власної перевірки). Vadym зловив це 
+питанням "ти сам перевіряв чи знову не по протоколу робиш?".
+
+Виправлення: пішов на live KOZAK profile, побачив "Źródła analizy: ..., 
+tavily" і AI text що згадує Tavily результат. Дві independent evidences:
+1. Architectural diagnosis Claude Code (Phase A/B split)
+2. Live profile screenshot Claude (browser MCP) — Tavily в analiza output
+
+### Discovery #2 logged до docs/sztab-state.md:
+PHASE A / PHASE B split — пояснює багато попередніх misunderstandings про те
+що Sztab "не показує enrichment results". Це тому що response виводить тільки
+Phase A. Connection до Protocol 13 (Two Fundamental Analysis Buttons).
+
+### Залишки для Sprint S6 (deferred):
+- Surface PHASE B status у lookup response (phase_b_pending field)
+- Client-side polling /api/intelligence/enrichment-status
+- Two Fundamental Analysis Buttons (Protocol 13) з 2-stage progress bar
+

@@ -356,3 +356,25 @@ PHASE 2 — AI на основі ГОТОВИХ даних (ТІЛЬКИ ПІС�
 ### Discovery context (01.05.2026):
 Vadym сформулював це принцип evening session, після того як Sprint S5C (Tavily) був заплановано. Це ПРИНЦИП, не feature — впливає на всі майбутні sprintы.
 
+
+
+---
+
+## PROTOCOL 8 — UPDATE 01.05.2026 evening
+
+### Failure mode #8 (NEW):
+**01.05.2026 evening:** прийняв звіт Claude Code "Tavily working" як success без власної верифікації на live. Vadym зловив питанням "ти сам перевіряв чи знову не по протоколу робиш?".
+
+Конкретно:
+- Claude Code report-нув "5 success runs у enrichment_log"
+- Я записав це як verification, не клікнув на профіль клієнта
+- Реальна verification (post-correction) показала Tavily в "Źródła analizy" 
+  на KOZAK profile — Tavily реально працює, але це я мав побачити САМ ВІДРАЗУ
+
+### Anti-pattern (NEW):
+- Claude Code звітує "це працює" → я записую success → STOP
+- Правильно: Claude Code звітує → я через browser MCP клікаю на UI artefact 
+  де результат має з'явитися → побачив → записую success
+- Логи в БД = evidence що call виконався, але НЕ evidence що user-facing 
+  output працює. Завжди перевіряти на UI.
+

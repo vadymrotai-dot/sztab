@@ -437,3 +437,85 @@ Each is a thin wrapper rendering shared component already used by Polish replace
 - Tavily contact enrichment (Settings + endpoint + UI button)
 - Deeper audit /dashboard, /products, /deals
 
+
+
+---
+
+## DISCOVERY #2 (01.05.2026 evening) — PHASE A / PHASE B SPLIT
+
+**Discovered during:** Sprint S5C verification — Tavily не з'являвся в response.sources_completed навіть після successful migration to params pattern.
+
+### Architectural finding:
+
+/api/intelligence/lookup/route.ts має split на 2 phases (Sprint M FIX 3):
+
+**PHASE A (sync, returns response, ~10-30s):**
+- GUS identity
+- VAT_BL status
+- KRS basic
+- Initial matching (algo only)
+- Returns response.sources_completed = [GUS, GUS_branches, VAT_BL, KRS, matching]
+- response.phase = 'A_complete', enrichment_pending = true
+
+**PHASE B (async via Next.js after(), runs AFTER response, ~2-3 min):**
+- BZP signals
+- Comprehensive rejestrio (rozdzialy, sprawozdania, persons, CRBR)
+- Apify GMaps
+- Tavily web search (STEP 4.5)
+- AI business analysis
+- Final match recompute з AI re-score
+
+PHASE B має OWN local response object built up but NEVER returned anywhere — 
+тільки logs до enrichment_log table.
+
+### Чому це існує:
+
+Sprint M FIX 3 split orchestrator тому що full pipeline ~2-3 min перевищує
+Vercel sync 30s timeout. Phase A returns < 30s, Phase B continues у background
+з 120s function ceiling.
+
+### Що це міняє в розумінні:
+
+Раніше я думав "lookup robить 6 sources одразу і повертає всі". Реально:
+- Користувач бачить тільки Phase A (4-5 sources)
+- Phase B працює у тлі, не surface-ується в UI
+- Tavily, Apify_GMaps, AI analysis — всі у Phase B
+- Дані в БД оновлюються через ~30-60s після response, але UI цього не показує
+
+### Connection до Protocol 13 (Two Fundamental Analysis Buttons):
+
+Це pattern ВЖЕ implement-овано на backend (sources fetch перш ніж AI). Просто
+UI його не surface-ує. Sprint S6 (Two Fundamental Buttons) має зробити це 
+visible:
+
+PHASE 1 — sources (Phase A + початкова Phase B без AI)
+PHASE 2 — AI на основі готових даних (тільки після Phase B sources finished)
+
+UI прогресс має показувати обидва phaseы з indicator "Pobieranie danych
+(X/Y źródeł)..." → "Analiza AI..." як описано в Protocol 13.
+
+### Що НЕ виправляємо в S5C:
+
+PHASE A response misleadingly returns sources_completed з 4-5 entries без
+indication що PHASE B ще running. Це окрема UX issue, не блокер для Sprint S5C
+core goal (Tavily migration).
+
+Fix paths (deferred to Sprint S6):
+- Quick: dodaj phase_b_pending: ['tavily', 'apify', 'AI_business_analysis'] 
+  do PHASE A response
+- Better: client-side polling /api/intelligence/enrichment-status (existing)
+  щоб updateować UI gdy PHASE B finishes
+- Best: Two Fundamental Analysis Buttons (Sprint S6) з 2-stage progress bar
+
+### Verified evidence (Vadym + Claude live test 01.05.2026):
+
+- enrichment_log table за останні 6h: tavily 5 success runs (cost recorded), 
+  AI_business_analysis 5 success, Apify_GMaps 2 partial, BZP 5 success
+- params.tavily_api_key: present, length=58, prefix tvly-
+- KOZAK profile (NIP 7561993172) Analiza biznesowa (AI) показує:
+  * "Źródła analizy: GUS, VAT_BL, WWW, KRS, persons, tavily" — Tavily в списку
+  * AI text згадує "brak obecności online" — інтерпретація Tavily empty result
+  * Datowana 1.05.2026, model claude-haiku-4-5 — fresh Phase B output
+
+**Tavily ПРАЦЮЄ end-to-end. Просто не visible в Phase A response.**
+
