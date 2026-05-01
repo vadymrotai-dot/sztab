@@ -28,6 +28,8 @@ interface LookupResponse {
   persons_created: number
   top_matches: Array<{ product_id: string; product_name: string; combined_score: number }>
   errors: string[]
+  /** Sprint S5D — sources running w background after PHASE A response. */
+  phase_b_pending?: string[]
 }
 
 // Polish NIP checksum
@@ -125,7 +127,7 @@ export function LookupForm() {
             {loading ? (
               <>
                 <Loader2Icon className="size-4 mr-2 animate-spin" />
-                Pobieranie danych z 6 źródeł...
+                Pobieranie danych...
               </>
             ) : (
               <>
@@ -188,6 +190,26 @@ export function LookupForm() {
                 ))}
               </ul>
             </div>
+
+            {/* Sprint S5D — Phase B sources running async w tle. Static
+                list — nie polluj, just shows what's pending. */}
+            {result.phase_b_pending && result.phase_b_pending.length > 0 && (
+              <div className="space-y-1 rounded border border-dashed border-amber-300 bg-amber-50/40 p-3">
+                <div className="text-xs font-medium text-amber-800">
+                  🔄 Trwa w tle (~30-60s)
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Te źródła są pobierane w tle. Odśwież profil firmy za minutę aby zobaczyć aktualne dane.
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {result.phase_b_pending.map((source) => (
+                    <Badge key={source} variant="outline" className="border-amber-400 text-amber-800">
+                      {source}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {result.top_matches.length > 0 && (
               <div className="space-y-1">

@@ -62,6 +62,11 @@ interface LookupResponse {
   persons_created: number
   top_matches: Array<{ product_id: string; product_name: string; combined_score: number }>
   errors: string[]
+  /** Sprint S5D — sources scheduled to run async w PHASE B (after()).
+   *  Surfaces background work do UI (kompletny list aby zobaczyć co
+   *  jeszcze przyjdzie, бeż misleading "X sources_completed" message
+   *  gdy Tavily/Apify/AI runs trwają). */
+  phase_b_pending?: string[]
 }
 
 export async function POST(req: Request) {
@@ -436,6 +441,20 @@ export async function POST(req: Request) {
   const phaseB_entityType = entityType
   const phaseB_krsNumber = krsNumber
   const phaseB_params = params
+
+  // Sprint S5D — surface conditional Phase B sources do response.
+  // Replicate tavily key resolution з runPhaseB line ~512 (params first,
+  // env fallback) tak żeby pending list było honest (nie pokażmy tavily
+  // gdy brak klucza). Apify pre-flight (existing-contact check) decyduje
+  // wewnątrz runPhaseB — tu pokazujemy "może run" gdy klucz present.
+  const tavilyWillRun = !!(params.tavily_api_key || process.env.TAVILY_API_KEY)
+  const pending: string[] = ['BZP', 'persons']
+  if (krsNumber) pending.push('rejestrio_v2')
+  if (tavilyWillRun) pending.push('tavily')
+  if (params.apify_api_token) pending.push('Apify_GMaps')
+  if (params.anthropic_api_key) pending.push('AI_business_analysis')
+  response.phase_b_pending = pending
+
   after(async () => {
     await runPhaseB({
       clientId: phaseB_clientId,
