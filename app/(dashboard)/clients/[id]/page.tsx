@@ -24,6 +24,7 @@ import { SignalsSection } from '@/components/clients/signals-section'
 import { ContactSectionV2 } from '@/components/clients/contact-section-v2'
 import { ClientDetailActions } from '@/components/clients/client-detail-actions'
 import { SectionActionLink } from '@/components/clients/section-action-link'
+import { KrsRefreshButton } from '@/components/clients/krs-refresh-button'
 
 const statusColor: Record<string, string> = {
   nowy: 'bg-blue-500',
@@ -307,7 +308,7 @@ export default async function ClientDetailPage({
           title="Sprawozdania finansowe"
           meta={fsMeta}
           detailHref={`/clients/${id}/sprawozdania`}
-          action={c.nip ? <SectionActionLink label="Pobierz z KRS" href={`/clients/${id}#krs-refresh`} /> : null}
+          action={<KrsRefreshButton clientId={id} enabled={Boolean(c.nip)} />}
         >
           <FinancialStatementsTable rows={fs} />
         </AccordionSection>
@@ -316,7 +317,7 @@ export default async function ClientDetailPage({
           id="osoby"
           title="Osoby"
           meta={personsMeta}
-          action={c.nip ? <SectionActionLink label="Pobierz z KRS" href={`/clients/${id}#krs-refresh`} /> : null}
+          action={<KrsRefreshButton clientId={id} enabled={Boolean(c.nip)} />}
         >
           <PersonsSectionV2 persons={personsForSection} crbr={crbrEntries} />
         </AccordionSection>
