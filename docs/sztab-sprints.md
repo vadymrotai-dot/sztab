@@ -233,3 +233,36 @@ TASK 4e /kp-generator 404
 ### Sprint S5 status: S5A + S5B = COMPLETE
 S5C (Tavily) — наступним днем свіжим.
 
+
+
+---
+
+## SPRINT S6 — Two Fundamental Analysis Buttons (planned)
+
+**Architecture basis:** Protocol 13 (TWO FUNDAMENTAL ANALYSIS BUTTONS)
+**Discovered/articulated:** 01.05.2026 evening
+**Estimated:** ~3-4 години (через 2 entity views + pipeline orchestration)
+
+### S6A — "Аналіз клієнта" button (~1.5-2 год)
+- Action bar на /clients/[id] — primary button "Аналіз клієнта" (золотий accent)
+- Orchestrator endpoint POST /api/clients/[id]/full-analysis
+- Phase 1 sources: всі що уже існують для клієнтів (через існуючі endpoints або direct lib calls)
+- Phase 2 AI: re-score matching + business-analysis + всі AI які залежать від raw даних
+- UI: 2-stage progress bar "Pobieranie danych (X/Y)..." → "Analiza AI..."
+- Toast: success/partial з summary "Aktualizowano N pól, K matchesów"
+- Existing per-source buttons NOT removed
+
+### S6B — "Аналіз товару" button (~1.5-2 год)
+- Така ж архітектура для /produkty/[id]
+- Phase 1 sources для продукту (треба audit що це саме — ймовірно: matching candidates fetch, Apify Allegro pricing scrape, Tavily search)
+- Phase 2 AI: deep-discovery, scoring re-run
+
+### Pre-S6 audit потрібен:
+- Які джерела існують для клієнта (всі endpoints)
+- Які джерела існують для продукту (можливо менше ніж для клієнта)
+- Які AI steps depend на raw data (щоб правильно розташувати у Phase 2)
+- Чи orchestrator вже існує (lib/orchestrator/ або similar)
+
+### Залежності:
+- Sprint S5C (Tavily в params pattern) має бути shipped — інакше Tavily в orchestrator не працюватиме
+

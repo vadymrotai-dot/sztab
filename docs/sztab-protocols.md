@@ -306,3 +306,53 @@ git push
 ---
 
 END OF PROTOCOLS (12 total).
+
+
+---
+
+## ПРОТОКОЛ 13 — UX PATTERN: TWO FUNDAMENTAL ANALYSIS BUTTONS (NEW 01.05.2026 evening)
+
+Sztab UX базується на двох fundamental кнопках на двох центральних entity views.
+
+### Дві fundamental кнопки:
+
+**1. "Аналіз клієнта"** на /clients/[id]
+- One click → запускає ВЕСЬ analysis pipeline для цього клієнта
+- Підтягує всі джерела які є для клієнтів: KRS, GUS, GUS_branches, VAT_BL, BZP, CRBR, Apify_GMaps, Apify Panorama, Tavily web search, Allegro presence
+
+**2. "Аналіз товару"** на /produkty/[id]
+- One click → запускає ВЕСЬ analysis pipeline для цього продукту
+- Підтягує всі джерела які є для продуктів: matching candidates, Apify pricing comparisons, Allegro listings, OpenFoodFacts, Tavily search для buying signals
+
+### Pipeline architecture (КРИТИЧНО):
+
+PHASE 1 — Data sources (паралельно або серіально, але БЕЗ AI):
+- Всі raw data fetchers крутяться першими
+- Toast progress per source
+- Не запускати AI на цьому етапі
+
+PHASE 2 — AI на основі ГОТОВИХ даних (ТІЛЬКИ ПІСЛЯ Phase 1):
+- AI re-score matching
+- AI business analysis
+- AI cold opener generation
+- AI працює з повним contextom з усіх джерел
+
+**WHY це важливо:** якщо AI запускається паралельно з джерелами, він аналізує неповні/застарілі дані → garbage in → garbage out. AI має останнє слово в pipeline, не перше.
+
+### Per-source кнопки залишаються:
+Окремі кнопки (наприклад "Pobierz z KRS", "Sprawdź BZP", "Wygeneruj cold opener") НЕ видаляємо — вони для specific cases (refresh тільки одного джерела, regenerate тільки cold opener). Але головний flow Vadym = одна fundamental кнопка.
+
+### Anti-patterns які блокую:
+- Пропонувати "Run All Sources" як окрему кнопку без чіткої seriaлізації AI ПІСЛЯ — STOP
+- Запускати AI re-score паралельно з джерелами — STOP
+- Робити granular checkbox UI "виберіть джерела" як головний UX — STOP (це advanced mode, не основний)
+- Думати про окремі джерела як "feature" — STOP, джерела це raw data layer, fundamental UX = aggregated buttons
+
+### Implementation hints для майбутніх sprintів:
+- Phase 1 джерел можна зробити паралельно через Promise.allSettled (швидше) АБО серіально (легше debug). Test both.
+- Між Phase 1 і Phase 2 — checkpoint "all sources done" event перш ніж AI starts
+- UI показує progress bar з 2 фазами: "Pobieranie danych (X/Y źródeł)..." → "Analiza AI..."
+
+### Discovery context (01.05.2026):
+Vadym сформулював це принцип evening session, після того як Sprint S5C (Tavily) був заплановано. Це ПРИНЦИП, не feature — впливає на всі майбутні sprintы.
+
