@@ -310,3 +310,29 @@ Phase A. Connection до Protocol 13 (Two Fundamental Analysis Buttons).
 - Client-side polling /api/intelligence/enrichment-status
 - Two Fundamental Analysis Buttons (Protocol 13) з 2-stage progress bar
 
+
+
+---
+
+## S5D SHIPPED 01.05.2026 evening — Phase B Status Surface (Quick Fix)
+
+**Type:** Quick patch (~30-45 хв як планували, fact ~25 хв including verification)
+**Commits:** 1 commit
+**Verification:** 5/5 OK via browser MCP
+
+### Що включалось:
+- Backend: phase_b_pending field в LookupResponse + conditional list
+- Frontend: amber dashed card з outline badges
+- Bonus: button copy "Pobieranie danych..." без hardcoded "6 źródeł"
+
+### Status:
+SHIPPED. Sztab lookup тепер honest про що готово і що буде running.
+
+### Sprint S5 — fully complete:
+- S5A — Sidebar Navigation Fix ✅
+- S5B — Quick UX fixes (KRS refresh, ?nip= prefill, /admin redirect, legacy cleanup) ✅
+- S5C — Tavily migration to params pattern ✅
+- S5D — Phase B status surface ✅
+
+Sprint S6 (Two Fundamental Analysis Buttons) — наступним днем свіжими.
+

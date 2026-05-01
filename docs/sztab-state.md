@@ -519,3 +519,44 @@ Fix paths (deferred to Sprint S6):
 
 **Tavily ПРАЦЮЄ end-to-end. Просто не visible в Phase A response.**
 
+
+
+---
+
+## S5D SHIPPED 01.05.2026 evening — Phase B Status Surface
+
+**Status:** GREEN ✅ — verified live by Claude (browser MCP)
+**Commit:** 1 commit (S5D), feat: surface phase_b_pending in lookup response
+**Tested NIPs:** 1231562224 (JDG), 7561993172 (sp.z o.o.)
+
+### Що тепер працює:
+
+**1. Button copy fix:**
+- Loading state: "Pobieranie danych..." (раніше було "Pobieranie danych z 6 źródeł..." — hardcoded "6" misleading)
+
+**2. Phase B status surface:**
+- LookupResponse interface extended з phase_b_pending: string[]
+- Phase A response budowane conditionally на основі available API keys + entity type:
+  * Always: BZP, persons
+  * if (krsNumber): rejestrio_v2
+  * if (tavily_api_key OR env fallback): tavily
+  * if (apify_api_token): Apify_GMaps
+  * if (anthropic_api_key): AI_business_analysis
+
+**3. UI render (lookup-form.tsx):**
+- Amber dashed-border card під sources_completed
+- Header "🔄 Trwa w tle (~30-60s)"
+- Helper text "Te źródła są pobierane w tle. Odśwież profil firmy za minutę aby zobaczyć aktualne dane."
+- Outline badges per pending source
+
+### Verified evidence:
+- JDG (Domek Sushi 1231562224): 5 pending (BZP, persons, tavily, Apify_GMaps, AI_business_analysis) — без rejestrio_v2 бо JDG не має KRS
+- sp.z o.o. (KOZAK 7561993172): 6 pending (з rejestrio_v2) — conditional logic працює правильно
+
+### Що це міняє в UX:
+
+Раніше: користувач бачив 4-5 sources в response, не знав чому "z 6 źródeł" не виконано → frustration
+Тепер: користувач бачить готові sources + список того що ще running у тлі + інструкцію "Odśwież profil за хвилину"
+
+Це precursor до Sprint S6 (Two Fundamental Analysis Buttons з 2-stage progress bar).
+
