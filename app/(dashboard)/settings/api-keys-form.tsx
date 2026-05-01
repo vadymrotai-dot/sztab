@@ -20,6 +20,8 @@ export interface ApiKeysFormProps {
   // używać do Allegro Analytics module).
   allegroIdMasked: string | null
   allegroSecretMasked: string | null
+  // Sprint S5C — Tavily web-search API key (intelligence/lookup STEP 4.5).
+  tavilyMasked: string | null
 }
 
 type FieldId =
@@ -28,6 +30,7 @@ type FieldId =
   | 'krs_rejestr_api_token'
   | 'allegro_client_id'
   | 'allegro_client_secret'
+  | 'tavily_api_key'
 
 interface KeyField {
   id: FieldId
@@ -73,6 +76,14 @@ const FIELDS: KeyField[] = [
     helpText: 'Sekretny klucz aplikacji Allegro (rotacja w panelu deweloperskim).',
     helpUrl: 'https://apps.developer.allegro.pl',
   },
+  {
+    id: 'tavily_api_key',
+    label: 'Tavily API key',
+    placeholder: 'tvly-...',
+    helpText:
+      'Wymagane dla web search (Sprint L Phase 2 — intelligence/lookup STEP 4.5: website / Facebook / Instagram / news).',
+    helpUrl: 'https://app.tavily.com/home',
+  },
 ]
 
 export function ApiKeysForm({
@@ -81,6 +92,7 @@ export function ApiKeysForm({
   krsMasked,
   allegroIdMasked,
   allegroSecretMasked,
+  tavilyMasked,
 }: ApiKeysFormProps) {
   const [pending, startTransition] = useTransition()
   const [values, setValues] = useState<Record<FieldId, string>>({
@@ -89,6 +101,7 @@ export function ApiKeysForm({
     krs_rejestr_api_token: '',
     allegro_client_id: '',
     allegro_client_secret: '',
+    tavily_api_key: '',
   })
   const [show, setShow] = useState<Record<FieldId, boolean>>({
     gemini_key: false,
@@ -96,6 +109,7 @@ export function ApiKeysForm({
     krs_rejestr_api_token: false,
     allegro_client_id: false,
     allegro_client_secret: false,
+    tavily_api_key: false,
   })
   const [maskedState, setMaskedState] = useState<Record<FieldId, string | null>>({
     gemini_key: geminiMasked,
@@ -103,6 +117,7 @@ export function ApiKeysForm({
     krs_rejestr_api_token: krsMasked,
     allegro_client_id: allegroIdMasked,
     allegro_client_secret: allegroSecretMasked,
+    tavily_api_key: tavilyMasked,
   })
 
   const handleSave = () => {
@@ -142,6 +157,7 @@ export function ApiKeysForm({
         krs_rejestr_api_token: '',
         allegro_client_id: '',
         allegro_client_secret: '',
+        tavily_api_key: '',
       })
       toast.success(`Zapisano klucze: ${result.updated.join(', ')}`)
     })

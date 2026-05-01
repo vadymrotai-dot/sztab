@@ -14,6 +14,11 @@ export type ParamsKeyUpdate = {
   // tarciem).
   allegro_client_id?: string | null
   allegro_client_secret?: string | null
+  // Sprint S5C — Tavily web-search API key. Trim-only validator (jak
+  // Allegro): Tavily ma warianty tvly-dev / tvly-prod, false-reject
+  // valid key = większy ból niż false-accept invalid (caller wykryje
+  // 401 при faktycznym wywołaniu).
+  tavily_api_key?: string | null
 }
 
 export type ParamsKeyResult =
@@ -104,6 +109,13 @@ export async function updateParamsKeys(
     updated.push('allegro_client_secret')
   }
 
+  // Sprint S5C — Tavily key. Trim only.
+  if (input.tavily_api_key !== undefined) {
+    const trimmed = input.tavily_api_key?.trim()
+    updates.tavily_api_key = trimmed || null
+    updated.push('tavily_api_key')
+  }
+
   if (updated.length === 0) {
     return { ok: false, error: 'Brak zmian.' }
   }
@@ -142,6 +154,8 @@ export interface MaskedKeys {
   // Sprint S3 prep — Allegro creds masked previews
   allegro_client_id: string | null
   allegro_client_secret: string | null
+  // Sprint S5C — Tavily key masked preview
+  tavily_api_key: string | null
 }
 
 function mask(key: string | null | undefined): string | null {
@@ -161,13 +175,14 @@ export async function getMaskedParamsKeys(): Promise<MaskedKeys> {
       krs_rejestr_api_token: null,
       allegro_client_id: null,
       allegro_client_secret: null,
+      tavily_api_key: null,
     }
   }
 
   const { data } = await supabase
     .from('params')
     .select(
-      'gemini_key, apify_api_token, krs_rejestr_api_token, allegro_client_id, allegro_client_secret',
+      'gemini_key, apify_api_token, krs_rejestr_api_token, allegro_client_id, allegro_client_secret, tavily_api_key',
     )
     .eq('owner_id', user.id)
     .maybeSingle()
@@ -182,5 +197,6 @@ export async function getMaskedParamsKeys(): Promise<MaskedKeys> {
     allegro_client_secret: mask(
       data?.allegro_client_secret as string | null | undefined,
     ),
+    tavily_api_key: mask(data?.tavily_api_key as string | null | undefined),
   }
 }

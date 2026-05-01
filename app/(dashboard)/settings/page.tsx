@@ -22,6 +22,7 @@ export default async function SettingsPage() {
         krsMasked: masked.krs_rejestr_api_token,
         allegroIdMasked: masked.allegro_client_id,
         allegroSecretMasked: masked.allegro_client_secret,
+        tavilyMasked: masked.tavily_api_key,
       }}
     />
   )
