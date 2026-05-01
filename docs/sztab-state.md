@@ -321,3 +321,40 @@ Cohort: "Pierwsza partia HoReCa kiszonki/buraki" (29.04.2026, 12:32:23)
 ---
 
 **END OF AUDIT #2 (revised).**
+
+---
+
+## S5A SHIP STATUS — 01.05.2026 (post-ship verified)
+
+**Commit:** e97c60c
+**Verification by:** Claude через browser MCP (4 screenshots: ss_3327eqple, ss_97566nf64, ss_2190x7tbs, ss_4515aifof, ss_2539619in)
+
+### Sidebar новий стан:
+- 7 top-level visible always (Dziś, Klienci, Sprzedaż, Produkty, Dostawcy, Organizer, Ustawienia)
+- 3 collapsible groups (Klienci, Sprzedaż, Ustawienia) з sub-items
+- Auto-expand коли current route є sub-route цієї групи
+- Active state: leaf exact match, group title prefix match
+- Bonus fix: /products → /produkty (S4 P5 layout)
+
+### 5 раніше прихованих сторінок ТЕПЕР FINDABLE:
+- Klienci → Prospekti → /intelligence/prospects (99 prospekts)
+- Klienci → Lookup NIP → /intelligence/lookup (6-source enrichment)
+- Klienci → AI Discovery → /intelligence
+- Sprzedaż → Dopasowania → /matches (100 dopasowań + bulk ops + Pikniko CSV)
+- Sprzedaż → Pikniko handoff → /handoff/pikniko (cohort 29)
+- Ustawienia → Admin Health → /admin/health (Apify monitoring)
+
+### Mind-shift confirmed:
+"Sztab — це не 'не shipped' продукт. Це тепер findable продукт."
+
+### Що залишається в Sprint S5:
+- S5B (~45 хв) — Quick UX fixes:
+  - "Pobierz z KRS" anchor → working refresh button
+  - ?nip= URL param prefill на /intelligence/lookup
+  - /admin index page (зараз root /admin = 404, тільки /admin/health works)
+  - Legacy duplicate routes (/dashboard, /products, /deals, /tasks, /goals, /habits, /calculator)
+- S5C (~1.5h) — Tavily contact enrichment:
+  - Settings: Tavily API token field
+  - app/api/contact-enrichment/route.ts — заповнити logic
+  - UI button "Znajdź kontakt" на /clients/[id] де kontakt empty
+

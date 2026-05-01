@@ -189,3 +189,20 @@
 ---
 
 END OF SPRINTS.
+
+
+## SPRINT HISTORY UPDATE — S5A SHIPPED 01.05.2026
+
+### S5A — Sidebar Navigation Fix (commit e97c60c) — DONE
+- Refactor components/app-sidebar.tsx з nested collapsible groups
+- 4 groups: Klienci/Sprzedaż/Ustawienia з sub-items, plus 4 flat top-level
+- Auto-expand on route match, active highlight для leaf і group
+- Bonus: /products → /produkty (1-line fix)
+- Build: pnpm run build → Compiled successfully in 4.6s
+- Push: a6477c6..e97c60c main → main
+- Post-ship verification: 11/11 OK (Claude via browser MCP)
+
+### Active phases залишилися:
+- S5B: Quick UX fixes (KRS refresh, ?nip= prefill, /admin index, legacy routes) — наступне
+- S5C: Tavily contact enrichment — після S5B
+
