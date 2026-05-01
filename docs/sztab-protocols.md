@@ -378,3 +378,18 @@ Vadym сформулював це принцип evening session, після т�
 - Логи в БД = evidence що call виконався, але НЕ evidence що user-facing 
   output працює. Завжди перевіряти на UI.
 
+
+---
+
+## Protocol 14 — Git Operations Boundary
+
+Cowork sandbox bash через virtiofs має dentry cache conflicts при git writes у .git/ (validated 01.05.2026). Stale .git/index.lock blocking subsequent operations з EEXIST.
+
+ДОЗВОЛЕНО Cowork: git status, git log, git diff, git show, git blame, git ls-files, git config --get
+
+ЗАБОРОНЕНО Cowork: add, commit, push, pull, fetch, merge, rebase, checkout, stash, reset, tag, branch (create/delete)
+
+Pattern: Cowork edits files → suggests commit message → Vadym виконує commit+push з PowerShell.
+
+Diagnostic ready: handle.exe installed, Defender exclusion C:\Users\vadym\Projects, diagnose-lock.ps1 pattern.
+

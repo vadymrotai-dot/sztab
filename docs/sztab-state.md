@@ -609,3 +609,38 @@ S6B залежить від цих знахідок. S6A (клієнт) може
 - Sprint S5D shipped (✅ done)
 - Vadym energy + 30-45 хв focused time (бажано свіжим, не наприкінці day)
 
+
+---
+
+## 01.05.2026 — Day Wrap
+
+### Shipped
+- Sprint S5 COMPLETE (17 commits): S5A nav + S5B UX + S5C Tavily params + S5D Phase B
+- audit-s6b-product-analysis.md (9da3cb7)
+
+### Cowork validated
+- Computer Use + Browser Use ON, folder C:\Users\vadym\Projects\sztab
+- Stable: read, edit, computer use, browser automation
+- Broken: git writes через sandbox (virtiofs cache) → Protocol 14
+- Defender exclusion C:\Users\vadym\Projects активна; handle.exe installed
+
+### Discovery #4 — S6B scope locked
+- Q1 Ceneo: IN
+- Q2 Allegro: 50+ results/SKU ($0.40)
+- Q3 AI fields ALL MUST: pricing positioning / market saturation / brand authority / buyer segments / recommended actions / risk signals / sourcing intel
+- Q4 storage: hybrid (product_competitor_listings + product_market_signals tables + intelligence_runs.parsed_results JSONB)
+- Q5 UX: hybrid (summary card в ProduktyShell + dedicated /produkty/[id]/analysis page)
+
+### S6B breakdown (18-25h)
+- S6B.0 Allegro 1-SKU smoke test
+- S6B.1 backend orchestrator + migrations 046+047 (5-7h)
+- S6B.2 AI engine lib/ai/product-analysis.ts (4-5h)
+- S6B.3 UI card + dedicated page (6-8h)
+- Precondition: /produkty/[id]/page.tsx НЕ існує → S6A.5
+
+### Verified facts
+- ProduktyShell = ResizablePanelGroup, selection через ?sku= URL state
+- product_attributes: НЕ має CHECK constraint, 102 records усі source='ai'
+- OFF data сидить у product_external.off_payload JSONB
+- Migration 023 enum 'gemini' застаріла vs runtime 'ai' — fix у 046
+
