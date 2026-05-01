@@ -560,3 +560,52 @@ Fix paths (deferred to Sprint S6):
 
 Це precursor до Sprint S6 (Two Fundamental Analysis Buttons з 2-stage progress bar).
 
+
+
+---
+
+## DISCOVERY #3 NEEDED — Sprint S6B Product Analysis Spec (TODO 02.05.2026)
+
+**Triggered by:** Vadym question 01.05.2026 evening — "коли ми будемо робити аналіз товарів? Джерела, результати, UX, структуру? Чи в нас це записано в планах?"
+
+### Поточний стан docs:
+- Protocol 13 (sztab-protocols.md) — записано що "Аналіз товару" це 1 з 2 fundamental кнопок. Лише intent.
+- Sprint S6B (sztab-sprints.md) — записано тільки 2 рядки "Така ж архітектура для /produkty/[id]" + примітка "Pre-S6 audit потрібен".
+
+### Що НЕ зафіксовано і потребує Discovery session:
+1. **Sources** — які саме джерела для аналізу товару? Hipotetycznie:
+   - Apify Allegro scraper (вже є для clients via product matching, але для товару окремо?)
+   - Apify Ceneo scraper (price comparison)
+   - Tavily web search (brand mentions, reviews)
+   - OpenFoodFacts (для food products — ingredients, certifications)
+   - Internal: matching engine (existing) — які клієнти best fit
+   - Allegro Sales Center API (sales velocity, якщо acquired access)
+2. **Результати** — що користувач хоче бачити:
+   - Competitor pricing distribution?
+   - Demand signal (search trends, listings count)?
+   - Best-fit clients (matching from Vadym base)?
+   - Margin opportunity matrix?
+3. **UX** — на /produkty/[id]:
+   - Де primary "Аналіз товару" button (action bar top)?
+   - Як 2-stage progress bar render-иться?
+   - Які accordion sections для results?
+4. **Data model** — чи є `product_analytics` / `product_competitors` tables?
+   - Migration потрібна?
+   - Які columns в products зараз populated?
+
+### Як вирішити:
+Sprint S6 Pre-Audit session (30-45 хв) ПЕРЕД STEP 0 будь-якого S6 phase.
+Audit охоплює:
+- Read app/(dashboard)/produkty/[id]/page.tsx — як зараз product profile рендериться
+- ls app/api/products/* + app/api/intelligence/deep-discovery/[product_id]/* — existing endpoints
+- DB: SELECT column_name FROM information_schema.columns WHERE table_name='products'
+- Read lib/matching/engine.ts — matching engine works for products too?
+- Strategic discovery з Vadym — якi business questions "Аналіз товару" має відповідати
+
+### Не починаємо S6A без цього:
+S6B залежить від цих знахідок. S6A (клієнт) можемо шипити перш ніж — НЕ ризик. Але S6B без spec ризик повтору mistake S5C (writing without verifying).
+
+### Залежності:
+- Sprint S5D shipped (✅ done)
+- Vadym energy + 30-45 хв focused time (бажано свіжим, не наприкінці day)
+
