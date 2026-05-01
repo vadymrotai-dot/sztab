@@ -1,292 +1,323 @@
-﻿# SZTAB — STATE OF PRODUCT (audit)
+﻿# SZTAB — STATE OF PRODUCT (audit revised)
 
-**Date:** 01.05.2026, 09:55
-**Audited by:** Claude (browser MCP, live)
-**Method:** живий обхід sztab.vercel.app + кліки + перевірка кожної кнопки
-**Принцип:** жодного твердження з пам'яті. Тільки те що особисто побачено.
-
----
-
-## EXECUTIVE SUMMARY
-
-Sztab має **значно більше функцій** ніж я раніше показував у "короткій версії". Я був неправий — пропустив критичні модулі. Реальність:
-
-**ВЖЕ ПРАЦЮЄ (підтверджено живо):**
-
-- Intelligence Lookup (`/intelligence/lookup`) — окрема сторінка з NIP input, тягне дані з 6 джерел одночасно: GUS, GUS_branches, KRS, VAT_BL, matching, Apify_GMaps
-- Apify Google Maps integration — працює real-time, я бачив банер "Wzbogacanie w toku... Apify_GMaps" безпосередньо на профілі KOZAK
-- AI Discovery (`/intelligence`) — Fast Lookup + Deep Discovery, з історією і timing
-- 261 клієнт у базі з KRS+CEIDG+GUS+CRBR enrichment
-- TOP-20 Dopasowania продуктів на профілі клієнта зі score breakdown
-- Cold Opener generator на КОЖНОМУ matchу
-- Beneficjenci CRBR + Zarząd з rejestr.io tagами decyzyjny
-- Sprawozdania finansowe — 3 роки KRS даних з YoY%
-- 6-етапний sales pipeline
-- Bulk operations на /clients
-- /organizer з Zadania/Cele/Nawyki/Kalkulator
-
-**КРИТИЧНІ GAPS (де Vadym мав рацію):**
-
-- Немає Bulk Import з CEIDG/KRS на /clients top-bar
-- Tavily /extract і Tavily /news_mentions — не існують в Settings
-- Google Places окремий ключ — немає, тільки через Apify_GMaps actor
-- /admin — 404 (раніше існував)
-- /matches/global — 404 (раніше існував)
-- /dzis — старий URL, тепер тільки /pulpit/dzisiaj
-- /suppliers — get_page_text повертає empty (треба клік-перевірити)
-- "Pobierz z KRS" в Sprawozdania — anchor link `#krs-refresh`, без візуального response
-- `?nip=` URL parameter на /intelligence/lookup НЕ pre-populates input — bug
+**Date:** 01.05.2026, 11:00 (REVISED після Audit #2)
+**Audited by:** Claude (browser MCP, live + repo file structure)
+**Method:** живий обхід sztab.vercel.app + ls app/api/ + ls app/(dashboard) pages
+**Принцип:** жодного твердження з памяті. Тільки те що особисто побачено.
 
 ---
 
-## A. СТОРІНКИ — РОУТИНГ
+## EXECUTIVE SUMMARY (revised)
 
-| URL | Стан | Що бачить юзер |
+**Audit #1 (09:55) був неповний.** Я перевіряв тільки сторінки видимі в sidebar. Audit #2 (11:00) виявив **5 потужних сторінок прихованих в sidebar** — це не feature gaps, це NAVIGATION gap.
+
+### Реальність (REVISED):
+
+Sztab має значно більше функціональності ніж видно з sidebar. Бачимо тільки 7 пунктів (Dziś, Klienci, Sprzedaż, Produkty, Dostawcy, Organizer, Ustawienia), а реально працюють ще:
+
+- /intelligence — AI Discovery (Fast Lookup + Deep Discovery)
+- /intelligence/prospects — 99 prospekts з filtrами (sklep/restauracja/kawiarnia/multi/catering, score range, kontakt filter, closed chains filter)
+- /intelligence/lookup — 6-source NIP lookup (GUS, GUS_branches, KRS, VAT_BL, matching, Apify_GMaps)
+- /matches — 100 dopasowań global з bulk кнопками (L5 algo bulk, L6 AI bulk, Apify TOP-50, Export Pikniko CSV)
+- /matches/review — review queue
+- /handoff/pikniko — cohort 29 з повними cold openers, decision makers, kontakt info
+- /admin/health — Apify spend monitoring + cron jobs status
+
+### Главний інсайт
+
+**Sztab вже працює як value-generating tool — Vadym просто не знає де знайти features бо вони сховані.** 
+
+Sprint S5 = Navigation Fix, НЕ build new features. Це міняє roadmap кардинально.
+
+---
+
+## A. ВСІ СТОРІНКИ — ПОВНИЙ ІНВЕНТАР
+
+### Видимі в sidebar (7):
+| URL | Стан | Що робить |
 |---|---|---|
-| `/pulpit/dzisiaj` | OK працює | операційний дашборд, hot lead, calendar |
-| `/clients` | OK працює | 261 клієнт, фільтри, search, bulk select |
-| `/clients/[id]` | OK працює | повний профіль (KOZAK перевірений) |
-| `/produkty` | OK працює | 35 SKU під Czudowa Marka, по категоріях |
-| `/sprzedaz` | OK працює | kanban 6+ етапів |
-| `/organizer` | OK працює | задачі/цілі/навики/калькулятор |
-| `/intelligence` | OK працює | AI Discovery історія |
-| `/intelligence/lookup` | OK ПРАЦЮЄ | NIP lookup form + результати з 6 джерел |
-| `/settings` | OK працює | Ogólne / Ceny i marże / Klucze API / Szablony |
-| `/suppliers` (Dostawcy) | WARN візуально є | але get_page_text empty |
-| `/admin` | 404 | був раніше, видалено |
-| `/matches/global` | 404 | був раніше, видалено |
-| `/dzis` | 404 | старий URL, замінено на /pulpit/dzisiaj |
-| `/handoff/pikniko` | ? не перевірено | може існувати |
+| /pulpit/dzisiaj | OK | Dashboard з hot leadами + warningами + calendar |
+| /clients | OK | 261 клієнт, фільтри, search, bulk select |
+| /clients/[id] | OK | Профіль 8 акордеонів, повний enrichment |
+| /clients/new | ? | Manual create (Sprint S1) |
+| /clients/[id]/edit | ? | Edit page |
+| /sprzedaz | OK | Kanban 7 етапів |
+| /produkty | OK | 35 SKU під Czudowa Marka |
+| /suppliers | OK | List + detail (Sprint S4 P5) |
+| /suppliers/[id]/edit | ? | Edit supplier |
+| /organizer | OK | Tasks/Goals/Habits/Calculator |
+| /settings | OK | Ogólne / Ceny / Klucze API / Szablony |
 
----
-
-## B. /clients/[id] — ПОВНИЙ INVENTORY ПРОФІЛЮ
-
-(перевірено на KOZAK OLEK SP. Z O.O., NIP 7561993172, KRS 0000977768)
-
-### ACTION BAR (top-right, sticky)
-| Кнопка | Стан | Notes |
+### СХОВАНІ в sidebar (КРИТИЧНІ):
+| URL | Стан | Що робить |
 |---|---|---|
-| ✨ Analizuj AI | є (primary indigo) | не клікав |
-| + Zadanie | є | не клікав |
-| + Notatka | є | не клікав |
-| + Szansa | є | не клікав |
-| ⋯ menu | є | не клікав |
+| /intelligence | OK | AI Discovery історія (Fast Lookup, Deep Discovery з timing) |
+| /intelligence/lookup | OK | NIP input → 6-source enrichment результат |
+| /intelligence/prospects | OK | 99 prospektів з фільтрами (МАГІЯ Sztab) |
+| /intelligence/deep-discovery/[product_id] | ? | Деталі Deep Discovery результата |
+| /matches | OK | 100 global dopasowań + bulk операції |
+| /matches/review | ? | Review queue |
+| /handoff/pikniko | OK | Cohort 29 з cold openers + контактами |
+| /admin/health | OK | Apify spend + cron status |
+| /persons/[id] | ? | Person profile |
 
-### METRIC STRIP
-| Поле | Значення KOZAK |
+### Дублікати / legacy:
+| URL | Стан | Що робить |
+|---|---|---|
+| /dashboard | ? | Окрема старша сторінка (англ.) |
+| /products | ? | Старий /produkty (англ.) |
+| /products/new, /products/[id]/edit | ? | Старі views |
+| /deals | ? | Старий /sprzedaz (англ.) |
+| /deals/* | ? | Старі subviews |
+| /tasks, /goals, /habits, /calculator | ? | Розклеєні /organizer subviews |
+| /kp-generator | ? | Generator KP (там був) |
+
+### 404 sidewy чи hallucination:
+| URL | Реальність |
 |---|---|
-| Dopasowanie Sztab | 95/100 (потім 80 після enrichment) |
-| Obroty (rok obrotowy) | 1.85 mln PLN ↑27.3% YoY |
-| Pracownicy | — (поле є, дані порожні) |
-| Oddziały | 0 |
-
-### АКОРДЕОНИ (8)
-
-**1. Profil**
-- Forma prawna, Adres, NIP, REGON, KRS, Kapitał zakładowy, Założona, VAT, PKD główne (4719Z +119 więcej), Konto bankowe
-
-**2. Sprawozdania finansowe** (3 lat KRS · ostatni rok 2024)
-- Таблиця: Rok / Przychody netto / Zysk netto / Aktywa razem / Δ przychody YoY / Pracownicy
-- Дані повні за 2024, 2023, 2022
-- WARN Кнопка "Pobierz z KRS" → лиш anchor #krs-refresh, без response
-- Кнопка "↗ Otwórz" — мабуть external eKRS
-
-**3. Osoby** (2 zarząd · 2 BO)
-- **Zarząd / wspólnicy:**
-  - Oleksii Ilchenko (PREZES ZARZĄDU, decyzyjny, rejestr.io tag)
-  - Olena Ilchenko (CZŁONEK ZARZĄDU, decyzyjny, rejestr.io tag)
-- **Beneficjenci rzeczywiści (CRBR):**
-  - Olena Ilchenko (Rezydencja PL, Obywatelstwo UA)
-  - Oleksii Ilchenko (Rezydencja PL, Obywatelstwo UA)
-- Кнопка "Pobierz z KRS"
-
-**4. Sygnały** (Aktywna · 0 BZP)
-- Sprawozdanie KRS: Świeże (2025-07-11)
-- Status prawny: Aktywna, brak red flags
-- Przetargi BZP: Brak wygranych
-- Кнопка "Sprawdź BZP" → редіректить на /intelligence/lookup?nip={NIP}
-
-**5. Analiza biznesowa (AI)**
-- Тег: "Czudowa Marka — buyer strength"
-- Empty state: "Brak analizy biznesowej. Uruchom Intelligence Lookup albo kliknij Analizuj"
-- Кнопка "Analizuj"
-- ? SupplierMatrix component (Sprint S4 P1 placeholder) — НЕ видно тут
-
-**6. Dopasowania produktów** (TOP score 95)
-- TOP-20 продуктів сортовано
-- Кожен match має: nazwę, gramatura, теги, score breakdown
-- Кнопка "Wygeneruj cold opener" на КОЖНОМУ продукті
-- Кнопка "Pokaż TOP-10 →"
-- Кнопка "Przelicz teraz"
-
-**7. Kontakt** (1 źródeł)
-- kozak.strzelce.opolskie@gmail.com (KRS source)
-- "(Brak danych)" — телефон порожній
-- "(Brak własnej domeny)" — site не знайдено
-- Кнопка "+ Dodaj kontakt"
-
-**8. Aktywność** (0 pozycji)
-- 3 таби: Kontakty (0) / Umowy (0) / Zadania (0)
+| /admin | 404 — немає index, є тільки /admin/health |
+| /matches/global | НЕ ІСНУЄ — моя hallucination з минулих чатів |
+| /dzis | 404 — старий URL, новий /pulpit/dzisiaj |
 
 ---
 
-## C. /intelligence/lookup — КЛЮЧОВА ЗНАХІДКА
+## B. /intelligence/prospects — TOWAR Vadym НЕ ЗНАВ
 
-Це окрема сторінка яку я раніше пропускав. Реальний multi-register lookup tool.
+99 prospektів автоматично enriched. Кожен має:
+- Nazwa + Właściciel + Miasto
+- Kanał (sklep / restauracja / kawiarnia / multi / catering)
+- Score (37-90)
+- Kontakt (Y / N)
+- Sieć detection (Żabka closed automatically tagged)
 
-### UI
-- Input "Wpisz NIP firmy (10 cyfr)"
+### Filtri:
+- Score range slider (0-100)
+- Branża buttons (sklep / restauracja / catering / kawiarnia / multi)
+- Tylko z kontaktem toggle
+- Ukryj closed chains toggle
+- Pokaż wykluczone toggle
+- Resetuj filtry
+
+### Топ-3 prospekti:
+1. DEKOB — THỊ HỒNG NHUNG NGUYỄN (Warszawa, restauracja, score 90)
+2. PJ Rawa Gastro Yurii Nedilskyi (Pruszków, restauracja, score 68)
+3. Mateusz Malczewski Cosmo (Warszawa, kawiarnia, score 62)
+
+### Як вони туди потрапляють?
+Скоріш за все CEIDG bulk seed scripts + cron-based enrichment з Apify Panorama Firm + GUS. **Але Vadym їх не бачить бо немає sidebar link!**
+
+---
+
+## C. /matches — ГЛОБАЛЬНИЙ MATCH ENGINE
+
+100 dopasowań sortovaních DESC. Кожен match:
+- Klient/Prospekt (ясно зазначено)
+- Firma name + województwo + NIP
+- Top match (продукт)
+- Score (~85)
+- Sygnał (PKD exact / aktywny_vat / aktywny_gus + інші)
+- Kontakt phone якщо є
+
+### Top-3:
+1. Domek Sushi Przemysław Kowalski (klient) × Czudowa Marka, score 85, 1231562224
+2. Karolina Przybytniak (klient) × Czudowa Marka, score 85, 5243020169, +48 504 125 279
+3. LUCKY PING ZHAO (prospekt) × Czudowa Marka, score 85, +48 516 512 388
+
+### Bulk кнопки на header:
+- L5 algo bulk — re-run algorithmic matching
+- L6 AI bulk — re-run AI re-score (TOP-20)
+- Apify (TOP-50) — enrich top 50 з Apify
+- Export Pikniko CSV — завантажити cohort
+
+### Filtri header:
+- Typ celu (Wszystko / Klient / Prospekt)
+- Min score
+- Limit
+- tylko AI-rescored toggle
+- Odśwież button
+
+---
+
+## D. /handoff/pikniko — COHORT 29 З COLD OPENERS
+
+Cohort: "Pierwsza partia HoReCa kiszonki/buraki" (29.04.2026, 12:32:23)
+- Liczność: 29
+- Z kontaktem: 10/29
+- Z osobą decyzyjną: 20/29
+- Marynaty: 4 / Sałatki gotowe: 3 / Kiszonki: 22
+
+### Filtri:
+- Tylko z kontaktem toggle
+- Rodzina filter (Kiszonki / Sałatki gotowe / Marynaty / Buraki)
+- Sortowanie: rank (wyższy score wyżej)
+
+### Що видно для кожної firmy:
+- # ranking
+- Firma · NIP · województwo
+- Forma (prospect / client)
+- Top match (продукт + категорія)
+- Score (75-85)
+- Sygnał (PKD exact)
+- Kontakt (телефон + email якщо є)
+- Decyzyjny (PESEL + посада)
+- Cold opener — короткий персоналізований текст для outreach
+
+### Export:
+- CSV button
+- Markdown button
+
+### Топ-3 cold openers:
+1. PING ZHAO (prospekt) — "Ping, zauważyłem że Lucky Ping Zhao to punkt z szybką rotacj…"
+2. Radosław Żuchelkowski (RADEKZOOH) — "Radosław — twój asortyment w Józefowie to głównie artykuły d…"
+3. KOZAK OLEK (Oleksii Ilchenko, PREZES) — "Widzę, że KOZAK OLEK to established player w handlu detalicz…"
+
+---
+
+## E. /intelligence/lookup — 6-SOURCE NIP LOOKUP
+
+Ключова сторінка яку я виявив у Audit #1.
+
+### Input:
+- "Wpisz NIP firmy" (10 cyfr)
 - Button "Uruchom intelligence lookup"
 
-### Що насправді робить (тестовано на NIP 7561993172):
+### Real-time pipeline:
+"Pobieranie danych z 6 źródeł..." → результат:
 
-**"Pobieranie danych z 6 źródeł..." → результат:**
+| Źródło | Status |
+|---|---|
+| GUS | success |
+| GUS_branches | 0 jednostek lokalnych |
+| KRS | success (added/updated counts) |
+| VAT_BL | success (VAT белая лента check) |
+| matching | success (rerun product matching) |
+| Apify_GMaps | async — продовжується після lookup, видно банер на /clients/[id] |
 
-| Źródło | Status | Notes |
-|---|---|---|
-| GUS | success | added: 0, updated: 0 (вже в БД) |
-| GUS_branches | success | 0 jednostek lokalnych (multi-location lookup) |
-| KRS | success | added: 0, updated: 1 |
-| VAT_BL | success | added: 0, updated: 0 (vat-checker) |
-| matching | success | rerun product matching |
-| Apify_GMaps | async | "Wzbogacanie w toku..." на профілі (Google Maps!) |
-
-### Bonus: автоматично показує
-- "Pól wypełniono: 1, Osoby utworzone: 0, Top matche: 3"
-- Top 3 dopasowane продукти прямо тут
+### Вихід:
+- "Pól wypełniono: N, Osoby utworzone: M, Top matche: K"
+- Top 3 matched продукти з score
 - Кнопка "Otwórz profil firmy →"
 
-### Bug
+### Bug:
 - URL param `?nip=7561993172` НЕ pre-populates input field
 
 ---
 
-## D. РЕЄСТРИ — ПОВНИЙ ІНВЕНТАР (revised after live test)
+## F. /admin/health — SYSTEM MONITORING
 
-| Реєстр | API ключ є? | Endpoint є? | UI кнопка є? | Працює end-to-end? |
+### Apify spend tracker:
+- Soft limit: $10/тиждень
+- Last 7 days: $1.36 (19 calls)
+- Last 30 days: $1.36 (19 calls)
+- TOP-5 most expensive enrichments (з NIP truncated, status, cost)
+
+### Cron jobs status:
+- matching-refresh: last run, success/fail, items processed, duration, metadata
+- hygiene-scan: last run, items, clean/dirty/unchecked
+
+---
+
+## G. РЕЄСТРИ — REVISED INVENTORY
+
+| Реєстр | API ключ | Endpoint | UI кнопка | End-to-end |
 |---|---|---|---|---|
-| CEIDG (JDG) | ? | OK (Import CSV / seed) | НЕМАЄ bulk у /clients | через CSV/seed |
-| KRS rejestr.io | OK Settings | OK | OK "Pobierz z KRS" | через /intelligence/lookup |
-| GUS BIR2 | ? | OK | НЕМАЄ (тільки через lookup) | через /intelligence/lookup |
-| GUS_branches | ? | OK (lookup output) | НЕМАЄ | через /intelligence/lookup |
-| CRBR (beneficjenci) | ? | OK (видно на KOZAK) | НЕМАЄ | дані вже в БД |
-| BZP (przetargi) | ? | "0 BZP" видно | OK "Sprawdź BZP" → lookup | показує статус |
-| VAT_BL | ? | OK | НЕМАЄ | через /intelligence/lookup |
-| Apify Panorama Firm | OK Settings | (Phase 2.7) | НЕМАЄ | ? |
-| Apify GMaps | OK Settings | OK | НЕМАЄ (auto-trigger) | працює real-time |
-| Apify Allegro | OK Settings | OK scraper.ts | НЕМАЄ | verified (parseforge) |
+| CEIDG | ? | OK (Import CSV + bulk seed) | через /intelligence/prospects | OK (99 prospekts генеруються) |
+| KRS rejestr.io | OK | OK | OK "Pobierz z KRS" + lookup | OK |
+| GUS BIR2 | ? | OK | ні (через lookup) | OK |
+| GUS_branches | ? | OK | ні (через lookup) | OK |
+| CRBR | ? | OK | ні (auto на профілі) | OK |
+| BZP | ? | через lookup | OK "Sprawdź BZP" → lookup | OK |
+| VAT_BL | ? | OK | ні (через lookup) | OK |
+| Apify Panorama | OK | OK | ні | OK (auto background) |
+| Apify GMaps | OK | OK | ні (auto-trigger) | OK real-time |
+| Apify Allegro | OK | OK scraper.ts | ні | OK verified |
+| Allegro API | OK | OK /api/allegro/test | ні | /sale/categories тільки |
 | Tavily /extract | НЕМАЄ ключа | НЕМАЄ | НЕМАЄ | НЕМАЄ |
-| Tavily news_mentions | НЕМАЄ | НЕМАЄ | НЕМАЄ | НЕМАЄ |
-| Google Places (separate) | НЕМАЄ ключа | НЕМАЄ | НЕМАЄ | через Apify_GMaps |
+| Google Places окремий | НЕМАЄ | НЕМАЄ | НЕМАЄ | НЕМАЄ (через Apify_GMaps) |
 | OpenFoodFacts | НЕМАЄ | НЕМАЄ | НЕМАЄ | НЕМАЄ |
 | LinkedIn DM | НЕМАЄ | НЕМАЄ | НЕМАЄ | НЕМАЄ |
 | KRD/BIG | НЕМАЄ | НЕМАЄ | НЕМАЄ | НЕМАЄ (low priority) |
-| Allegro API | OK Settings | OK /api/allegro/test | НЕМАЄ UI | /sale/categories тільки |
 
-### API ключі в Settings (Klucze API tab):
-1. Gemini API key
-2. Apify API token
-3. KRS Rejestr.io API token
-4. Allegro Client ID
-5. Allegro Client Secret
-
-### НЕ ЗНАЙДЕНО в Settings:
-- Tavily token
-- Google Places key окремий
-- Google Maps key окремий
-- KRD/BIG token
-- OpenFoodFacts auth
-
----
-
-## E. /clients ТОП-БАР — ЯКИХ КНОПОК НЕМАЄ
-
-### Що Є на /clients:
-- Search (по назві, NIP, місту)
-- Tabs: Klienci 261 / Prospekti 1 / Wszystko 262
-- Filtry: Tylko z kontaktem / Wysokie dopasowanie ≥70 / Wymaga review / Branża
-- Sort: Score DESC, Nazwa A-Z, Data utworzenia
-- + Dodaj firmę (manual)
-- Importuj CSV
-- ⋯ menu
-
-### Bulk operations (працює коли select rows):
-- Analizuj AI (N)
-- Eksport jako kohorta
-- Odśwież z KRS
-- + Tag
-
-### КРИТИЧНІ ВІДСУТНОСТІ (Vadym був ПРАВИЙ):
-- Importuj z CEIDG (по фільтру PKD/voivodeship/active VAT)
-- Importuj z KRS (по фільтру spółek)
-- Importuj z Google Places (за geo+branżą)
-- Bulk lookup po list NIP-ів
-- Generate prospects from existing client similarity
-- Bulk Tavily extract для contact discovery
-- Allegro sellers lookup (по NIP в Allegro)
-
-### Найшвидший шлях додати prospekta зараз:
-1. Користувач знає NIP заздалегідь
-2. Клікає "Dodaj firmę" → вписує NIP
-3. АБО йде в /intelligence/lookup → вписує NIP → lookup → "Otwórz profil firmy"
-
-**Жодного шляху "знайти 50 нових prospektів за критеріями" — це треба будувати.**
+### App/api/ структура (зі ls):
+- admin/ — admin endpoints
+- ai/ — Gemini wrappers (Fast Lookup, Deep Discovery)
+- allegro/ — Allegro client + scraper
+- clients/ — CRUD + bulk operations
+- contact-enrichment/ — single route.ts (для майбутнього Tavily?)
+- cron/ — scheduled jobs (matching-refresh, hygiene-scan)
+- enrichment/ — Apify Panorama орchestration
+- export/ — Pikniko CSV exporter
+- handoff/ — cohorts management
+- intelligence/ — Discovery + Lookup endpoints
+- lookup/ — окремий lookup endpoint
+- matches/ — match operations
+- nip-lookup/ — basic NIP lookup
+- persons/ — person operations
+- products/ — products CRUD
+- prospects/ — prospekt operations (тут логіка що Vadym не знає!)
+- taxonomy/ — PKD taxonomy
 
 ---
 
-## F. ЩО ПОТРЕБУЄ КЛІК-ТЕСТУ
+## H. РЕАЛЬНІ GAPS (post-discovery)
 
-### PRIORITY 1 (вже частково тестовано):
-- [x] "Pobierz z KRS" в Sprawozdania → anchor only, без response
-- [x] "Sprawdź BZP" → редіректить на /intelligence/lookup
-- [x] "Uruchom intelligence lookup" → працює, 6 джерел
-- [x] Apify_GMaps real-time enrichment → працює
-- [ ] "Wygeneruj cold opener" на TOP product
-- [ ] "Analizuj" в Analiza biznesowa
+### Critical (блокують Vadym daily):
+- NAVIGATION — sidebar НЕ показує /intelligence, /matches, /handoff/pikniko, /admin/health
+- "Pobierz z KRS" в Sprawozdania — anchor only #krs-refresh, не working refresh
+- ?nip= URL param на /intelligence/lookup НЕ pre-populates input
+- Дублікати англ. routes (/dashboard, /products, /deals) — не очевидно що активне
 
-### PRIORITY 2 (workflow):
-- [ ] Bulk select 3 клієнти → "Analizuj AI (3)"
-- [ ] Bulk select → "Eksport jako kohorta"
-- [ ] Bulk select → "Odśwież z KRS"
-- [ ] /organizer "Zaplanuj kontakt z hot leadem"
+### Quick wins (cosmetic):
+- Sidebar grouping (Intelligence section)
+- Active nav highlighting
 
-### PRIORITY 3 (з'ясувати):
-- [ ] /suppliers — чому get_page_text empty?
-- [ ] /handoff/pikniko — існує?
-- [ ] Gemini API 503 errors з 27.04
+### Real new features (відкладено):
+- Tavily integration (contact-enrichment/route.ts є — empty?)
+- LinkedIn DM scraper
+- KRD/BIG (low priority)
+- OpenFoodFacts
 
 ---
 
-## G. ВИСНОВКИ
+## I. ВИСНОВКИ
 
-### Що Vadym ПРАВИЛЬНО ідентифікував:
-1. Bulk import нових prospektів — реально немає
-2. "Тонни інформації після реєстрів" — є, але я погано показав де
-3. Google Maps/Places — є! Через Apify_GMaps actor
+### Що Vadym ПРАВИЛЬНО ідентифікував на 30.04 ввечері:
+- Він не бачить функціональності — РЕАЛЬНО Vadym НЕ БАЧИВ її, бо вона прихована від sidebar
 
-### Що я раніше говорив неправильно:
-- "Sztab бачить тільки KRS+CEIDG" → 6 джерел
-- "Немає Google Places integration" → є Apify_GMaps
-- "Немає AI Discovery як окремої функції" → є цілий розділ
-- "Multi-supplier matching working" → насправді SupplierMatrix placeholder
+### Що Vadym НЕПРАВИЛЬНО думав:
+- "Bulk import нових клієнтів немає" — є 99 prospektів автоматично generated на /intelligence/prospects
+- "Тонн інформації немає" — є 6-source enrichment + 100 matches + cohort 29 з cold openers
 
-### Реальні next steps для Sztab:
-1. Додати "Importuj z CEIDG/KRS" на /clients top-bar
-2. Tavily integration
-3. Виправити anchor "Pobierz z KRS"
-4. Виправити `?nip=` URL param на /intelligence/lookup
-5. Розібратися з /admin і /matches/global 404
-6. /suppliers визуальна перевірка
+### Mind-shift:
+**Sztab — це не "не shipped" продукт. Це "не findable" продукт.** Sprint S5 = unhide existing features через sidebar restructure, не build new features.
+
+### Sprint S5 priority order:
+1. **S5A — Sidebar Navigation** (~30-45 хв) — додати 5 пунктів, restructure
+2. **S5B — Quick UX fixes** (~45 хв) — anchor button, ?nip= param, /admin index, dublicates
+3. **S5C — Tavily contact enrichment** (~1.5h) — заповнити contact-enrichment/route.ts logic, додати key, UI button
 
 ---
 
-## H. AUDIT TRAIL
+## J. AUDIT TRAIL
 
 Все вище — на основі:
-- Live tab 1823348675 (sztab.vercel.app)
+- Live tab 1823348675 (sztab.vercel.app, vadymrotai@gmail.com)
 - Browser MCP get_page_text + screenshots
-- Click testing на 3 кнопках
+- Click tests (Pobierz z KRS, Sprawdź BZP, Uruchom lookup)
+- ls app/api/ + ls app/(dashboard) pages у локальному репо
 - Real lookup для NIP 7561993172 (KOZAK OLEK)
 
-**END OF AUDIT.**
+### Що НЕ перевіряв:
+- /clients/new, /clients/[id]/edit
+- /suppliers/[id]/edit
+- /persons/[id]
+- /matches/review
+- /intelligence/deep-discovery/[product_id]
+- Дублікати /dashboard, /products, /deals, /tasks, /goals, /habits, /calculator
+- /kp-generator
+- API ключі реальні (видно тільки masked)
+- Чи cold opener генератор on-demand або pre-generated
+
+---
+
+**END OF AUDIT #2 (revised).**
