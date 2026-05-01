@@ -1,19 +1,10 @@
-import { createClient } from '@/lib/supabase/server'
-import { PageHeader } from '@/components/page-header'
-import { HabitsContent } from '@/components/habits/habits-content'
+// app/(dashboard)/habits/page.tsx
+// Sprint S5B-4 — legacy wrapper redirected до /organizer (Nawyki tab
+// renderuje HabitsContent). Pozostawione dla potencjalnych bookmarks;
+// usuń w Sprint S5C+ jeśli telemetria pokaże 0 hits.
 
-export default async function HabitsPage() {
-  const supabase = await createClient()
+import { redirect } from 'next/navigation'
 
-  const { data: habits } = await supabase
-    .from('habits')
-    .select('*')
-    .order('created_at', { ascending: true })
-
-  return (
-    <div className="flex flex-col">
-      <PageHeader title="Nawyki" />
-      <HabitsContent habits={habits || []} />
-    </div>
-  )
+export default function HabitsRedirect() {
+  redirect('/organizer')
 }
