@@ -253,7 +253,7 @@ export function AppSidebar({ user, prospectHotCount = 0, counts = {} }: AppSideb
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <Link href="/dashboard">
+              <Link href="/pulpit/dzisiaj">
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                   <CommandIcon className="size-4" />
                 </div>
