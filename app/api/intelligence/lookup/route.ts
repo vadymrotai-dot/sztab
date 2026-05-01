@@ -91,7 +91,7 @@ export async function POST(req: Request) {
   // Read API keys з params
   const { data: paramsRow } = await supabase
     .from('params')
-    .select('anthropic_api_key, gus_api_key, apify_api_token, krs_rejestr_api_token')
+    .select('anthropic_api_key, gus_api_key, apify_api_token, krs_rejestr_api_token, tavily_api_key')
     .limit(1)
     .maybeSingle()
   const params = (paramsRow ?? {}) as {
@@ -99,6 +99,7 @@ export async function POST(req: Request) {
     gus_api_key?: string
     apify_api_token?: string
     krs_rejestr_api_token?: string
+    tavily_api_key?: string
   }
 
   const response: LookupResponse = {
@@ -505,7 +506,10 @@ async function runPhaseB({
 
   // ─── STEP 4.5: Online presence (Tavily web search) ───
   // Sprint L Phase 2 — find website / Facebook / Instagram / news mentions.
-  const tavilyKey = process.env.TAVILY_API_KEY ?? ''
+  // Sprint S5C — params first, env fallback (grace period). Vercel
+  // env TAVILY_API_KEY zostaje dopóki migrate całego deployment, usunie
+  // się w S6.
+  const tavilyKey = params.tavily_api_key || process.env.TAVILY_API_KEY || ''
   if (tavilyKey) {
     const runId = await startEnrichmentRun(supabase, {
       target_type: 'company',
@@ -559,7 +563,7 @@ async function runPhaseB({
     response.sources_completed.push({
       source: 'tavily',
       status: 'skipped',
-      note: 'TAVILY_API_KEY missing у env',
+      note: 'tavily_api_key brak у params (ustaw w /settings → Klucze API) + brak fallbacku TAVILY_API_KEY w env',
     })
   }
 
