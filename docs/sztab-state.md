@@ -1546,3 +1546,172 @@ ORDER BY observation_date DESC, market, product_label LIMIT 30;
 - **Q2 market populated по possible default.** ZSRIR ingest стає per-market (not "national aggregate") — нагадує fresh-market.pl + EU pattern для consistency.
 - **Q3 NO migration changes** перш ніж 054 — 054 partial indices робять цю архітектуру цілком correct.
 
+
+---
+
+## 02.05.2026 — S-INTEL.1.2.1 hotfix v2 (PostgREST limitation + header fix)
+
+**Status:** 🟡 Code ready. Vadym re-runs manual trigger після hotfix v1 apply (migration 054 already applied у v1 step).
+
+### Critical architectural finding — PostgREST upsert + partial UNIQUE indices
+
+**Verified live 02.05.2026 після hotfix v1 apply:** Migration 054 створила 2 partial UNIQUE indices (with_market + no_market). Vadym ran manual trigger знов — STILL got `42P10`: "no unique or exclusion constraint matching the ON CONFLICT specification".
+
+**Root cause:** PostgREST бібліотека НЕ підтримує partial UNIQUE indices (з `WHERE` clause) у `.upsert()` `onConflict` parameter. Це **архітектурне обмеження PostgREST**, не migration issue. Verification: 2 partial indices були valid у DB (`pg_indexes` showed them), але PostgREST все одно throw 42P10.
+
+Postgres сам enforces partial constraint при INSERT — code 23505 (unique_violation) raised на duplicates. Тому **manual INSERT + try/catch на 23505** — це working pattern для idempotent inserts з partial UNIQUE.
+
+### Implications для майбутніх sub-sprints
+
+- **S-INTEL.1.2.2 (fresh-market.pl):** Use manual INSERT pattern одразу (partial indices не дозволять upsert).
+- **S-INTEL.1.2.3 (EU Agri-food):** Same.
+- **Future bulk sources (1000+ rows):** Consider bisect retry pattern — bulk INSERT, на 23505 split chunk у half. Per-row не масштабується для great volumes.
+
+### Code changes — `lib/intelligence/zsrir.ts`
+
+**1. parseOwoceWarzywa header detection rewrite:**
+- Markets header row contains "Data notowania" (cell[1]) + markets у cells 4+ (Bronisze, Kalisz)
+- Units sub-header row = markets row + 1 (contains "Owoce", "Jedn.", "Min", "Max" cells)
+- Numbering row = markets row + 2 ("1|2|3...")
+- Data starts markets row + 3
+- Logic: find row containing "data notowania" → markets header. Sanity check next row contains "jedn" — log warning якщо missing, але продовжуємо.
+
+**2. ingestZsrir upsert refactor — manual INSERT loop:**
+```typescript
+for (const record of records) {
+  const { error: insErr } = await supabase
+    .from('commodity_prices')
+    .insert(record)
+  if (insErr) {
+    if (insErr.code === '23505') {
+      result.rows_skipped++
+      continue
+    }
+    result.errors.push(`...${insErr.message}`)
+    result.rows_failed++
+    continue
+  }
+  result.rows_inserted++
+}
+```
+Performance: ~3x slower vs bulk (per-row INSERT × ~50ms RTT × 50 rows = ~2.5s). Acceptable для ZSRIR scale.
+
+**3. Removed `withMarket`/`noMarket` chunk split** — manual INSERT pattern не потребує onConflict, тому split була non-functional.
+
+### Files touched (combined hotfix v1+v2 commit)
+
+| File | Change |
+|---|---|
+| `scripts/054_fix_commodity_uniqueness.sql` | NEW (v1) — partial indices still valuable: enforce idempotency at DB level |
+| `scripts/diag-zsrir-912.ts` | NEW (v1) — diag tool |
+| `lib/intelligence/zsrir.ts` | v1: parseOwoceWarzywa rewrite + ParsedRow.market + 2-bucket upsert split → v2: header detection fix + manual INSERT pattern (replace upsert split) |
+| `docs/sztab-state.md` | v1 hotfix + v2 hotfix entries |
+
+### Vadym 2-step apply (migration 054 already applied у v1)
+
+**Step 1 — Re-run manual trigger:**
+```powershell
+cd C:\Users\vadym\Projects\sztab
+pnpm exec tsx scripts/manual-trigger-market-intelligence.ts
+```
+Expected:
+- Dataset 912 (HURT WARZ): ~30-50 rows inserted (no 42P10 error)
+- Dataset 1024 (mleko): 1 row inserted
+
+**Step 2 — Verify:**
+```sql
+SELECT source, market, COUNT(*), MIN(price_pln), MAX(price_pln), MAX(observation_date)
+FROM commodity_prices WHERE source='zsrir' GROUP BY source, market ORDER BY market;
+```
+
+### Anti-pattern locked у docs
+
+**❌ DO NOT** use PostgREST `.upsert()` with `onConflict` against partial UNIQUE indices. Pattern fails silently у migration check (indices exist) але throws 42P10 at runtime.
+
+**✅ DO** use manual INSERT loop з `error.code === '23505'` skip-pattern. Або consider full UNIQUE без `WHERE` clause якщо schema constraints дозволяють (e.g. NOT NULL all key columns).
+
+
+---
+
+## 02.05.2026 — S-INTEL.1.2.1 hotfix v3 (BUG 1 markets row + BUG 2 deferred)
+
+**Status:** 🟡 Code ready. Vadym re-runs manual trigger після hotfix v3.
+
+### DB verification post-v2 surfaced 2 bugs
+
+**BUG 1 — Markets extracted from wrong row:**
+DB inspection після v2 showed `commodity_prices.market` populated з values `"4/20/26", "4/21/26", "4/22/26"` — це DATES, не market names.
+
+Root cause: HURT WARZ has **3-row header structure** (verified via diag dump):
+```
+row 4 — MARKETS header:    [4]Bronisze | [6]Kalisz | [8]...
+row 5 — dates row:         [1]Data notowania | [4]4/22/26 | [6]4/21/26
+row 6 — units sub-header:  [1]Owoce | [3]Jedn. | [4]Min | [5]Max | [6]Min | [7]Max
+row 7 — numbering "1|2|3..."
+row 8+ — data rows
+```
+
+v2 looking for "Data notowania" → found row 5 → extracted markets з ТОЇ row → got dates замість market names. Markets actually на row ABOVE (row 4).
+
+**FIX (v3):**
+- Find "Data notowania" anchor row → call `datesRowIdx`
+- Markets row = `datesRowIdx - 1` (extract з ABOVE)
+- Markets at every 2-col span starting col 4 (`col += 2` instead of `col++`) — matches structure where Min/Max sub-headers occupy (col, col+1) у units row
+- Skip purely numeric cells (defensive: `/^[\d\s/.,-]+$/`)
+- Variable rename `headerRowIdx` → `datesRowIdx` (semantic clarity)
+- Data start unchanged: `datesRowIdx + 3` (still correct relative anchor)
+
+**BUG 2 — cn_code resolution returns 0 hits — DEFERRED:**
+seed-commodity-to-cn-map.ts seeded labels:
+```
+"kapusta biała głowiasta", "pomidor pole", "burak", ...
+```
+
+Real ZSRIR product_labels у DB після ingestion (extracted з xlsx):
+```
+"Buraki ćwikłowe", "Kapusta biała", "Marchew", "Ogórki gruntowe", ...
+```
+
+Mismatch — exact-match lookup завжди returns 0. Bridge table `commodity_to_cn_map` requires EXACT case-sensitive match.
+
+**Fix options (deferred до окремого small task post-v3 verify):**
+- A — Update `seed-commodity-to-cn-map.ts` з real labels (after BUG 1 fixed + Vadym sees actual labels у DB)
+- B — Add normalization у zsrir.ts (lowercase + trim перш ніж lookup) + lowercase у seed
+- C — Change seed → ILIKE pattern matching (substring/regex bridge)
+
+**NOT fixing у v3** — defer щоб Vadym побачив real labels у DB після BUG 1 fix → потім вирішить approach.
+
+### Files touched (combined hotfix v1+v2+v3 commit)
+
+| File | Change |
+|---|---|
+| `scripts/054_fix_commodity_uniqueness.sql` | NEW (v1) |
+| `scripts/diag-zsrir-912.ts` | NEW (v1) |
+| `lib/intelligence/zsrir.ts` | v1: parser rewrite + ParsedRow.market + 2-bucket upsert split → v2: header detection fix + manual INSERT pattern → v3: BUG 1 markets row=datesRow-1 + 3-row header structure + variable rename |
+| `docs/sztab-state.md` | v1 + v2 + v3 hotfix entries |
+
+### Vadym 2-step apply (migration 054 already applied)
+
+**Step 1 — Re-run manual trigger:**
+```powershell
+cd C:\Users\vadym\Projects\sztab
+pnpm exec tsx scripts/manual-trigger-market-intelligence.ts
+```
+
+**Step 2 — Verify (BUG 1 fix):**
+```sql
+-- Markets should be REAL names (Bronisze, Kalisz), not dates:
+SELECT DISTINCT market FROM commodity_prices WHERE source='zsrir' ORDER BY market;
+-- Expected: Bronisze | Kalisz | (NULL для mleko)
+
+-- Sample real labels (потрібно для BUG 2 follow-up):
+SELECT DISTINCT product_label FROM commodity_prices WHERE source='zsrir'
+ORDER BY product_label LIMIT 30;
+-- Expected: "Buraki ćwikłowe", "Kapusta biała", "Marchew", etc.
+```
+
+### Decision locked v3
+
+- **Q1 3-row header structure** confirmed для HURT WARZ. Markets row завжди ABOVE "Data notowania" anchor. Future ZSRIR sheets (різні parser variants для MEDIUM datasets) можуть мати different N-row headers — це per-parser concern.
+- **Q2 BUG 2 deferred** — Vadym choose fix approach (A/B/C) після bачення real labels у DB. Не блокер для v3 ship — `cn_code` залишається NULL для всіх ZSRIR rows поки bridge не synchronized з real labels. "Intake first, map later" pattern (per audit Section 6).
+

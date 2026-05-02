@@ -103,7 +103,8 @@ interface ParsedRow {
   /**
    * Market name (Bronisze / Kalisz / etc.) — populated для per-market
    * sources (HURT WARZ у dataset 912). NULL для national aggregates
-   * (mleko 1024). Determines onConflict choice у upsert.
+   * (mleko 1024). Партіал UNIQUE indices (migration 054) enforce
+   * idempotency on INSERT — see ingestZsrir manual upsert pattern.
    */
   market: string | null
   raw_cells: Record<string, unknown>
@@ -195,13 +196,21 @@ async function downloadXlsx(fileUrl: string): Promise<XLSX.WorkBook> {
  *   - PROCESS ONLY sheet "HURT WARZ" (primary wholesale veg target).
  *   - Skip 27 інших sheets — different structures, defer parsers до 1.2.X+.
  *
- * HURT WARZ structure (verified):
- *   row 5  — header: col[1]="Data notowania", col[2]="Owoce", col[3]="Jedn."
- *   row 6  — market labels: col[4]=Bronisze, col[6]=Kalisz, ... (each market
- *            spans 2 cols: Min, Max)
+ * HURT WARZ 3-row header structure (verified diag run + DB inspection 02.05.2026):
+ *   row 4  — MARKETS header: col[4]=Bronisze, col[6]=Kalisz, col[8]=...
+ *            Кожен market spans 2 cols (Min/Max sub-headers на row 6).
+ *            Even-indexed cols starting from 4.
+ *   row 5  — dates row: col[1]="Data notowania", col[4]=date1, col[6]=date2
+ *            (specific dates per market). Used як anchor для header detection.
+ *   row 6  — units sub-header: col[1]="Owoce", col[3]="Jedn.",
+ *            col[4]="Min", col[5]="Max", col[6]="Min", col[7]="Max", ...
  *   row 7  — column numbering "1|2|3..."
  *   row 8+ — data rows: col[1]=product label, col[3]=unit (kg/szt./pęczek),
  *            col[4]/col[5]=Bronisze Min/Max, col[6]/col[7]=Kalisz Min/Max
+ *
+ * BUG 1 fix (hotfix v3): Earlier version extracted markets з row 5 (Data
+ * notowania row) — got dates "4/20/26" замість market names. Markets actually
+ * на row 4 — ABOVE Data notowania row.
  *
  * For each data row → 1 ParsedRow per market з price_pln=avg(min, max)
  * (ZSRIR provides Min+Max → average для cleaner data).
@@ -249,48 +258,70 @@ function parseOwoceWarzywa(
     return rows
   }
 
-  // Find header row defensively. Expected row 5 (0-indexed).
-  // Markers: cell[1] contains "data notowania" + cell[3] contains "jedn".
-  let headerRowIdx = -1
-  for (let i = 0; i < Math.min(data.length, 12); i++) {
+  // Find "Data notowania" row defensively (expected row 5, 0-indexed).
+  // Це anchor — markets на row ABOVE (datesRowIdx - 1), units sub-header
+  // на row BELOW (datesRowIdx + 1).
+  let datesRowIdx = -1
+  for (let i = 0; i < Math.min(data.length, 15); i++) {
     const row = (data[i] ?? []) as unknown[]
-    const c1 = String(row[1] ?? '').toLowerCase()
-    const c3 = String(row[3] ?? '').toLowerCase()
-    if (c1.includes('data notowania') && c3.includes('jedn')) {
-      headerRowIdx = i
+    const joined = row.map((c) => String(c ?? '').toLowerCase()).join(' | ')
+    if (joined.includes('data notowania')) {
+      datesRowIdx = i
       break
     }
   }
-  if (headerRowIdx === -1) {
+  if (datesRowIdx === -1) {
     console.warn(
-      '[ZSRIR 912] header row не знайдено (expected "Data notowania" + "Jedn." markers).',
+      '[ZSRIR 912] "Data notowania" anchor row не знайдено.',
+    )
+    return rows
+  }
+  if (datesRowIdx < 1) {
+    console.warn(
+      `[ZSRIR 912] "Data notowania" at row ${datesRowIdx} — no markets row above it.`,
     )
     return rows
   }
 
-  // Markets row = headerRow + 1. Extract market names starting col 4.
-  // Each market spans 2 cols (Min/Max). Look for non-empty string cells.
-  const marketsRow = (data[headerRowIdx + 1] ?? []) as unknown[]
+  // Sanity check — наступний row має містити "jedn" (units sub-header).
+  // Not fatal — if missing, продовжуємо з default unit + warning.
+  const unitsRowJoined = (
+    (data[datesRowIdx + 1] ?? []) as unknown[]
+  )
+    .map((c) => String(c ?? '').toLowerCase())
+    .join(' | ')
+  if (!unitsRowJoined.includes('jedn')) {
+    console.warn(
+      `[ZSRIR 912] expected "Jedn." sub-header at row ${datesRowIdx + 1}; got: ${unitsRowJoined.slice(0, 80)}`,
+    )
+  }
+
+  // BUG 1 fix: Markets row = datesRowIdx - 1 (ABOVE "Data notowania").
+  // Earlier version extracted з datesRowIdx — got dates "4/20/26" замість
+  // market names.
+  // Markets at every 2-col span starting from col 4: col[4]=Bronisze,
+  // col[6]=Kalisz, col[8]=..., etc. Min/Max sub-header pair occupies
+  // (col, col+1).
+  const marketsRow = (data[datesRowIdx - 1] ?? []) as unknown[]
   const markets: Array<{ name: string; minCol: number; maxCol: number }> = []
-  for (let col = 4; col < marketsRow.length; col++) {
+  for (let col = 4; col < marketsRow.length; col += 2) {
     const cell = marketsRow[col]
     if (typeof cell !== 'string') continue
     const name = cell.trim()
-    if (!name || name.length > 30 || /^\d+$/.test(name)) continue
-    // Check we не already added this market — duplicate cells happen when
-    // header spans multiple cells via merged Excel cell.
-    if (markets.some((m) => m.name === name)) continue
+    if (!name || name.length > 30) continue
+    // Skip purely numeric cells (defensive — у разі off-by-one)
+    if (/^[\d\s/.,-]+$/.test(name)) continue
     markets.push({ name, minCol: col, maxCol: col + 1 })
   }
   if (markets.length === 0) {
     console.warn(
-      `[ZSRIR 912] no markets identified у row ${headerRowIdx + 1}. Markets row: ${JSON.stringify(marketsRow.slice(0, 12))}`,
+      `[ZSRIR 912] no markets identified у row ${datesRowIdx - 1}. Markets row content: ${JSON.stringify(marketsRow.slice(0, 12))}`,
     )
     return rows
   }
 
-  // Data starts headerRow + 3 (skip markets row + numbering row "1|2|3...")
-  const dataStartIdx = headerRowIdx + 3
+  // Data starts datesRowIdx + 3 (skip dates row + units sub-header + numbering "1|2|3...").
+  const dataStartIdx = datesRowIdx + 3
 
   for (let i = dataStartIdx; i < data.length; i++) {
     const row = (data[i] ?? []) as unknown[]
@@ -543,83 +574,61 @@ export async function ingestZsrir(
         ),
       )
 
-      // Bulk insert chunks of 100. ParsedRow.market може бути null (mleko
-      // national aggregate) AND non-null (HURT WARZ per-market). Two
-      // partial UNIQUE indices (migration 054):
-      //   commodity_prices_uniq_with_market WHERE market IS NOT NULL
-      //   commodity_prices_uniq_no_market   WHERE market IS NULL
-      // Тому split chunk на 2 buckets перш ніж upsert — кожна requires
-      // different onConflict matching its partial index.
-      const CHUNK_SIZE = 100
-      for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-        const sliced = rows.slice(i, i + CHUNK_SIZE)
-        const allRecords = sliced.map((row) => ({
-          cn_code: mapByLabel.get(row.product_label) ?? null,
-          source: 'zsrir' as const,
-          market: row.market,
-          product_label: row.product_label,
-          price_pln: row.price_pln,
-          price_eur: null,
-          currency_native: 'PLN' as const,
-          unit: row.unit,
-          observation_date: row.observation_date,
-          category: 'food' as const,
-          raw_payload: {
-            dataset_id: ds.id,
-            dataset_label: ds.label_pl,
-            resource_title: resource.attributes.title,
-            sheet_name: row.sheet_name,
-            row_index: row.row_index,
-            raw_cells: row.raw_cells,
-          },
-        }))
+      // Manual upsert pattern — per-row INSERT з 23505 catch.
+      //
+      // Architectural constraint (verified live 02.05.2026): PostgREST
+      // .upsert() з onConflict='cols' НЕ matches partial UNIQUE indices
+      // (migration 054 з WHERE clauses) regardless of column list match.
+      // Postgres сам enforces partial constraint при INSERT, тому plain
+      // INSERT + catch на error code 23505 (unique_violation) — це
+      // working pattern для idempotent inserts з partial UNIQUE.
+      //
+      // Performance: ~3x slower vs bulk (1 INSERT per row замість chunked
+      // upsert). Для ZSRIR scale 30-50 rows total — це <2 sec, acceptable.
+      // Для майбутніх sources з 1000+ rows — consider bisect retry pattern
+      // (bulk INSERT, on 23505 split chunk у half).
+      const records = rows.map((row) => ({
+        cn_code: mapByLabel.get(row.product_label) ?? null,
+        source: 'zsrir' as const,
+        market: row.market,
+        product_label: row.product_label,
+        price_pln: row.price_pln,
+        price_eur: null,
+        currency_native: 'PLN' as const,
+        unit: row.unit,
+        observation_date: row.observation_date,
+        category: 'food' as const,
+        raw_payload: {
+          dataset_id: ds.id,
+          dataset_label: ds.label_pl,
+          resource_title: resource.attributes.title,
+          sheet_name: row.sheet_name,
+          row_index: row.row_index,
+          raw_cells: row.raw_cells,
+        },
+      }))
 
-        const withMarket = allRecords.filter((r) => r.market !== null)
-        const noMarket = allRecords.filter((r) => r.market === null)
+      for (const record of records) {
+        const { error: insErr } = await supabase
+          .from('commodity_prices')
+          .insert(record)
 
-        // Bucket 1: rows з market specified — onConflict matches
-        // commodity_prices_uniq_with_market partial index.
-        if (withMarket.length > 0) {
-          const { error: errWith, count: cntWith } = await supabase
-            .from('commodity_prices')
-            .upsert(withMarket, {
-              onConflict: 'source,market,product_label,observation_date',
-              ignoreDuplicates: true,
-              count: 'exact',
-            })
-          if (errWith) {
-            result.errors.push(
-              `dataset ${ds.id} chunk ${i} (with_market): ${errWith.message}`,
-            )
-            result.rows_failed += withMarket.length
-          } else {
-            const inserted = cntWith ?? withMarket.length
-            result.rows_inserted += inserted
-            result.rows_skipped += withMarket.length - inserted
+        if (insErr) {
+          // Postgres unique_violation = idempotent skip (partial UNIQUE
+          // index enforces constraint, regardless of PostgREST onConflict
+          // limitation).
+          if (insErr.code === '23505') {
+            result.rows_skipped++
+            continue
           }
+          // Other error — log + count as failed
+          result.errors.push(
+            `dataset ${ds.id} row "${record.product_label}" (${record.market ?? 'no_market'}): ${insErr.message}`,
+          )
+          result.rows_failed++
+          continue
         }
-
-        // Bucket 2: rows з market=NULL — onConflict matches
-        // commodity_prices_uniq_no_market partial index.
-        if (noMarket.length > 0) {
-          const { error: errNo, count: cntNo } = await supabase
-            .from('commodity_prices')
-            .upsert(noMarket, {
-              onConflict: 'source,product_label,observation_date',
-              ignoreDuplicates: true,
-              count: 'exact',
-            })
-          if (errNo) {
-            result.errors.push(
-              `dataset ${ds.id} chunk ${i} (no_market): ${errNo.message}`,
-            )
-            result.rows_failed += noMarket.length
-          } else {
-            const inserted = cntNo ?? noMarket.length
-            result.rows_inserted += inserted
-            result.rows_skipped += noMarket.length - inserted
-          }
-        }
+        result.rows_inserted++
       }
 
       result.datasets_processed++
