@@ -808,3 +808,58 @@ Output: `matches.ai_score` / `ai_reasoning` / `ai_confidence` per produkt. Rende
 - NIE modyfikacja UI components (to STEP 3)
 - NIE modyfikacja `client-detail-actions.tsx` primary CTA (to STEP 4)
 
+
+---
+
+## 02.05.2026 — S6A Step 3 (in progress)
+
+### Refactored
+
+- `components/clients/enrichment-progress-banner.tsx` (75 → 89 рядків, +14)
+- Pattern: S5D amber dashed mirror з `components/intelligence/lookup-form.tsx:194-212`
+- Visual changes:
+  - Container: `border-l-4 border-l-blue-500 bg-blue-50/40 p-3` → `rounded border border-dashed border-amber-300 bg-amber-50/40 p-3`
+  - Loader2Icon color: `text-blue-600` (size-4) → `text-amber-700` (size-3.5, more compact, mirror lookup-form vertical rhythm)
+  - Header copy: "Wzbogacanie w toku…" → "🔄 Trwa w tle (~30-60s)"
+  - Helper text added: "Te źródła są pobierane w tle. Strona odświeży się automatycznie." (заміна старого "Strona odświeży się automatycznie")
+  - Sources rendering: comma-joined string → outline badges (`<Badge variant="outline" className="border-amber-400 text-amber-800">`)
+- Layout: header row + helper paragraph + flex-wrap badge row (consistent з lookup-form S5D)
+
+### Polling logic preserved (byte-for-byte)
+
+- `useEffect` 10s polling cycle — identical
+- `useRouter.refresh()` коли prev.length > 0 && next.length === 0 — identical
+- Fetch `/api/intelligence/enrichment-status?clientId=...` no-store cache — identical
+- RunStatus interface — identical
+- Component prop signature `{ clientId: string }` — preserved (zero impact на page.tsx:276 callsite)
+
+### What deferred to S6A Step 4
+
+- Render full `phase_b_pending` list (e.g. include AI_match_rescore even перш ніж він стартував у polling endpoint).
+- Solution: action bar primary CTA "Analiza klienta" (Step 4) має передавати initial `phase_b_pending` from full-analysis response через React state/context до banner. Banner тоді показує `pending = expected - completed - running`.
+- Зараз: показуємо тільки `running` rows з enrichment_log polling. Це достатньо для current UX (Vadym бачить що щось крутиться).
+
+### Verification status
+
+- Static cross-reference PASS:
+  - `grep EnrichmentProgressBanner` — import path в `app/(dashboard)/clients/[id]/page.tsx:17` unchanged, render call line 276 unchanged
+  - `grep Badge.*from '@/components/ui/badge'` — import path consistent with lookup-form.tsx (no new dep, no path conflict)
+- pnpm tsc / pnpm lint / pnpm dev — НЕ виконувалось (CLAUDE.md "Ask before acting"); Vadym робить sam через PowerShell
+- Live verification (Protocol 4) — defer do shipnięcia całego S6A Step 3+4; cleanest test = Step 4 ship coли Vadym кліксне primary CTA "Analiza клиента" → banner з'являється з S5D style → Phase B завершується → page auto-refreshes
+
+### Next (S6A Step 4)
+
+- Refactor `components/clients/client-detail-actions.tsx`:
+  - Primary CTA rename: "✨ Analizuj AI" → "Analiza klienta" (Protocol 13 wording)
+  - Primary onClick: POST `/api/ai/analyze-profile` → POST `/api/clients/[id]/full-analysis` (Step 1 wrapper)
+  - Loading toast 2-stage: "Pobieranie danych..." → "Analiza AI..."
+  - Menu "Pobierz z KRS" rename → "Refresh KRS only" (clarity vs new primary)
+  - Optional: pass initial `phase_b_pending` from response do `EnrichmentProgressBanner` via React state (closes Step 3 deferred item)
+- Inline "Re-analyze" button у `BusinessProfileSection` rename → "Tylko AI re-run" (clarity that it's not full pipeline)
+
+### Constraint reminder
+
+- NIE git operations (Vadym committs z PowerShell — Protocol 14)
+- NIE modyfikacja `client-detail-actions.tsx` primary CTA (to STEP 4)
+- NIE modyfikacja `BusinessProfileSection` (to STEP 4)
+

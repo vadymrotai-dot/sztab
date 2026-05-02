@@ -2,11 +2,18 @@
 
 // components/clients/enrichment-progress-banner.tsx
 // Sprint M FIX 3 — visual indicator коли PHASE B enrichment активне.
-// Polls window.location every 10s через router.refresh() while running.
+// Sprint S6A Step 3 — refactored до S5D amber dashed pattern (mirror
+// components/intelligence/lookup-form.tsx). Polling logic preserved:
+// 10s interval, useRouter.refresh() once Phase B завершується.
+//
+// Defer (S6A Step 4): consume initial `phase_b_pending` from full-analysis
+// response через React state/context щоб render full pending list (not just
+// running rows). Зараз показуємо whatever polling endpoint повертає.
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2Icon } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 
 interface RunStatus {
   source: string
@@ -58,17 +65,25 @@ export function EnrichmentProgressBanner({ clientId }: { clientId: string }) {
   if (running.length === 0) return null
 
   return (
-    <div className="flex items-center gap-3 rounded border-l-4 border-l-blue-500 bg-blue-50/40 p-3 text-sm">
-      <Loader2Icon className="size-4 animate-spin text-blue-600" />
-      <div className="flex-1">
-        <span className="font-medium">Wzbogacanie w toku…</span>
-        <span className="ml-2 text-muted-foreground">
-          {running.map((r) => r.source).join(', ')}
-        </span>
+    <div className="space-y-1 rounded border border-dashed border-amber-300 bg-amber-50/40 p-3">
+      <div className="flex items-center gap-2 text-xs font-medium text-amber-800">
+        <Loader2Icon className="size-3.5 animate-spin text-amber-700" />
+        <span>Trwa w tle (~30-60s)</span>
       </div>
-      <span className="text-xs text-muted-foreground">
-        Strona odświeży się automatycznie
-      </span>
+      <p className="text-xs text-muted-foreground">
+        Te źródła są pobierane w tle. Strona odświeży się automatycznie.
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {running.map((r) => (
+          <Badge
+            key={r.source}
+            variant="outline"
+            className="border-amber-400 text-amber-800"
+          >
+            {r.source}
+          </Badge>
+        ))}
+      </div>
     </div>
   )
 }
