@@ -416,5 +416,39 @@ Matching клієнт↔товар у Sztab = **Algorithm + AI + Feedback Loop +
 
 **Calibration before launch:** Strategic intent — Sztab проводить місяці calibration з curated knowledge перш ніж приймати real customer feedback. Competitive moat через patience.
 
+### Decision Framework — Locked 02.05.2026
+
+Foundation decisions від Discovery #5 (Vadym + Claude):
+
+**Architecture orientation:** Food-first з ready-for-extension structure (Option Z). Build full food intelligence, але `commodity_prices` + `market_signals` tables мають `category` column від початку. Non-food modules (косметика, одяг, електроніка) — окремі plugins через 6-12+ місяців після food production proof.
+
+**Geographic scope:** Poland-only (Phase 1). EU expansion deferred до post-MVP. Все matching, sources, AI prompts — PL context tylko. Pikniko-aligned.
+
+**Monthly data budget:** $20-100 tier (Apify scrapers + free open data sources). Critical exceptions allowed якщо unblocking.
+
+**Update cadence:** Hybrid:
+- Weekly cron (Sunday evening) → ZSRIR, EU agri-food observatories, fresh-market.pl, GUS BDL, dane.gov.pl. Бо самі джерела публікуються weekly або lag-ом.
+- On-demand при кліку "Аналіз товару" → Allegro listings, Ceneo, Eurocash/Makro/Selgros catalogs, Tavily product mentions. Бо payload per-SKU, не варто pre-scraping.
+- Daily — нічого зараз. Reserved для future critical commodities.
+
+**Knowledge bootstrapping priorities (Phase 1):**
+1. Polish food market price history (5+ years) — raw data для AI calibration
+2. Competitor analyses — хто реально на ринку, їхні products + pricing
+3. Catering/restaurant business model analyses — як HoReCa закуповуються
+
+Решта categories (industry trends, regional preferences, B2B negotiation books, food regulations) — defer до Phase 2-3 на основі gaps які знайдемо в AI output.
+
+**Language priority:**
+- Polish primary (наш market)
+- Ukrainian secondary (Vadym native, частина sources)
+- English tertiary (global benchmarks, EU regulations)
+
+**Pricing comparison depth:** All three layers (D з Q4):
+- Wholesale (ZSRIR, Bronisze, EU observatories) — як ми продаємо до B2B
+- Retail/consumer (Allegro, Ceneo, supermarkets) — як кінцевий споживач бачить
+- Distribution channel (Eurocash, Makro, Selgros catalogs) — як distributors пропонують далі. Це показує наш position vs intermediaries.
+
+Reference: docs/sztab-product-intelligence-spec.md (детальний breakdown sources + data dimensions).
+
 **Reference:** docs/sztab-matching-philosophy.md (детальний breakdown).
 

@@ -64,17 +64,16 @@ Output: deterministic score 0-100, repeatable, debuggable.
 
 **Intent:** AI стартує не з нулевих знань, а як новий співробітник якого послали на тренінг. Перш ніж feedback почне приходити — AI вже орієнтується в domain.
 
-**Storage:** окрема knowledge_base table (TBD migration). Кожен документ → embedded → retrievable як AI context при scoring.
+**Curated by:** Vadym додає в Phase 1 priorities:
+1. Polish food market price history (raw data для calibration corpus)
+2. Competitor analyses (хто на ринку, products, pricing)
+3. Catering/restaurant business models (як HoReCa закуповуються)
 
-**Curated by:** Vadym додає що читати. AI не сам шукає (поки що).
+Phase 2 (after 1-2 months feedback): industry trends, regional preferences, B2B negotiation guides, food regulations — додаємо тільки якщо побачимо gaps у AI output.
 
-**Examples (TBD population):**
-- Статті про HoReCa industry trends в PL
-- Книги про B2B sales psychology
-- Новини про польський foodservice market
-- Reports з Allegro Business / GUS про consumer behavior
+Languages: PL primary, UA secondary, EN tertiary.
 
-**Implementation:** не Sprint S6A, не S6B. Окремий sprint після MVP launch.
+Storage: окрема knowledge_base table (TBD migration в Sprint S-INTEL.X). Кожен документ → embedded → retrievable як AI context при scoring.
 
 ---
 
@@ -125,3 +124,15 @@ Auto-apply: blocked principle. Винятки тільки після Phase 3 + 
 ---
 
 **END (vector form). Розкриватимемо by section коли вирішуватимемо реалізацію.**
+
+---
+
+## Connection to Product Intelligence
+
+Знахідки Discovery #5 (02.05.2026): matching engine критично залежить від **market intelligence layer** — не тільки CRM internal data. Без real wholesale prices, distribution channel context, competitor intelligence — AI re-score не має fresh information для якісних висновків.
+
+Це пояснює чому "matching працює не дуже" станом на 02.05.2026 — algo використовує тільки CEIDG/KRS/internal data, AI re-score додає judgment але без додаткової external information.
+
+Outside-in approach (Sztab) vs inside-out (typical CRM): Sztab matching будується на external market state + internal CRM data, не тільки CRM patterns.
+
+Reference: docs/sztab-product-intelligence-spec.md

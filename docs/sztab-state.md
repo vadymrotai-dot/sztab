@@ -644,3 +644,44 @@ S6B залежить від цих знахідок. S6A (клієнт) може
 - OFF data сидить у product_external.off_payload JSONB
 - Migration 023 enum 'gemini' застаріла vs runtime 'ai' — fix у 046
 
+---
+
+## 02.05.2026 — Discovery #5 + Foundation Update
+
+### Discovery #5 — Market Intelligence Layer
+
+- Vadym question on matching quality виявив strategic gap: matching engine використовує тільки internal CRM data, без external market context
+- Deep research surfaced rich Polish wholesale market intelligence ecosystem: ZSRIR (free open data), 16 wholesale markets, EU observatories, distribution channels
+- Vadym confirmed strategic intent: "outside-in" approach з real market data, не тільки CRM patterns
+
+### Decisions locked
+
+1. Architecture: Food-first з ready-for-extension (Option Z)
+2. Geographic: Poland-only Phase 1
+3. Budget: $20-100/month tier
+4. Cadence: Hybrid (weekly cron + on-demand)
+5. Knowledge priorities: Phase 1 = price history + competitor analyses + HoReCa business models
+6. Language: PL primary, UA secondary, EN tertiary
+7. Pricing comparison depth: All three layers (wholesale + retail + distribution)
+
+### Sprint Plan Revised
+
+- S6A "Аналіз клієнта" — ship first, не блокується
+- S-INTEL.1-5 — нова sprint group, foundation для market intelligence
+- S6B (3 sub-sprints) — після S-INTEL ready
+- S-FEEDBACK.1 — manual rating + Layer 2 tuning UI (after S6B)
+
+### Documentation Created/Updated
+
+- Protocol 15 expanded з Decision Framework section
+- docs/sztab-matching-philosophy.md updated knowledge bootstrapping section + new Connection to Product Intelligence section
+- docs/sztab-product-intelligence-spec.md — НОВИЙ doc (12 dimensions, sources map by tier, priorities, sprint plan)
+
+### Verified facts (Discovery #5 research)
+
+- ZSRIR доступний через dane.gov.pl як free open data API
+- EU agridata.ec.europa.eu має CSV/API exports для всіх observatories
+- fresh-market.pl має 16 польських wholesale markets, scrapeable
+- TGE relevant тільки для bulk commodities (sugar/grain/dairy futures), не finished food
+- CN code (Combined Nomenclature 8-digit) — bridge до всіх EU statistical sources, must-have field у products
+
