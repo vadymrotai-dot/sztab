@@ -1319,3 +1319,118 @@ Supabase Studio → New query → paste `scripts/050_cn_code_required.sql` → R
 
 Unchanged from S-INTEL.1.1 SHIP entry above. ZSRIR + fresh-market.pl + EU Agri-food + Sunday cron + commodity_prices + market_signals.
 
+
+---
+
+## 02.05.2026 — Sprint S-INTEL.1.2.1 SHIP (ZSRIR foundation + cron skeleton)
+
+**Status:** 🟡 Code ready, NOT yet committed/migrated/run. Vadym виконує commit + Supabase migrations apply + seed script + manual trigger окремими steps.
+
+**Precondition:** S-INTEL.1.1 + 1.1.5 shipped. products.cn_code populated на 35 SKU. Migrations 048+049+050 applied.
+
+### Live ZSRIR research (Vadym verified 02.05.2026)
+13 ZSRIR datasets confirmed на dane.gov.pl:
+- HIGH (impl this sprint): 912 (owoce/warzywa), 1024 (mleko)
+- MEDIUM (TODO у parser registry): 546 zboża, 601 drób, 777 wieprzowina, 1003 jaja, 1214 wołowina
+- LOW: 367 cukier, 619 chmiel, 957 rośliny oleiste, 983 baranina, 1022 pasze
+- SKIP: 1188 tytoń
+
+API endpoint: `https://api.dane.gov.pl/1.4/datasets/{id}/resources?per_page=3&sort=-created` → `data[].attributes.{title, created, file_url, format}`. file_url = direct xlsx download. Filename pattern UNSTABLE — extract з resources metadata, не parse filename.
+
+### Built
+
+- **Migration 051** (`scripts/051_commodity_prices.sql`): commodity_prices з cn_code NULLABLE, source CHECK, market, product_label, price_pln/eur, currency_native CHECK, unit, observation_date, category 'food' default, raw_payload JSONB, owner-scoped read + service_role write RLS, UNIQUE (source, market, product_label, observation_date) idempotency, 4 indexes.
+- **Migration 052** (`scripts/052_market_signals.sql`): SKELETON для derived signals. signal_type CHECK (price_trend/volatility/seasonality/shortage/spread), direction CHECK, magnitude, period_days, confidence (0..1), source_count, raw_data JSONB, RLS. Generators ship у S-INTEL.1.2.3.
+- **Migration 053** (`scripts/053_commodity_to_cn_map.sql`): bridge table з UNIQUE (source, source_label), CHECK source enum, CHECK cn_code regex `^[0-9]{8}$`, RLS.
+- **`lib/intelligence/zsrir.ts`** (~370 рядків, NEW namespace): ZSRIR data fetcher.
+  - `ZSRIR_DATASETS` registry — Phase 1 only HIGH (912 + 1024), MEDIUM datasets закоментовані з TODO.
+  - `fetchLatestResource(datasetId)` — REST call /1.4/datasets/{id}/resources, filter по format=xlsx
+  - `downloadXlsx(file_url)` — fetch arrayBuffer + XLSX.read
+  - 2 parser variants: `parseOwoceWarzywa` (defensive header-row detection + label/price/unit columns) + `parseMleko` (aggregate national average detection by milk hints + price range filter)
+  - PL number parser handles "1 234,56" / "1234,56" / "1.234,56"
+  - Unit normalizer (kg / ton / 100kg / liter / 100liter / piece)
+  - `ingestZsrir(supabase, options)` — main entry. Resolves cn_code via commodity_to_cn_map lookup, bulk upsert chunks of 100 rows з ON CONFLICT DO NOTHING idempotency. Per-dataset try/catch — one fail не валить run.
+- **`app/api/cron/market-intelligence/route.ts`** (~110 рядків): Vercel Cron handler. Pattern mirror matching-refresh: nodejs runtime, force-dynamic, maxDuration 300, CRON_SECRET Bearer auth. startCronRun → ingestZsrir → finishCronRun. Skeleton TODO comments для S-INTEL.1.2.2 (fresh-market) + S-INTEL.1.2.3 (EU + signals).
+- **`vercel.json`** modified: added `{path: /api/cron/market-intelligence, schedule: "0 6 * * 0"}` (Sunday 06:00 UTC = 07:00 Warsaw winter / 08:00 summer, після matching-refresh).
+- **`/admin/health/page.tsx`** modified: knownJobs array extended з 'market-intelligence' (рендериться UI row навіть коли 0 runs ще).
+- **`scripts/manual-trigger-market-intelligence.ts`** (~115 рядків): one-shot trigger script. Service-role client + persistent log `scripts/cowork/market-intelligence-{ISO}.log`. Pattern mirror manual-trigger-crons.ts.
+- **`scripts/seed-commodity-to-cn-map.ts`** (~110 рядків): 10 ZSRIR-priority seed rows для commodity_to_cn_map.
+  - 8 owoce/warzywa: kapusta biała, pomidor pole, ogórek krótki, jabłka, ziemniaki, marchew, cebula, burak
+  - 2 mleko: "mleko surowe" + "cena mleka surowego" (parser variants)
+  - Idempotent через UNIQUE (source, source_label) ON CONFLICT DO NOTHING
+
+### Decisions locked у sub-sprint
+
+- **Q1 Phase 1 scope** = HIGH priority only (912 + 1024). MEDIUM datasets = TODO у parser registry — expand з реальних labels.
+- **Q2 cn_code resolution** = commodity_to_cn_map lookup при ingestion. NULL допустимий ("intake first, map later"). Bridge expand у 1.2.2/1.2.3 з реальних labels.
+- **Q3 idempotency** = UNIQUE INDEX (source, market, product_label, observation_date) + upsert ignoreDuplicates. Re-run skip-ить existing rows.
+- **Q4 parser strategy** = defensive header-row detection (label hints + price hints) — НЕ rely на column index hardcode. Sheet structure varies by dataset.
+
+### Files touched
+
+| File | Δ | Status |
+|---|---|---|
+| `scripts/051_commodity_prices.sql` | NEW | code ready, NOT yet applied |
+| `scripts/052_market_signals.sql` | NEW (skeleton) | code ready, NOT yet applied |
+| `scripts/053_commodity_to_cn_map.sql` | NEW | code ready, NOT yet applied |
+| `lib/intelligence/zsrir.ts` | NEW (NEW namespace) | static review only |
+| `app/api/cron/market-intelligence/route.ts` | NEW | static review only |
+| `scripts/manual-trigger-market-intelligence.ts` | NEW | static review only, NOT yet run |
+| `scripts/seed-commodity-to-cn-map.ts` | NEW | static review only, NOT yet run |
+| `vercel.json` | +4 lines (cron entry) | requires Vercel deploy для activation |
+| `app/(dashboard)/admin/health/page.tsx` | +1 line (knownJobs) | active після build |
+| `docs/sztab-state.md` | this entry | docs |
+
+### Vadym 4-step execution (in order)
+
+**Step 1 — Apply migrations 051+052+053:**
+Supabase Studio → New query → paste each .sql → Run.
+```sql
+SELECT table_name FROM information_schema.tables
+WHERE table_schema='public' AND table_name IN ('commodity_prices', 'market_signals', 'commodity_to_cn_map');
+-- Має бути 3 rows
+```
+
+**Step 2 — Seed bridge table:**
+```powershell
+cd C:\Users\vadym\Projects\sztab
+pnpm exec tsx scripts/seed-commodity-to-cn-map.ts
+```
+Expected: 10 rows inserted. Verify: `SELECT COUNT(*) FROM commodity_to_cn_map WHERE source='zsrir';` → 10.
+
+**Step 3 — Manual trigger ZSRIR ingest:**
+```powershell
+pnpm exec tsx scripts/manual-trigger-market-intelligence.ts
+```
+Expected output: 2 datasets processed, ~20-50 rows inserted (912 owoce/warzywa повний bulletin + 1024 mleko aggregate). Persistent log у `scripts/cowork/market-intelligence-{ISO}.log`.
+
+**Step 4 — Verify:**
+```sql
+SELECT source, COUNT(*), MAX(observation_date), COUNT(DISTINCT cn_code) FILTER (WHERE cn_code IS NOT NULL)
+FROM commodity_prices GROUP BY source;
+-- zsrir | N | YYYY-MM-DD | M  (M = скільки cn_code resolved через bridge)
+
+SELECT product_label, price_pln, unit, observation_date, cn_code
+FROM commodity_prices WHERE source='zsrir' ORDER BY observation_date DESC LIMIT 20;
+```
+
+Open `/admin/health` → market-intelligence row рендериться з last manual run.
+
+### Verification post-Step 4
+
+- [ ] commodity_prices populated з ZSRIR rows
+- [ ] cn_code resolved через bridge для seeded labels (kapusta biała, pomidor pole, etc.)
+- [ ] /admin/health shows market-intelligence row з last_run + status
+- [ ] Re-run script — 0 new inserts (idempotent — UNIQUE INDEX catches)
+- [ ] Persistent log у scripts/cowork/ з summary
+
+### Next (S-INTEL.1.2.2 — fresh-market.pl scraper)
+- `lib/intelligence/fresh-market.ts` — cheerio scraper, top 5 markets (Bronisze + WGRO + Lublin + Kraków + Łódź)
+- Extend commodity_to_cn_map з fresh-market labels
+- Wire cron handler з добавленням fresh-market step
+
+### Next (S-INTEL.1.2.3 — EU Agri-food + signal generators)
+- `lib/intelligence/eu-agri.ts` — REST/CSV adapter (milk + meat + crops observatories)
+- `lib/intelligence/signals.ts` — algorithmic signal generators (price_trend SMA, volatility stddev, seasonality, shortage)
+- Wire cron handler з final signals generation step
+

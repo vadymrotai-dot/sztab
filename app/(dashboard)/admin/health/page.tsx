@@ -82,7 +82,7 @@ export default async function AdminHealthPage() {
     arr.push(r)
     grouped.set(r.job_name, arr)
   }
-  const knownJobs = ['matching-refresh', 'hygiene-scan']
+  const knownJobs = ['matching-refresh', 'hygiene-scan', 'market-intelligence']
   for (const j of knownJobs) {
     if (!grouped.has(j)) grouped.set(j, [])
   }
