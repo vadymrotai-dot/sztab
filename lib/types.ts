@@ -191,6 +191,9 @@ export interface Product {
   hygiene_status?: 'CLEAN' | 'DIRTY' | 'UNCHECKED' | null
   hygiene_issues?: Array<{ key: string; issue: string }> | null
   hygiene_checked_at?: string | null
+  // Sprint S-INTEL.1.1 — CN code (Combined Nomenclature 8-digit)
+  cn_code?: string | null
+  cn_code_review_pending?: boolean
 }
 
 export interface Task {

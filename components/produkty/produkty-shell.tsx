@@ -19,6 +19,7 @@ import {
   ResizableHandle,
 } from '@/components/ui/resizable'
 import { AccordionSection } from '@/components/clients/accordion-section'
+import { formatCnCode } from '@/lib/format/cn-code'
 import type { Product, Supplier } from '@/lib/types'
 
 interface Props {
@@ -167,6 +168,15 @@ export function ProduktyShell({ products, suppliers }: Props) {
                                         CLEAN
                                       </Badge>
                                     )}
+                                    {p.cn_code_review_pending && (
+                                      <Badge
+                                        variant="outline"
+                                        title="AI-suggested CN code, потрібен manual review"
+                                        className="border-amber-300 bg-amber-50 text-[10px] text-amber-700"
+                                      >
+                                        🔍 Review CN
+                                      </Badge>
+                                    )}
                                     {p.cost_eur !== null && (
                                       <span className="font-mono text-[11px] text-[#888]">
                                         {p.cost_eur?.toFixed(2)} €
@@ -222,6 +232,21 @@ function ProductDetail({ product, supplier }: { product: Product; supplier: Supp
               )}
               {product.category && <span className="text-[#888]">{product.category}</span>}
               {product.ean && <span className="font-mono text-[#888]">EAN {product.ean}</span>}
+              {product.cn_code && (
+                <span
+                  className="font-mono text-[#888]"
+                  title={
+                    product.cn_code_review_pending
+                      ? 'AI-suggested, потрібен review'
+                      : 'CN code (Combined Nomenclature)'
+                  }
+                >
+                  CN {formatCnCode(product.cn_code)}
+                  {product.cn_code_review_pending && (
+                    <span className="ml-1 text-amber-600">🔍</span>
+                  )}
+                </span>
+              )}
             </div>
           </div>
           {supplier && (

@@ -34,6 +34,7 @@ import {
   type Currency,
   type PricingSettings,
 } from '@/lib/pricing'
+import { formatCnCode, parseCnCode } from '@/lib/format/cn-code'
 import type { Product } from '@/lib/types'
 
 export interface SupplierOption {
@@ -110,6 +111,8 @@ export function ProductForm({
     product.seasonality_status ?? '',
   )
   const [tags, setTags] = useState<string>((product.tags ?? []).join(', '))
+  const [cnCode, setCnCode] = useState<string>(product.cn_code ?? '')
+  const [cnSuggestPending, setCnSuggestPending] = useState(false)
 
   // Currency is derived once on mount: existing cost_eur > 0 → EUR mode
   // (imported good), else cost_pln > 0 → PLN mode (PL supplier), else
@@ -191,6 +194,66 @@ export function ProductForm({
     toast.success('Ceny przeliczone z marż w Ustawieniach')
   }
 
+  const handleSuggestCN = async () => {
+    if (!name.trim()) {
+      toast.error('Najpierw wpisz nazwę produktu')
+      return
+    }
+    setCnSuggestPending(true)
+    try {
+      const res = await fetch('/api/products/cn-suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product_id: product.id,
+          name: name.trim(),
+          category: category.trim() || null,
+          gramatura: gramatura.trim() || null,
+          ean: ean.trim() || null,
+          vertical: vertical || null,
+          // brand — не у formie zarząd state, ale на products jest
+          brand: product.brand ?? null,
+        }),
+      })
+      const json = (await res.json()) as
+        | {
+            ok: true
+            suggestion: {
+              cn_code: string
+              confidence: 'high' | 'medium' | 'low'
+              reasoning: string
+              alternatives?: string[]
+            }
+            warning?: string
+          }
+        | { ok: false; error: string; kind?: string }
+      if (!json.ok) {
+        toast.error(`AI suggest: ${json.error}`)
+        return
+      }
+      const s = json.suggestion
+      setCnCode(s.cn_code)
+      const altNote =
+        s.alternatives && s.alternatives.length > 0
+          ? ` Alternatywy: ${s.alternatives.map(formatCnCode).join(', ')}.`
+          : ''
+      const conf =
+        s.confidence === 'high' ? '✓ wysokie' : s.confidence === 'medium' ? '~ średnie' : '? niskie'
+      toast.success(
+        `CN ${formatCnCode(s.cn_code)} (${conf}). ${s.reasoning}${altNote}${
+          json.ok && 'warning' in json && json.warning ? ` ⚠ ${json.warning}` : ''
+        }`,
+        { duration: 8000 },
+      )
+    } catch (err) {
+      toast.error(
+        `Network error: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    } finally {
+      setCnSuggestPending(false)
+    }
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const tagsArr = tags
@@ -204,11 +267,14 @@ export function ProductForm({
     const costEurForSave = currency === 'EUR' ? parseNum(costEur) : null
     const costPlnForSave = parseNum(costPln)
 
+    const cnCodeForSave = cnCode.trim() ? parseCnCode(cnCode.trim()) : null
+
     startTransition(async () => {
       const result = await updateProduct(product.id, {
         name: name.trim(),
         gramatura: gramatura.trim() || null,
         ean: ean.trim() || null,
+        cn_code: cnCodeForSave,
         supplier_id: supplierId || null,
         category: category.trim() || null,
         push_tier: pushTier,
@@ -288,6 +354,47 @@ export function ProductForm({
                     onChange={(e) => setEan(e.target.value)}
                   />
                 </div>
+              </div>
+              {/* Sprint S-INTEL.1.1 — CN code (Combined Nomenclature) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="cn_code">
+                    Kod CN (Combined Nomenclature)
+                    {product.cn_code_review_pending && (
+                      <span className="ml-2 inline-flex items-center rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                        Review pending
+                      </span>
+                    )}
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSuggestCN}
+                    disabled={cnSuggestPending || !name.trim()}
+                  >
+                    {cnSuggestPending && <Spinner className="mr-2" />}
+                    Zaproponuj AI
+                  </Button>
+                </div>
+                <Input
+                  id="cn_code"
+                  value={cnCode}
+                  onChange={(e) => setCnCode(parseCnCode(e.target.value))}
+                  placeholder="8 cyfr, np. 20059990"
+                  pattern="\d{8}"
+                  maxLength={8}
+                  inputMode="numeric"
+                />
+                {cnCode && (
+                  <p className="font-mono text-xs text-muted-foreground">
+                    Display: {formatCnCode(cnCode)}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Klasyfikacja celna UE (8 cyfr). Łącznik do TARIC, Eurostat
+                  Comext, ZSRIR, fresh-market.pl. Save edit clears review flag.
+                </p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">

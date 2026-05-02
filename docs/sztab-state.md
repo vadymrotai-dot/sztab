@@ -1178,3 +1178,77 @@ Newly tracked у Vadym commit (untracked → tracked):
   - Foundation для S6B Product Analysis pipeline
 - **S6A.0.7** (deferred, conditional): Add `console.warn` + `enrichment_log.raw_payload` telemetry якщо `rescored.length < matches.length` post-Item 5 fix. Useful якщо Item 5 не повністю усуне drop rate.
 
+
+---
+
+## 02.05.2026 — Sprint S-INTEL.1.1 SHIP (Market Intelligence Foundation)
+
+**Status:** 🟡 Code ready, NOT yet committed/migrated. Vadym виконує commit + Supabase migration apply після review.
+
+### Built
+
+- **Migration 048** (`scripts/048_cn_code.sql`, 31 рядок): products + cn_code TEXT NULLABLE з `^[0-9]{8}$` CHECK + index + cn_code_review_pending BOOLEAN DEFAULT FALSE + partial index WHERE TRUE
+- **Migration 049** (`scripts/049_knowledge_base.sql`, 77 рядків): knowledge_base table з sources JSONB, owner-scoped RLS, updated_at trigger, 6 indexes (topic / tags GIN / category / language / created_by / sources GIN). **NO embedding column** (pgvector defer per Q4 framework + spec line 220 open question).
+- **`lib/ai/cn-code-suggester.ts`** (190 рядків): Haiku 4.5 inference (Option B per audit Section 4). Pattern mirror `business-analysis.ts` (callAI + extractJSON, AI_MODELS.FAST). Cost ~$0.0008/call. Throws typed `CnCodeSuggesterError` (kinds: missing_key/ai_failure/invalid_format).
+- **`app/api/products/cn-suggest/route.ts`** (152 рядки): POST endpoint, supabase.auth.getUser → 401, Zod body validation, anthropic_api_key з params (fallback ENV), suggestCnCode call. Auto-write back коли confidence != 'low' AND product_id given (sets cn_code + cn_code_review_pending=TRUE = quality gate).
+- **`lib/format/cn-code.ts`** (32 рядки): formatCnCode/parseCnCode/isValidCnCode (DB без spaces "20059990" ↔ UI з spaces "2005 99 90" per Q4 lock).
+- **ProductForm Podstawowe tab** (`components/products/product-form.tsx`, 646 → 722, +76): row "Kod CN" з Label + "Zaproponuj AI" button + Input pattern=\d{8} maxLength=8 + display preview formatCnCode + helper hint. handleSuggestCN handler з POST cn-suggest, toast feedback з confidence + reasoning + alternatives. Disabled button якщо !name. parseCnCode на onChange = tolerant input. cn_code passed у updateProduct payload.
+- **`/produkty` list** (`components/produkty/produkty-shell.tsx`, 327 → 328, +1 Badge import + +9 inline rendering): amber "🔍 Review CN" Badge для review_pending=TRUE (з tooltip "AI-suggested CN code, потрібен manual review") + CN display з spaces у ProductDetail header (з 🔍 marker якщо pending).
+- **Zod baseSchema** (`app/actions/products.ts`): cn_code regex validation `/^\d{8}$/` + cn_code_review_pending bool. updateProduct має auto-clear `cn_code_review_pending = false` коли cn_code present у payload (Vadym save = підтверджує / коригує AI suggestion).
+- **Product type extension** (`lib/types.ts`): cn_code?: string | null + cn_code_review_pending?: boolean.
+- **Audit doc updated** (`docs/audit-s-intel-1-1.md`): Section 2 migration numbers 046 → 048 (з explanation S6B reservation), Section 6 BUILD scope з Q5 review_pending item + total 4.6h, Section 7 переформульовано як S-INTEL.1.1.5 separate sprint, Section 8 open questions → locked decisions table.
+
+### Decisions locked (referenced у audit-s-intel-1-1.md Section 8)
+
+- **Q1 migration numbers**: 048, 049 used. 050 (cn_code SET NOT NULL) defer до S-INTEL.1.1.5. S6B keeps 046+047.
+- **Q2 backfill timing**: post-sprint S-INTEL.1.1.5 (separate ship). Sprint 1.1 = infrastructure only. 35 SKU × ~$0.0008 = ~$0.028 одноразово.
+- **Q3 helper namespace**: `lib/ai/` (consistency з business-analysis.ts, sku-attributes.ts). НЕ створюємо `lib/intelligence/`.
+- **Q4 normalization**: DB без spaces (regex), UI з spaces "2005 99 90" через format helper.
+- **Q5 quality gate**: `cn_code_review_pending` flag + UI badge + auto-clear-on-save. NOT optional.
+
+### Files touched
+
+| File | Δ | Status |
+|---|---|---|
+| `scripts/048_cn_code.sql` | NEW (31) | code ready, migration NOT yet applied |
+| `scripts/049_knowledge_base.sql` | NEW (77) | code ready, migration NOT yet applied |
+| `lib/ai/cn-code-suggester.ts` | NEW (190) | static review only |
+| `app/api/products/cn-suggest/route.ts` | NEW (152) | static review only |
+| `lib/format/cn-code.ts` | NEW (32) | static review only |
+| `lib/types.ts` | +3 (cn_code, cn_code_review_pending у Product) | static review only |
+| `app/actions/products.ts` | +13 (Zod regex, auto-clear) | static review only |
+| `components/products/product-form.tsx` | +76 (state, handler, UI block, payload) | static review only |
+| `components/produkty/produkty-shell.tsx` | +10 (Badge + ProductDetail CN display) | static review only |
+| `docs/audit-s-intel-1-1.md` | 4 fixes (Section 2, 6, 7, 8) | docs |
+| `docs/sztab-state.md` | this entry | docs |
+
+### Audit baseline correction
+
+Initial sandbox virtiofs cache (Protocol 14 family) showed false truncation у `npx tsc --noEmit` check. Native PowerShell verification підтвердив файли цілі: lib/types.ts 276, app/actions/products.ts 217, product-form.tsx 722, produkty-shell.tsx 328. Документую щоб не повторити false alarm у наступних sprintах. Future Cowork sprint debugging: при будь-якому "truncation" alert — спершу native PowerShell `Get-Content -TotalCount` перш ніж draft recovery options.
+
+### Verification остаточна (Vadym робить sam)
+
+- [ ] `pnpm run build` → "Compiled successfully"
+- [ ] `npx tsc --noEmit` → нові errors з S-INTEL.1.1 = 0 (pre-existing baseline errors з business-profile-section, krs-refresh, intelligence/lookup, client-detail-actions, enrichment-progress-banner — НЕ моя scope, sandbox false alarm okazał się stale cache)
+- [ ] Apply migrations 048 + 049 через Supabase Studio SQL Editor
+- [ ] `SELECT column_name FROM information_schema.columns WHERE table_name='products' AND column_name LIKE 'cn_%'` → 2 rows
+- [ ] `SELECT * FROM information_schema.tables WHERE table_name='knowledge_base'` → 1 row
+- [ ] Open `/products/[id]/edit` для будь-якого SKU → Tab Podstawowe → "Kod CN" field з'являється з "Zaproponuj AI" button
+- [ ] Click "Zaproponuj AI" → toast з confidence + reasoning. cn_code populated. `/produkty` показує "🔍 Review CN" badge для цього SKU.
+- [ ] Save edit → badge зникає на /produkty (review_pending cleared у DB).
+- [ ] `SELECT id, name, cn_code, cn_code_review_pending FROM products WHERE cn_code IS NOT NULL` — verify.
+
+### Next (S-INTEL.1.1.5 — backfill)
+
+- `scripts/backfill-cn-codes.ts` — read products WHERE cn_code IS NULL → call cn-code-suggester sequential (35 × $0.0008 = ~$0.028) → write cn_code + review_pending=TRUE
+- Vadym manual review через `/products/[id]/edit` — corrigue alternativy якщо потрібно, save clears review flag
+- Migration 050 `cn_code_required.sql`: ALTER COLUMN cn_code SET NOT NULL після всіх review
+
+### Next (S-INTEL.1.2 — wholesale data)
+
+- ZSRIR API integration (`dane.gov.pl` open data, weekly notowania)
+- `fresh-market.pl` scraper (16 PL wholesale markets, daily quotes)
+- EU Agri-food observatory weekly fetcher
+- Sunday cron via Vercel Cron
+- Tables: `commodity_prices` + `market_signals` з `category` column (food-first ready-for-extension per Decision Framework)
+

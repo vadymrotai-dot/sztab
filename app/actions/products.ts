@@ -35,6 +35,13 @@ const baseSchema = z.object({
   shelf_life_days: z.number().int().min(0).nullable().optional(),
   unit: z.string().nullable().optional(),
   vertical: z.string().nullable().optional(),
+  // Sprint S-INTEL.1.1 — CN code (Combined Nomenclature 8-digit, без spaces)
+  cn_code: z
+    .string()
+    .regex(/^\d{8}$/, 'CN code = 8 cyfr (bez spacji)')
+    .nullable()
+    .optional(),
+  cn_code_review_pending: z.boolean().optional(),
 })
 
 export type ProductCreateInput = z.infer<typeof baseSchema>
@@ -167,9 +174,23 @@ export async function updateProduct(
   // Don't auto-recompute on partial update — user is editing specific
   // fields. The form decides whether to re-derive cost_pln + tiers
   // from a fresh cost_eur.
+  //
+  // S-INTEL.1.1 quality gate: якщо form передало cn_code (Vadym manually
+  // edit-нув цей field), clear cn_code_review_pending. Vadym save = підтверджує
+  // або коригує AI suggestion. Винятки — caller сам передав explicit
+  // cn_code_review_pending у payload.
+  const payload: Record<string, unknown> = { ...parsed.data }
+  if (
+    'cn_code' in parsed.data &&
+    parsed.data.cn_code !== undefined &&
+    !('cn_code_review_pending' in parsed.data)
+  ) {
+    payload.cn_code_review_pending = false
+  }
+
   const { error } = await supabase
     .from('products')
-    .update(parsed.data)
+    .update(payload)
     .eq('id', id)
     .eq('owner_id', user.id)
 
