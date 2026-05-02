@@ -4,13 +4,17 @@
 // Sprint L Phase 3 — UI для business_profile JSONB на /clients/[id].
 // Sprint M FIX 4 — added "Re-analyze" button; consolidates BusinessDataPanel
 // + PotentialAnalysisPanel (oba removed).
+// Sprint S6A Step 4 (FINAL) — empty-state branch tepere bez button (Опція C):
+// замість inline "Analizuj" pokazuje hint do primary "Analiza klienta" w
+// ActionBar. With-profile branch: rename "Re-analyze" → "Tylko AI re-run"
+// + disabled state коли input_sources empty (full pipeline must run first).
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { SparklesIcon, RefreshCwIcon, Loader2Icon } from 'lucide-react'
+import { SparklesIcon, RefreshCwIcon, Loader2Icon, ArrowUpIcon } from 'lucide-react'
 import { SupplierMatrix } from './supplier-matrix'
 
 interface BusinessProfile {
@@ -73,22 +77,29 @@ export function BusinessProfileSection({
   }
 
   if (!profile || !profile.business_format) {
+    // Sprint S6A Step 4 (Опція C) — empty state без inline button.
+    // User-facing hint kieruje do primary "Analiza klienta" w ActionBar.
+    // Eliminuje confusion між AI-only re-run a full pipeline.
     return (
       <Card className="border-l-4 border-l-orange-400">
-        <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <SparklesIcon className="size-5 text-purple-500" />
             Analiza biznesowa (AI)
           </CardTitle>
-          <Button size="sm" variant="outline" onClick={reanalyze} disabled={analyzing}>
-            {analyzing ? <Loader2Icon className="size-4 animate-spin" /> : <SparklesIcon className="size-4" />}
-            <span className="ml-2">Analizuj</span>
-          </Button>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Brak analizy biznesowej. Uruchom Intelligence Lookup albo kliknij Analizuj — AI wygeneruje profil.
-          </p>
+          <div className="flex items-start gap-2 rounded border border-dashed border-amber-300 bg-amber-50/40 p-3 text-sm">
+            <ArrowUpIcon className="size-4 shrink-0 text-amber-700" />
+            <div className="space-y-1">
+              <p className="font-medium text-amber-900">Brak analizy biznesowej.</p>
+              <p className="text-xs text-muted-foreground">
+                Uruchom <span className="font-medium">&quot;Analiza klienta&quot;</span> w panelu akcji
+                powyżej — pobierze wszystkie źródła (KRS, GUS, BZP, Tavily, Apify, business AI, AI re-score)
+                i wygeneruje profil.
+              </p>
+            </div>
+          </div>
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         </CardContent>
       </Card>
@@ -109,13 +120,30 @@ export function BusinessProfileSection({
             {profile.analyzed_at && new Date(profile.analyzed_at).toLocaleDateString('pl-PL')}
             <div className="font-mono">{profile.model_used}</div>
           </div>
-          <Button size="sm" variant="outline" onClick={reanalyze} disabled={analyzing}>
+          {/* Sprint S6A Step 4 — inline re-run AI tylko (BEZ refresh sources).
+              Disabled gdy input_sources empty (znaczy sources nie zebrane —
+              user musi uruchomić "Analiza klienta" w ActionBar najpierw). */}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={reanalyze}
+            disabled={
+              analyzing ||
+              !profile.input_sources ||
+              profile.input_sources.length === 0
+            }
+            title={
+              !profile.input_sources || profile.input_sources.length === 0
+                ? 'Spuszczone sources są wymagane. Uruchom "Analiza klienta" najpierw.'
+                : 'Re-run AI analysis tylko (bez refresh sources). Dla pełnej analizy use "Analiza klienta" button w panelu akcji.'
+            }
+          >
             {analyzing ? (
               <Loader2Icon className="size-4 animate-spin" />
             ) : (
               <RefreshCwIcon className="size-4" />
             )}
-            <span className="ml-2 hidden sm:inline">Re-analyze</span>
+            <span className="ml-2 hidden sm:inline">Tylko AI re-run</span>
           </Button>
         </div>
       </CardHeader>

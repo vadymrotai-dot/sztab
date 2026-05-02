@@ -863,3 +863,105 @@ Output: `matches.ai_score` / `ai_reasoning` / `ai_confidence` per produkt. Rende
 - NIE modyfikacja `client-detail-actions.tsx` primary CTA (to STEP 4)
 - NIE modyfikacja `BusinessProfileSection` (to STEP 4)
 
+
+---
+
+## 02.05.2026 — S6A Step 4 (FINAL — SHIP COMPLETE)
+
+### Refactored
+
+**1. `components/clients/client-detail-actions.tsx` (143 → 200 рядків, +57)**
+
+Primary CTA rewired do Protocol 13 "Analiza klienta":
+- Label: `hasProfile ? 'Pełna re-analiza' : 'Analiza klienta'` (Vadym lock 02.05.2026)
+- Icon: SparklesIcon (no profile) / RefreshCwIcon (has profile) — preserved variant logic
+- Handler: `analyze()` → `fullAnalysis()` (rename)
+  - URL: `/api/ai/analyze-profile` → `/api/clients/${clientId}/full-analysis` (Step 1 wrapper)
+  - Body: `{ clientId }` → empty (clientId resolved server-side z URL params)
+- Loading: `alert()` → sonner `toast.loading('Pobieranie danych...')` → `toast.success(...)` z runtime `phase_b_pending` count
+- Success message conditional: `Phase A gotowa (${completed}). Analiza AI w tle (~60-90s, ${pending} pending)...` lub bez pending coли brak anthropic_api_key
+- `router.refresh()` po success — banner pokażе running enrichment_log rows
+
+Menu rewire:
+- Label: `'Pobierz z KRS'` → `'Refresh KRS only'` (clarity vs new primary)
+- Function: `refreshFromKrs()` → `refreshKrsOnly()` (rename для consistency z UI label)
+- URL: `/api/intelligence/lookup` → `/api/clients/${clientId}/krs-refresh` (existing S5B-1 endpoint)
+- Body: `{ nip }` → empty (clientId from URL, krs-refresh resolves server-side)
+- Sonner toast feedback (mirror KrsRefreshButton accordion-section pattern)
+- Busy state label: `'Pobieranie KRS…'`
+
+State key rename: `busy === 'analyze'` → `busy === 'fullAnalysis'` (single-source-of-truth z function name).
+
+Preserved unchanged:
+- `+ Zadanie / + Notatka / + Szansa` actions
+- Edytuj / Eksport (Markdown) menu items
+- `deleteClient()` (uses `alert()` + `confirm()` — out of scope, S6A.0 hygiene cleanup later)
+- Component signature `{ clientId, nip, hasProfile }` — zero impact на page.tsx callsite
+
+**2. `components/clients/business-profile-section.tsx` (215 → 242 рядків, +27)**
+
+Empty-state branch (Опція C — hide button, show hint):
+- Removed inline "Analizuj" button (oraz cały right-aligned CardHeader split)
+- Added amber-dashed hint card в CardContent з ArrowUpIcon
+- Copy: "Brak analizy biznesowej." + "Uruchom 'Analiza klienta' w panelu akcji powyżej — pobierze wszystkie źródła (KRS, GUS, BZP, Tavily, Apify, business AI, AI re-score) i wygeneruje profil."
+- Eliminuje confusion між AI-only re-run a full pipeline на etapі коли sources не fetched
+
+With-profile branch:
+- Inline button label: `'Re-analyze'` → `'Tylko AI re-run'`
+- Tooltip via `title` prop (no extra Tooltip lib): conditional message
+  - When disabled (input_sources empty): `"Spuszczone sources są wymagane. Uruchom 'Analiza klienta' najpierw."`
+  - When enabled: `"Re-run AI analysis tylko (bez refresh sources). Dla pełnej analizy use 'Analiza klienta' button w panelu akcji."`
+- `disabled` logic: `analyzing || !profile.input_sources || profile.input_sources.length === 0`
+- Handler: unchanged (POST `/api/ai/analyze-profile` — preserves AI-only entry point)
+
+Imports: added `ArrowUpIcon` from lucide-react (used у empty-state hint).
+
+### Verification status
+
+- Static cross-reference PASS (grep):
+  - `/api/clients/${clientId}/full-analysis` — wired у primary onClick
+  - `Analiza klienta` / `Pełna re-analiza` — appears як conditional primary label
+  - `/api/clients/${clientId}/krs-refresh` — wired у menu (existing endpoint, NOT new)
+  - `/api/ai/analyze-profile` — preserved у business-profile-section reanalyze() (inline button)
+  - `Tylko AI re-run` — replaces `Re-analyze` у with-profile header
+  - sonner dep — already used by sibling KrsRefreshButton, no new install
+- pnpm tsc / pnpm lint / pnpm dev — НЕ виконувалось (CLAUDE.md "Ask before acting"); Vadym робить sam через PowerShell
+- Live verification (Protocol 4) — defer do Vadym kliknięcia "Analiza klienta" na arbitralnym kliencie po deploy (~1 min Vercel build):
+  - Expected: amber dashed banner appears z running sources list
+  - Phase B completes у ~120-130s
+  - banner disappears + page auto-refreshes
+  - business_profile + matches.ai_score updated
+
+### Sprint S6A SHIPPED COMPLETE (4/4 steps)
+
+| Step | Description | Files | Status |
+|---|---|---|---|
+| 1 | full-analysis wrapper endpoint | `app/api/clients/[id]/full-analysis/route.ts` (101 lines new) | ✅ Shipped commit 09eb3fd |
+| 2 | AI rescore у Phase B + per-client variant | `lib/matching/ai-rescore.ts` (+275), `app/api/intelligence/lookup/route.ts` (+67) | ✅ Shipped commit 47fbccd, live verified (9/10 matches updated за ~133s, AI reasoning text quality high) |
+| 3 | EnrichmentProgressBanner S5D refactor | `components/clients/enrichment-progress-banner.tsx` (+14) | ✅ Shipped (commit pending — needs Vadym push) |
+| 4 | UI rewire primary CTA + inline button | `components/clients/client-detail-actions.tsx` (+57), `components/clients/business-profile-section.tsx` (+27) | ✅ Code complete (commit pending) |
+
+### Architecture closure (Protocol 13 implementation)
+
+Sprint S6A досягло Protocol 13 "Two Fundamental Analysis Buttons" дla CLIENT side:
+1. ОДНА КНОПКА primary "Analiza klienta" → fan-out до WSZYSTKICH sources (KRS, GUS, GUS_branches, VAT_BL, BZP, rejestrio_v2, Tavily, Apify_GMaps, AI_business_analysis, final algo recompute, AI_match_rescore TOP-10)
+2. AI = FINAL layer (STEP 7 у runPhaseB), не первий — runs після всіх sources
+3. UI shows S5D amber dashed banner з running sources poки Phase B w toku
+4. Page auto-refreshes po Phase B done — Vadym widzi zaktualizowany business_profile + ai_score per match
+
+### Next sprint candidates
+
+- **S6A.0 hygiene cleanup** (deferred):
+  - Delete `/api/ai/analyze-client` orphan endpoint (Sonnet, notes append — 0 callers, audit Q-4 verified)
+  - Migrate `deleteClient()` `alert()/confirm()` → sonner toast + AlertDialog (consistency)
+  - Update outdated TODO comment у `app/api/clients/[id]/full-analysis/route.ts:21` (Step 2 shipped, AI_match_rescore now lives у lookup pending list)
+- **S6A.5 split chain** (conditional — only if Phase B timeout skip rate proves high у production):
+  - Move AI_match_rescore до osobnego after() chain
+  - Trade-off: lose Protocol 13 final-context guarantee
+  - Trigger only after observing >5% skip rate в enrichment_log
+- **S6B Product Analysis** (Discovery #4 locked):
+  - Mirror architecture для /produkty/[id]
+  - Sources: Allegro + Ceneo + Tavily + OpenFoodFacts
+  - 18-25h breakdown — see Discovery #4 entry
+  - Precondition: S-INTEL.1-5 market intelligence layer (Discovery #5)
+
