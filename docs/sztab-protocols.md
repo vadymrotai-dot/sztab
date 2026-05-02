@@ -393,3 +393,28 @@ Pattern: Cowork edits files → suggests commit message → Vadym виконує
 
 Diagnostic ready: handle.exe installed, Defender exclusion C:\Users\vadym\Projects, diagnose-lock.ps1 pattern.
 
+---
+
+## Protocol 15 — Hybrid Matching Philosophy
+
+Matching клієнт↔товар у Sztab = **Algorithm + AI + Feedback Loop + Knowledge Bootstrapping**. AI не замінює algorithm, AI тюнить його з часом на основі реальних результатів і curated знань про domain.
+
+**Архітектура (3 layers):**
+- L1 Algorithm: deterministic rules (lib/matching/scoring/), transparent score, fast, debuggable. Це backbone.
+- L2 AI tuning: коригує algorithm параметри. Поетапно: Phase 1 (зараз → 6м) тільки existing weights. Phase 2 (6-12м) + thresholds. Phase 3 (12м+) + нові правила.
+- L3 Feedback signals: Vadym manual rating (high weight), реальні outcomes (deal closed, response rate), Pikniko handoff success, knowledge bootstrapping (curated articles/books/news про HoReCa/B2B/польський market як retrieval context).
+
+**Decision authority:** AI пропонує → Vadym approve/reject. Завжди. Auto-apply заборонено до Phase 3.
+
+**Cadence:** Weekly batch (cron в неділю ввечері). Виключення — explicit thumb up/down від Vadym = real-time як strong signal.
+
+**Anti-patterns (blocked):**
+- AI переписує algorithm structure без OK
+- Auto-apply без human approval
+- Real-time learning для всіх signals (тільки weekly batch + manual ratings real-time)
+- Black-box AI scoring без algorithm backbone
+
+**Calibration before launch:** Strategic intent — Sztab проводить місяці calibration з curated knowledge перш ніж приймати real customer feedback. Competitive moat через patience.
+
+**Reference:** docs/sztab-matching-philosophy.md (детальний breakdown).
+
