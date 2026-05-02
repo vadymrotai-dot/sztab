@@ -452,3 +452,170 @@ Reference: docs/sztab-product-intelligence-spec.md (детальний breakdown
 
 **Reference:** docs/sztab-matching-philosophy.md (детальний breakdown).
 
+
+---
+
+## ПРОТОКОЛ 16 — COWORK SANDBOX FILE CACHE STALE (NEW 02.05.2026)
+
+Cowork bash/grep tools періодично показують файл коротшим або обірваним після Edit operation. Це **false alarm** — virtiofs cache між sandbox + host stale, реальний файл на диску цілий.
+
+### Symptom
+- `wc -l file.ts` через bash → returns N
+- Native PowerShell `(Get-Content file.ts).Count` через PowerShell → returns N+M (правильне число)
+- `tail file.ts` через bash → cuts mid-sentence на startовій lineі
+- Read tool через Cowork file system читає правильно (different cache path)
+
+### Root cause
+Cowork sandbox bash mounts repo через virtiofs. Cache invalidation lag після Edit tool writes — bash sees stale state, не fresh disk content. Read tool використовує different access path → bypasses cache.
+
+### Resolution
+
+**❌ DO NOT** restore файл на основі sandbox bash output. Це може реально зламати файл, додавши content поверх вже-existing data.
+
+**✅ DO** verify через native PowerShell перш ніж panic:
+```powershell
+(Get-Content C:\Users\vadym\Projects\sztab\path\to\file.ts).Count
+Get-Content -TotalCount 5 file.ts -Tail 5  # last 5 lines
+```
+
+### Anti-patterns (blocked)
+
+- "Truncation alarm" → restore through git → losing real edits
+- Trust bash `wc -l` як authoritative для post-Edit verification
+- Re-Edit файл "to fix truncation" коли nothing was actually broken
+
+### Documented через
+- 02.05.2026 false alarm during Sprint S6A (4 файли "truncated", native PowerShell showed all intact)
+- 02.05.2026 false alarm during Sprint S-INTEL.1.1 (lib/types.ts + product-form.tsx — sandbox showed truncation, PowerShell baseline 276/722 правильні)
+
+### Recovery from false alarm
+Якщо Cowork already drafted recovery options (Option A restore / Option B diff): STOP перш ніж execute. Native PowerShell verify FIRST. У 100% recorded cases (2/2) — false alarm.
+
+---
+
+## ПРОТОКОЛ 17 — POSTGREST UPSERT vs PARTIAL UNIQUE INDICES (NEW 02.05.2026)
+
+Anti-pattern: створити partial UNIQUE INDEX (з `WHERE` clause) + використати PostgREST `.upsert(onConflict='cols')` проти нього. **Не працює архітектурно.**
+
+### Symptom
+```
+error 42P10: "there is no unique or exclusion constraint matching the
+ON CONFLICT specification"
+```
+Під час `pg_indexes` показує partial UNIQUE indices правильно створеними і column list матчить.
+
+### Root cause
+PostgREST `.upsert()` `onConflict` parameter вимагає physical UNIQUE або PRIMARY KEY constraint на raw columns. Partial indices (`WHERE clause`) НЕ recognized як valid conflict targets, навіть якщо column list matches.
+
+Це **архітектурне обмеження PostgREST бібліотеки** (не Postgres, не migration issue, не bug).
+
+### Resolution
+
+**Опція А (recommended для small-batch):** Manual INSERT loop з catch на error code 23505 (unique_violation):
+
+```typescript
+for (const record of records) {
+  const { error: insErr } = await supabase
+    .from('table')
+    .insert(record)
+  if (insErr) {
+    if (insErr.code === '23505') {
+      result.rows_skipped++  // idempotent skip
+      continue
+    }
+    result.errors.push(`...${insErr.message}`)
+    result.rows_failed++
+    continue
+  }
+  result.rows_inserted++
+}
+```
+Postgres сам enforces partial constraint при INSERT — PostgREST onConflict syntax не потрібен. Performance: ~3x slower vs bulk upsert (per-row × ~50ms RTT). Прийнятно для <100 rows (<3 sec).
+
+**Опція Б (recommended для large-batch):** Replace partial indices на full UNIQUE constraint. Потребує NOT NULL на всіх ключових columns (default values якщо не nullable). Compatible з bulk upsert, faster, але loses conditional uniqueness semantics.
+
+**Опція В (для high-volume):** Bulk INSERT, on 23505 split chunk у half (bisect retry). ~log2(N) inserts замість N. Складніше але масштабується.
+
+### Anti-patterns (blocked)
+
+- Trust migration check ("indices created successfully") як доказ що upsert працюватиме
+- Try `onConflict='constraint_name'` замість column list — same 42P10 error
+- Add ON CONFLICT INFER syntax ($1, $2) — НЕ works through PostgREST
+
+### Documented через
+- 02.05.2026 Sprint S-INTEL.1.2.1 hotfix v2 — migration 054 створила 2 partial UNIQUE indices (with_market / no_market), PostgREST upsert все одно throw 42P10
+- Resolution shipped: manual INSERT loop у `lib/intelligence/zsrir.ts` ingestZsrir()
+
+### Implications для майбутніх sub-sprints
+- S-INTEL.1.2.2 (fresh-market.pl) — використати manual INSERT pattern одразу
+- S-INTEL.1.2.3 (EU Agri-food) — same
+- Будь-яка нова table з conditional uniqueness — design constraint type перш ніж писати code (А/Б/В per scale)
+
+---
+
+## ПРОТОКОЛ 18 — XLSX PARSER REQUIRES DIAG-FIRST (NEW 02.05.2026)
+
+Anti-pattern: писати xlsx parser на основі assumptions про структуру file (header position, column indices, sheet count). Реальні xlsx файли — особливо польських державних публікацій (ZSRIR, GUS, MRiRW) — часто мають сюрпризи.
+
+### Symptom
+- Parser повертає 0 rows (assumption: header у row 0; реальність: row 5+)
+- Parser extracts wrong data (assumption: markets у одному row; реальність: 3-row header markets/dates/units)
+- Parser падає silently на specific xlsx variants (assumption: 1 sheet; реальність: 28 sheets з різними structures)
+
+### Root cause
+Government data publications часто мають:
+- Multi-row headers (markets row + dates row + units sub-header)
+- Hidden sheets з aggregate data
+- Mixed units (kg, 100kg, szt., pęczek, l, 100l) per row
+- Regional sub-categories (Voivodships, foreign trade, retail vs wholesale)
+- Filename patterns що змінюються рік-до-року
+- Excel merged cells що ламають column indexing
+
+Assumption-based parsing → 3+ ітерації hotfix, кожна на основі неправильних здогадок.
+
+### Resolution
+
+**Завжди створити diag-script ПЕРШ ніж писати parser:**
+
+```typescript
+// scripts/diag-{source}.ts pattern:
+// 1. Auto-find latest xlsx у scripts/cowork/
+// 2. Per sheet dump:
+//    - Sheet name + total rows + max columns
+//    - First 15 rows (raw cells preview)
+//    - Label keyword hits per column (with examples)
+//    - Price candidate hits per column (numeric у range)
+//    - Header row guesses (text-cell density ranking)
+// 3. Output structured console.log
+```
+
+### Workflow
+
+1. Vadym downloads xlsx через PowerShell (sandbox network blocked для PL gov domains)
+   ```powershell
+   Invoke-WebRequest -Uri $file_url -OutFile scripts/cowork/source-name-{date}.xlsx
+   ```
+2. Cowork creates `scripts/diag-{source}.ts`
+3. Vadym runs diag, paste output до chat
+4. Cowork updates parser based on REAL structure
+5. Single commit з diag + parser update
+
+### Anti-patterns (blocked)
+
+- Writing parser на основі "typical Excel structure" assumptions
+- Skipping diag step для "simple" xlsx files (вони rarely simple)
+- Trusting filename pattern (вони змінюються season-to-season)
+- Hardcoding column indices без verifying live structure
+
+### Documented через
+- 02.05.2026 Sprint S-INTEL.1.2.1 — ZSRIR HURT WARZ парсер потребував **3 ітерації hotfix** через wrong assumptions:
+  - v1 (initial): generic header detection через label/price hints — 0 rows extracted
+  - v2: header detection fix після diag — все ще пomилкове розуміння structure
+  - v3: BUG 1 fix після DB inspection (markets extracted from dates row) — нарешті correct 3-row header (markets / dates / units)
+- 4 hours wasted across 3 ітерацій що могли б бути saved 30 хв diag-first
+
+### Performance trade-off
+- Diag script: +30 хв upfront (write + Vadym execute + paste)
+- Saved hotfix iterations: 3-5 hours typical
+- Net positive ROI на parser tasks де structure не obvious
+

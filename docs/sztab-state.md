@@ -1715,3 +1715,96 @@ ORDER BY product_label LIMIT 30;
 - **Q1 3-row header structure** confirmed для HURT WARZ. Markets row завжди ABOVE "Data notowania" anchor. Future ZSRIR sheets (різні parser variants для MEDIUM datasets) можуть мати different N-row headers — це per-parser concern.
 - **Q2 BUG 2 deferred** — Vadym choose fix approach (A/B/C) після bачення real labels у DB. Не блокер для v3 ship — `cn_code` залишається NULL для всіх ZSRIR rows поки bridge не synchronized з real labels. "Intake first, map later" pattern (per audit Section 6).
 
+
+---
+
+## 02.05.2026 — END OF DAY
+
+### Shipped (12 commits сьогодні)
+
+**Sprint S6A — Two Fundamental Analysis Buttons (clients):** 6 commits
+- S6A Step 1: full-analysis wrapper endpoint (09eb3fd)
+- S6A Step 2: AI rescore у Phase B + per-client variant (47fbccd)
+- S6A Step 3: EnrichmentProgressBanner S5D refactor
+- S6A Step 4: UI rewire primary CTA + inline button
+- S6A.0 Hygiene cleanup (-313 lines orphan chain delete)
+- S6A.0.6 Untracked cleanup + maxTokens fix (rescoreClientTop10 5/10 → 9-10/10)
+
+**Sprint S-INTEL.1.1 — CN code foundation:** 1 commit (4a705fb)
+- Migrations 048 (cn_code TEXT NULLABLE + review_pending BOOLEAN) + 049 (knowledge_base table)
+- lib/ai/cn-code-suggester.ts (Haiku 4.5 inference, ~$0.0008/call)
+- POST /api/products/cn-suggest endpoint
+- ProductForm CN input + "Zaproponuj AI" button
+- /produkty list amber "🔍 Review CN" badge
+- lib/format/cn-code (DB без spaces ↔ UI з spaces)
+
+**Sprint S-INTEL.1.1.5 — Backfill:** 1 commit
+- scripts/backfill-cn-codes.ts (idempotent bulk AI suggest, persistent log)
+- scripts/050_cn_code_required.sql (deferred apply після manual review)
+
+**Sprint S-INTEL.1.2.1 — ZSRIR foundation:** 1 commit + 3 hotfixes
+- Migrations 051+052+053 (commodity_prices + market_signals + commodity_to_cn_map)
+- lib/intelligence/zsrir.ts (ZSRIR fetcher, 13 datasets registry, HIGH priority 912 + 1024)
+- app/api/cron/market-intelligence/route.ts (Sunday 06:00 UTC)
+- vercel.json 4-th cron entry + admin/health knownJobs extended
+- scripts/manual-trigger-market-intelligence.ts + scripts/seed-commodity-to-cn-map.ts
+
+**Hotfixes для S-INTEL.1.2.1 (3 ітерації):**
+- v1: Migration 054 partial UNIQUE indices + diag-zsrir-912.ts
+- v2: Manual INSERT pattern (PostgREST + partial UNIQUE incompatible)
+- v3: BUG 1 markets row = datesRow - 1 (3-row header structure)
+
+### Production state
+
+**ZSRIR pipeline live:**
+- 87 rows ingested
+- 4 markets identified (Bronisze, Kalisz + 2 інших)
+- 1 mleko row (national aggregate)
+- Cron schedule: Sunday 06:00 UTC weekly
+- Idempotent: re-run skip duplicates через partial UNIQUE indices + 23505 catch
+
+**Products module:**
+- 35 SKU з cn_code populated (всі review_pending=TRUE)
+- 49 EU TARIC mappings ready через Haiku suggester
+- knowledge_base table empty (seed defer до S-INTEL.1.3)
+
+**BUG 2 outstanding** (cn_code resolution mismatch):
+- Bridge labels не match real ZSRIR labels (case-sensitive)
+- "kapusta biała głowiasta" (seed) vs "Kapusta biała" (real)
+- Fix options A/B/C documented у hotfix v3 entry — Vadym обере approach
+
+### Documentation updates
+
+**Protocols.md** — 3 нових:
+- **Protocol 16** — Cowork sandbox file cache stale (false truncation alarms — 2 documented cases)
+- **Protocol 17** — PostgREST upsert vs partial UNIQUE indices (anti-pattern + 3 resolution options)
+- **Protocol 18** — Xlsx parser requires diag-first (4h wasted на 3 hotfix iterations через assumptions)
+
+### Verified facts (post-EOD live)
+
+- 35 products mit cn_code, всі review_pending=TRUE
+- 87 commodity_prices rows from ZSRIR HURT WARZ
+- 4 ZSRIR markets identified live (Bronisze, Kalisz, +2)
+- 0 cn_code matches у commodity_prices (BUG 2 — seed labels mismatch)
+- migration 050 (cn_code SET NOT NULL) NOT yet applied (defer до S-INTEL.1.1.5 review complete)
+
+### Naступний sprint — TBD
+
+**Опції на choose:**
+
+1. **CN code review** (S-INTEL.1.1.5 завершення) — Vadym manually reviews 35 SKU → save clears review_pending → migration 050 apply. Estimate ~30-45 хв focused time.
+
+2. **BUG 2 fix** (S-INTEL.1.2.1.7) — synchronize commodity_to_cn_map seed з real ZSRIR labels (option A: update seed, B: normalization у zsrir.ts, C: ILIKE pattern). Estimate ~1-2h.
+
+3. **S-INTEL.1.2.2** — fresh-market.pl scraper (cheerio + top 5 markets). Audit вже зроблений. Estimate ~4h.
+
+4. **S-INTEL.1.2.3** — EU Agri-food REST/CSV + signal generators (price_trend / volatility / seasonality / shortage). Estimate ~5h.
+
+5. **MEDIUM ZSRIR datasets** (546 zboża, 601 drób, 777 wieprzowina, 1003 jaja, 1214 wołowina) — diag-first per dataset, expand parsers у `lib/intelligence/zsrir.ts`. Estimate ~1-2h per dataset.
+
+### Mind-shift
+
+Sztab тепер має live external market intelligence pipeline (ZSRIR weekly auto-fetch). Це foundation для Protocol 13 "Аналіз товару" (S6B) — раніше неможлива через відсутність market context.
+
+Next focus area залежить від Vadym priority — CN review unlocks bridge BUG 2 fix → fresh-market expand → EU + signals. Or jump до S6B якщо хочемо швидше product analysis ship.
+
