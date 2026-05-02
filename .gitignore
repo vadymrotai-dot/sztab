@@ -24,3 +24,6 @@ node_modules
 .claude/
 tsconfig.tsbuildinfo
 diagnose-lock.log
+
+# Sprint S-INTEL.1.1.5 backfill logs (regenerable, large)
+scripts/cowork/backfill-cn-codes-*.log
