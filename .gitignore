@@ -27,3 +27,7 @@ diagnose-lock.log
 
 # Sprint S-INTEL.1.1.5 backfill logs (regenerable, large)
 scripts/cowork/backfill-cn-codes-*.log
+
+# Sprint S-INTEL.1.2.1 market-intelligence artifacts (regenerable)
+scripts/cowork/market-intelligence-*.log
+scripts/cowork/zsrir-*.xlsx

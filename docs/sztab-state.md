@@ -1434,3 +1434,115 @@ Open `/admin/health` → market-intelligence row рендериться з last 
 - `lib/intelligence/signals.ts` — algorithmic signal generators (price_trend SMA, volatility stddev, seasonality, shortage)
 - Wire cron handler з final signals generation step
 
+
+---
+
+## 02.05.2026 — S-INTEL.1.2.1 hotfix (FIX 2 + parser rewrite + diag)
+
+**Status:** 🟡 Code ready. Vadym applies migration 054 + re-runs manual trigger.
+
+### Live test results (manual trigger 02.05.2026)
+
+**Issue 1:** dataset 912 (owoce/warzywa) — `parseOwoceWarzywa` returned 0 rows. Heuristics не matched real 2026 xlsx structure.
+
+**Issue 2:** dataset 1024 (mleko) — INSERT failed з `42P10`: "there is no unique or exclusion constraint matching the ON CONFLICT specification". Root cause: migration 051 створила expression-based UNIQUE INDEX (з `COALESCE(market, '')`) — PostgREST upsert через raw column list НЕ matches expression indices.
+
+### Fix 2 — schema migration 054
+
+**`scripts/054_fix_commodity_uniqueness.sql`** (NEW):
+- DROP INDEX `commodity_prices_uniq_observation` (expression-based, PostgREST incompatible)
+- CREATE 2 partial UNIQUE indices:
+  - `commodity_prices_uniq_with_market` — `(source, market, product_label, observation_date) WHERE market IS NOT NULL`
+  - `commodity_prices_uniq_no_market` — `(source, product_label, observation_date) WHERE market IS NULL`
+
+### Diag script — actual ZSRIR 912 structure
+
+**`scripts/diag-zsrir-912.ts`** (NEW, 214 рядків): standalone xlsx structure analyzer. Auto-finds latest `scripts/cowork/zsrir-912-*.xlsx` або accepts arg path. Per sheet dumps: name, total rows, max columns, first 15 rows preview, label keyword hits per column (kapusta/pomidor/ogórek/burak/cebula/marchew/jabłka/ziemniaki), price candidate hits per column (numeric у 0.5..50 range), header row guesses ranked by text-cell density.
+
+### Vadym diag findings (live verified)
+
+ZSRIR 912 xlsx має **28 sheets total**, з яких тільки 5 містять real wholesale price data. Primary target = `HURT WARZ` (39 rows).
+
+`HURT WARZ` structure:
+- row 5: header — `col[1]="Data notowania"`, `col[2]="Owoce"`, `col[3]="Jedn."`
+- row 6: market labels — `col[4]=Bronisze`, `col[6]=Kalisz` (each market spans 2 cols Min/Max)
+- row 7: column numbering "1|2|3..."
+- row 8+: data — `col[1]=product label`, `col[3]=unit (kg/szt./pęczek)`, `col[4]/col[5]=Bronisze Min/Max`, `col[6]/col[7]=Kalisz Min/Max`
+
+### Parser rewrite — `parseOwoceWarzywa`
+
+**Phase 1 scope:** Process ONLY `HURT WARZ` sheet. Skip 27 інших.
+
+Logic:
+- Find sheet by name (case-insensitive trim)
+- Find header row defensively — look for `cell[1]` containing "data notowania" + `cell[3]` containing "jedn"
+- Markets row = headerRow + 1 — extract market names dynamically from cells at col 4+ (collect non-empty strings, each market spans 2 cols Min/Max)
+- Data start = headerRow + 3 (skip numbering row "1|2|3...")
+- For each data row: emit 1 ParsedRow per market з `price_pln = avg(min, max)` (Min+Max → cleaner average)
+- Skip section headers (UPPERCASE multi-word labels, "krajowe"/"warzywa"/"razem"/"ogółem")
+
+**Defer (out of scope для 1.2.1 hotfix):**
+- HURT OWOC (jabłka by varieties — different sub-category structure)
+- ZMIANY HURT (aggregate trends — derived data, not raw)
+- ZAKUP WARZ/OWOCE DETAL (PLN/100kg retail vs PLN/kg wholesale)
+- IERGZ_* (Voivodship regional, complex)
+- Foreign trade sheets
+
+### ParsedRow + ingestZsrir refactor
+
+`ParsedRow` interface отримав field `market: string | null` — populated для HURT WARZ rows, NULL для mleko national aggregate.
+
+`ingestZsrir` upsert refactored — split chunk на 2 buckets:
+- `withMarket` rows → `onConflict: 'source,market,product_label,observation_date'` matching partial index `commodity_prices_uniq_with_market`
+- `noMarket` rows → `onConflict: 'source,product_label,observation_date'` matching partial index `commodity_prices_uniq_no_market`
+
+Per-bucket error handling — one bucket fail не валить інший.
+
+### Files touched (combined commit)
+
+| File | Δ | Status |
+|---|---|---|
+| `scripts/054_fix_commodity_uniqueness.sql` | NEW | code ready, NOT yet applied |
+| `scripts/diag-zsrir-912.ts` | NEW (214 рядків) | code ready, ran by Vadym 02.05 → findings above |
+| `lib/intelligence/zsrir.ts` | parseOwoceWarzywa rewrite + ParsedRow.market field + upsert split | static review only |
+| `docs/sztab-state.md` | this entry | docs |
+
+### Vadym 3-step apply (in order)
+
+**Step 1 — Apply migration 054:**
+Supabase Studio → New query → paste `scripts/054_fix_commodity_uniqueness.sql` → Run.
+Verify:
+```sql
+SELECT indexname, indexdef FROM pg_indexes
+WHERE tablename = 'commodity_prices' AND indexname LIKE '%uniq%';
+-- Expected: commodity_prices_uniq_with_market + commodity_prices_uniq_no_market (no commodity_prices_uniq_observation)
+```
+
+**Step 2 — Re-run manual trigger:**
+```powershell
+cd C:\Users\vadym\Projects\sztab
+pnpm exec tsx scripts/manual-trigger-market-intelligence.ts
+```
+Expected:
+- Dataset 912 (HURT WARZ): ~30-50 rows inserted (8-10 products × 2-3 markets × 1 date)
+- Dataset 1024 (mleko): 1 row inserted (national aggregate)
+
+**Step 3 — Verify:**
+```sql
+SELECT source, market, COUNT(*), MIN(price_pln), MAX(price_pln), MAX(observation_date)
+FROM commodity_prices WHERE source='zsrir' GROUP BY source, market ORDER BY market;
+-- Bronisze | N rows
+-- Kalisz   | M rows
+-- (NULL)   | 1 row (mleko)
+
+SELECT product_label, market, price_pln, unit, cn_code
+FROM commodity_prices WHERE source='zsrir'
+ORDER BY observation_date DESC, market, product_label LIMIT 30;
+```
+
+### Decision locked
+
+- **Q1 HURT WARZ-only Phase 1.** Решта 27 sheets defer — parsers per sheet incremental коли Vadym має priority + бачить real downstream value.
+- **Q2 market populated по possible default.** ZSRIR ingest стає per-market (not "national aggregate") — нагадує fresh-market.pl + EU pattern для consistency.
+- **Q3 NO migration changes** перш ніж 054 — 054 partial indices робять цю архітектуру цілком correct.
+

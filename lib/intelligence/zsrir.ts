@@ -21,6 +21,17 @@
 // Phase 1 (this sprint): HIGH only (912 + 1024). Решта — TODO comments
 // у DATASETS registry. Експансія по mere accumulating real labels.
 //
+// HURT WARZ scope (dataset 912, hotfix 02.05.2026):
+//   28 sheets total у xlsx; цей parser обробляє ONLY "HURT WARZ" sheet
+//   (primary wholesale veg target). Per-market data — emits 1 row per
+//   (product, market) pair з price_pln=avg(Min, Max).
+//   Defer: HURT OWOC (jabłka by varieties), ZMIANY HURT (derived trends),
+//   ZAKUP DETAL (PLN/100kg retail), IERGZ_* (Voivodship regional),
+//   foreign trade sheets.
+//
+// MLEKO scope (dataset 1024):
+//   National aggregate — 1 row per sheet з market=NULL.
+//
 // API:
 //   GET https://api.dane.gov.pl/1.4/datasets/{id}/resources?per_page=3&sort=-created
 //   → data[].attributes.{title, created, file_url, format}
@@ -31,7 +42,9 @@
 //
 // Output: writes commodity_prices з source='zsrir', cn_code resolved
 // через commodity_to_cn_map (NULL якщо немає mapping — "intake first,
-// map later").
+// map later"). market column = market name (Bronisze/Kalisz) для HURT
+// WARZ rows OR NULL для mleko national aggregate. Upsert splits chunk
+// by market presence — matching partial UNIQUE indices з migration 054.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import * as XLSX from 'xlsx'
@@ -87,6 +100,12 @@ interface ParsedRow {
   price_pln: number | null
   observation_date: string  // ISO date YYYY-MM-DD
   unit: string
+  /**
+   * Market name (Bronisze / Kalisz / etc.) — populated для per-market
+   * sources (HURT WARZ у dataset 912). NULL для national aggregates
+   * (mleko 1024). Determines onConflict choice у upsert.
+   */
+  market: string | null
   raw_cells: Record<string, unknown>
   sheet_name: string
   row_index: number
@@ -171,81 +190,153 @@ async function downloadXlsx(fileUrl: string): Promise<XLSX.WorkBook> {
 
 /**
  * Parser для dataset 912 "owoce i warzywa świeże".
- * Bulletins typically have main sheet з:
- *   - Header rows (1-3): metadata
- *   - Then table з columns "Towar | Jednostka | Cena minimalna | Cena maksymalna | Cena średnia"
  *
- * Defensive: looks for cells matching label patterns. Якщо sheet structure
- * відрізняється — повертає 0 rows + log warning. Не throw.
+ * Phase 1 scope (Sprint S-INTEL.1.2.1 hotfix verified live 02.05.2026):
+ *   - PROCESS ONLY sheet "HURT WARZ" (primary wholesale veg target).
+ *   - Skip 27 інших sheets — different structures, defer parsers до 1.2.X+.
+ *
+ * HURT WARZ structure (verified):
+ *   row 5  — header: col[1]="Data notowania", col[2]="Owoce", col[3]="Jedn."
+ *   row 6  — market labels: col[4]=Bronisze, col[6]=Kalisz, ... (each market
+ *            spans 2 cols: Min, Max)
+ *   row 7  — column numbering "1|2|3..."
+ *   row 8+ — data rows: col[1]=product label, col[3]=unit (kg/szt./pęczek),
+ *            col[4]/col[5]=Bronisze Min/Max, col[6]/col[7]=Kalisz Min/Max
+ *
+ * For each data row → 1 ParsedRow per market з price_pln=avg(min, max)
+ * (ZSRIR provides Min+Max → average для cleaner data).
+ *
+ * Skipped sheets (defer):
+ *   - HURT OWOC (different sub-cat structure, jabłka by varieties)
+ *   - ZMIANY HURT (aggregate trends — derived data)
+ *   - ZAKUP WARZ/OWOCE DETAL (PLN/100kg retail, different unit base)
+ *   - IERGZ_* (Voivodship regional, complex)
+ *   - Foreign trade sheets
+ *
+ * Defensive: якщо HURT WARZ sheet не знайдено OR header row 5 не matches
+ * patterns ("Data notowania" + "Jedn.") → returns 0 rows + log. Не throw.
  */
+const HURT_WARZ_SHEET_NAME = 'HURT WARZ'
+
 function parseOwoceWarzywa(
   workbook: XLSX.WorkBook,
   observationDate: string,
   defaultUnit: string,
 ): ParsedRow[] {
   const rows: ParsedRow[] = []
-  const labelHints = ['towar', 'produkt', 'nazwa', 'asortyment']
-  const priceHints = ['cena średnia', 'średnia', 'cena śr', 'cena netto']
 
-  for (const sheetName of workbook.SheetNames) {
-    const sheet = workbook.Sheets[sheetName]
-    const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-      header: 1,
-      raw: false,
-      defval: '',
-    })
-    if (!Array.isArray(data) || data.length < 2) continue
+  // Find HURT WARZ sheet (case-insensitive trim — Excel exports vary)
+  const targetSheetName = workbook.SheetNames.find(
+    (name) => name.trim().toUpperCase() === HURT_WARZ_SHEET_NAME,
+  )
+  if (!targetSheetName) {
+    console.warn(
+      `[ZSRIR 912] sheet "${HURT_WARZ_SHEET_NAME}" not found. Available: ${workbook.SheetNames.join(' | ')}`,
+    )
+    return rows
+  }
 
-    // Find header row
-    let headerRowIdx = -1
-    for (let i = 0; i < Math.min(data.length, 12); i++) {
-      const row = data[i] as unknown[]
-      const joined = row
-        .map((c) => (c == null ? '' : String(c).toLowerCase()))
-        .join('|')
-      if (labelHints.some((h) => joined.includes(h))) {
-        headerRowIdx = i
-        break
-      }
+  const sheet = workbook.Sheets[targetSheetName]
+  const data = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    raw: false,
+    defval: '',
+  })
+  if (!Array.isArray(data) || data.length < 8) {
+    console.warn(
+      `[ZSRIR 912] HURT WARZ has too few rows (${data.length}) — expected 8+`,
+    )
+    return rows
+  }
+
+  // Find header row defensively. Expected row 5 (0-indexed).
+  // Markers: cell[1] contains "data notowania" + cell[3] contains "jedn".
+  let headerRowIdx = -1
+  for (let i = 0; i < Math.min(data.length, 12); i++) {
+    const row = (data[i] ?? []) as unknown[]
+    const c1 = String(row[1] ?? '').toLowerCase()
+    const c3 = String(row[3] ?? '').toLowerCase()
+    if (c1.includes('data notowania') && c3.includes('jedn')) {
+      headerRowIdx = i
+      break
     }
-    if (headerRowIdx === -1) continue
-
-    const header = (data[headerRowIdx] as unknown[]).map((c) =>
-      c == null ? '' : String(c).toLowerCase().trim(),
+  }
+  if (headerRowIdx === -1) {
+    console.warn(
+      '[ZSRIR 912] header row не знайдено (expected "Data notowania" + "Jedn." markers).',
     )
-    const labelColIdx = header.findIndex((h) =>
-      labelHints.some((hint) => h.includes(hint)),
+    return rows
+  }
+
+  // Markets row = headerRow + 1. Extract market names starting col 4.
+  // Each market spans 2 cols (Min/Max). Look for non-empty string cells.
+  const marketsRow = (data[headerRowIdx + 1] ?? []) as unknown[]
+  const markets: Array<{ name: string; minCol: number; maxCol: number }> = []
+  for (let col = 4; col < marketsRow.length; col++) {
+    const cell = marketsRow[col]
+    if (typeof cell !== 'string') continue
+    const name = cell.trim()
+    if (!name || name.length > 30 || /^\d+$/.test(name)) continue
+    // Check we не already added this market — duplicate cells happen when
+    // header spans multiple cells via merged Excel cell.
+    if (markets.some((m) => m.name === name)) continue
+    markets.push({ name, minCol: col, maxCol: col + 1 })
+  }
+  if (markets.length === 0) {
+    console.warn(
+      `[ZSRIR 912] no markets identified у row ${headerRowIdx + 1}. Markets row: ${JSON.stringify(marketsRow.slice(0, 12))}`,
     )
-    const priceColIdx = header.findIndex((h) =>
-      priceHints.some((hint) => h.includes(hint)),
-    )
-    const unitColIdx = header.findIndex((h) => h.includes('jednost'))
+    return rows
+  }
 
-    if (labelColIdx === -1 || priceColIdx === -1) continue
+  // Data starts headerRow + 3 (skip markets row + numbering row "1|2|3...")
+  const dataStartIdx = headerRowIdx + 3
 
-    for (let i = headerRowIdx + 1; i < data.length; i++) {
-      const row = data[i] as unknown[]
-      const rawLabel = row[labelColIdx]
-      const rawPrice = row[priceColIdx]
-      const rawUnit = unitColIdx >= 0 ? row[unitColIdx] : null
+  for (let i = dataStartIdx; i < data.length; i++) {
+    const row = (data[i] ?? []) as unknown[]
+    const rawLabel = row[1]
+    if (rawLabel == null || String(rawLabel).trim() === '') continue
+    const label = String(rawLabel).trim()
 
-      if (rawLabel == null || String(rawLabel).trim() === '') continue
-      const label = String(rawLabel).trim()
-      // Skip aggregate / section header rows
-      if (label.length > 80 || /razem|ogółem|suma/i.test(label)) continue
+    // Skip section headers (UPPERCASE words like "KRAJOWE", "WARZYWA"),
+    // aggregate markers, or overly long entries.
+    if (label.length > 80) continue
+    if (/^(razem|ogółem|suma|krajowe|importowe|warzywa|owoce)/i.test(label)) continue
+    // Skip rows where label is purely uppercase з 2+ words (section header)
+    if (label === label.toUpperCase() && label.split(/\s+/).length >= 2) continue
 
-      const price = parsePolishNumber(rawPrice)
+    const rawUnit = row[3]
+    const unit = rawUnit ? normalizeUnit(String(rawUnit)) : defaultUnit
+
+    // Emit one ParsedRow per market з price = avg(Min, Max)
+    for (const market of markets) {
+      const minPrice = parsePolishNumber(row[market.minCol])
+      const maxPrice = parsePolishNumber(row[market.maxCol])
+
+      let price: number | null = null
+      if (minPrice !== null && maxPrice !== null) {
+        price = (minPrice + maxPrice) / 2
+      } else if (minPrice !== null) {
+        price = minPrice
+      } else if (maxPrice !== null) {
+        price = maxPrice
+      }
+
       if (price === null) continue
-
-      const unit = rawUnit ? normalizeUnit(String(rawUnit)) : defaultUnit
 
       rows.push({
         product_label: label,
-        price_pln: price,
+        price_pln: Math.round(price * 100) / 100, // 2 decimals
         observation_date: observationDate,
         unit,
-        raw_cells: { label: rawLabel, price: rawPrice, unit: rawUnit },
-        sheet_name: sheetName,
+        market: market.name,
+        raw_cells: {
+          label: rawLabel,
+          unit: rawUnit,
+          [`${market.name}_min`]: row[market.minCol],
+          [`${market.name}_max`]: row[market.maxCol],
+        },
+        sheet_name: targetSheetName,
         row_index: i,
       })
     }
@@ -312,6 +403,7 @@ function parseMleko(
         price_pln: price,
         observation_date: observationDate,
         unit: defaultUnit === 'liter' ? '100liter' : defaultUnit,
+        market: null, // national aggregate
         raw_cells: { row: row.slice(0, 8) },
         sheet_name: sheetName,
         row_index: i,
@@ -451,13 +543,20 @@ export async function ingestZsrir(
         ),
       )
 
-      // Bulk insert chunks of 100
+      // Bulk insert chunks of 100. ParsedRow.market може бути null (mleko
+      // national aggregate) AND non-null (HURT WARZ per-market). Two
+      // partial UNIQUE indices (migration 054):
+      //   commodity_prices_uniq_with_market WHERE market IS NOT NULL
+      //   commodity_prices_uniq_no_market   WHERE market IS NULL
+      // Тому split chunk на 2 buckets перш ніж upsert — кожна requires
+      // different onConflict matching its partial index.
       const CHUNK_SIZE = 100
       for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-        const chunk = rows.slice(i, i + CHUNK_SIZE).map((row) => ({
+        const sliced = rows.slice(i, i + CHUNK_SIZE)
+        const allRecords = sliced.map((row) => ({
           cn_code: mapByLabel.get(row.product_label) ?? null,
           source: 'zsrir' as const,
-          market: null,
+          market: row.market,
           product_label: row.product_label,
           price_pln: row.price_pln,
           price_eur: null,
@@ -475,27 +574,52 @@ export async function ingestZsrir(
           },
         }))
 
-        // Idempotent — UNIQUE INDEX commodity_prices_uniq_observation
-        // catches duplicates. PostgREST upsert з onConflict skip.
-        const { error: insertErr, count } = await supabase
-          .from('commodity_prices')
-          .upsert(chunk, {
-            onConflict: 'source,market,product_label,observation_date',
-            ignoreDuplicates: true,
-            count: 'exact',
-          })
+        const withMarket = allRecords.filter((r) => r.market !== null)
+        const noMarket = allRecords.filter((r) => r.market === null)
 
-        if (insertErr) {
-          const msg = `dataset ${ds.id} chunk ${i}: ${insertErr.message}`
-          result.errors.push(msg)
-          result.rows_failed += chunk.length
-          continue
+        // Bucket 1: rows з market specified — onConflict matches
+        // commodity_prices_uniq_with_market partial index.
+        if (withMarket.length > 0) {
+          const { error: errWith, count: cntWith } = await supabase
+            .from('commodity_prices')
+            .upsert(withMarket, {
+              onConflict: 'source,market,product_label,observation_date',
+              ignoreDuplicates: true,
+              count: 'exact',
+            })
+          if (errWith) {
+            result.errors.push(
+              `dataset ${ds.id} chunk ${i} (with_market): ${errWith.message}`,
+            )
+            result.rows_failed += withMarket.length
+          } else {
+            const inserted = cntWith ?? withMarket.length
+            result.rows_inserted += inserted
+            result.rows_skipped += withMarket.length - inserted
+          }
         }
 
-        // count тут — рows actually inserted (upsert ignoreDuplicates)
-        const inserted = count ?? chunk.length
-        result.rows_inserted += inserted
-        result.rows_skipped += chunk.length - inserted
+        // Bucket 2: rows з market=NULL — onConflict matches
+        // commodity_prices_uniq_no_market partial index.
+        if (noMarket.length > 0) {
+          const { error: errNo, count: cntNo } = await supabase
+            .from('commodity_prices')
+            .upsert(noMarket, {
+              onConflict: 'source,product_label,observation_date',
+              ignoreDuplicates: true,
+              count: 'exact',
+            })
+          if (errNo) {
+            result.errors.push(
+              `dataset ${ds.id} chunk ${i} (no_market): ${errNo.message}`,
+            )
+            result.rows_failed += noMarket.length
+          } else {
+            const inserted = cntNo ?? noMarket.length
+            result.rows_inserted += inserted
+            result.rows_skipped += noMarket.length - inserted
+          }
+        }
       }
 
       result.datasets_processed++
