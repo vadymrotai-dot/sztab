@@ -951,10 +951,7 @@ Sprint S6A досягло Protocol 13 "Two Fundamental Analysis Buttons" дla CL
 
 ### Next sprint candidates
 
-- **S6A.0 hygiene cleanup** (deferred):
-  - Delete `/api/ai/analyze-client` orphan endpoint (Sonnet, notes append — 0 callers, audit Q-4 verified)
-  - Migrate `deleteClient()` `alert()/confirm()` → sonner toast + AlertDialog (consistency)
-  - Update outdated TODO comment у `app/api/clients/[id]/full-analysis/route.ts:21` (Step 2 shipped, AI_match_rescore now lives у lookup pending list)
+- **S6A.0 hygiene cleanup** ✅ shipped 02.05.2026 (see entry below)
 - **S6A.5 split chain** (conditional — only if Phase B timeout skip rate proves high у production):
   - Move AI_match_rescore до osobnego after() chain
   - Trade-off: lose Protocol 13 final-context guarantee
@@ -964,4 +961,109 @@ Sprint S6A досягло Protocol 13 "Two Fundamental Analysis Buttons" дla CL
   - Sources: Allegro + Ceneo + Tavily + OpenFoodFacts
   - 18-25h breakdown — see Discovery #4 entry
   - Precondition: S-INTEL.1-5 market intelligence layer (Discovery #5)
+
+
+---
+
+## 02.05.2026 — S6A.0 Hygiene Cleanup (SHIPPED)
+
+Чотири atomic items після S6A ship. Кожен можна revertнути окремо.
+
+### Item 1 — krs-refresh stale message updated
+
+`app/api/clients/[id]/krs-refresh/route.ts:48` — error message коли `client.krs_number` empty.
+
+ДО: `'Brak numeru KRS у tym kliencie. Uruchom najpierw "Intelligence Lookup" (z menu ⋯) — pobierze KRS przez GUS.'`
+
+ПІСЛЯ: `'Brak numeru KRS w tym kliencie. Uruchom "Analiza klienta" w panelu akcji powyżej — wzbogaci ona dane z KRS jeśli klient jest spółką.'`
+
+Bonus fix у тому ж рядку: typo "у tym" (Cyrillic у) → "w tym" (proper Polish).
+
+### Item 2 — Atomic orphan chain delete (-313 lines)
+
+DELETED 2 files:
+- `app/(dashboard)/clients/ai-analyze-button.tsx` (174 lines) — orphan component, 0 import statements у repo
+- `app/api/ai/analyze-client/route.ts` (139 lines) — endpoint викликався тільки orphan компонентом
+
+Audit Section 8 Q-4 раніше стверджував "0 callers у repo", але пропустив `ai-analyze-button.tsx`. Real status: orphan **chain** (component used endpoint, but nothing used component). Atomic delete безпечний — verified pre-delete grep:
+
+| Hit location | Status |
+|---|---|
+| 2 deleted files (3 internal references) | RESOLVED via delete |
+| docs (audit-s6a-client-analysis.md, sztab-state.md) | historical notes — keep |
+| `lib/ai-providers.ts:32` | comment example, не actual call — safe |
+| `tsconfig.tsbuildinfo` | build cache, regenerates — safe |
+
+Workflow replacement: "Analiza biznesowa (AI)" via S6A `business_profile` JSONB обігрує old "Analiza AI" notes-append pattern. Zero feature loss, gain -313 lines.
+
+### Item 3 — deleteClient migrated до AlertDialog + sonner
+
+`components/clients/client-detail-actions.tsx` (200 → 243 рядків, +43)
+
+Migrated від `confirm()` + `alert()` до:
+- `<AlertDialog>` (shadcn/ui, controlled via `open` prop + state)
+- sonner `toast.error()` для failures
+- sonner `toast.success()` для success
+
+Pattern split на 2 функції:
+- `requestDelete()` — викликається з menu item, opens dialog (`setConfirmDeleteOpen(true)`)
+- `performDelete()` — запускається з `<AlertDialogAction>` confirm, runs server action, fires toast
+
+AlertDialog placement: poza ActionBar (fragment wrapper). Reference pattern: `app/(dashboard)/suppliers/[id]/delete-button.tsx`.
+
+Preserved unchanged:
+- `deleteClientRecord()` server action call
+- `useTransition()` for loading state (busy='delete')
+- `router.push('/clients')` post-success + `router.refresh()`
+
+Result: zero `alert()`/`confirm()` calls remaining у component. Consistency з KrsRefreshButton + DeleteButton (suppliers) toast pattern.
+
+### Item 4 — AI rescore TOP-10 returning 5 (research-only)
+
+**Symptom:** Test A live verification (DENYS LISNIAK, 02.05.2026) — `rescoreClientTop10` sent TOP-10 candidates до Haiku, але тільки 5 matches got `ai_score` updated.
+
+**Investigation:**
+- Read `lib/matching/ai-rescore.ts:580-633` (Haiku call + parse + update)
+- Compared з sibling `rescoreTop20` (lines 253-314) — validation logic byte-for-byte identical (`validIds.has(r.id)` check, `Math.min/max` clamp, `.update().eq('id', r.id)` upsert)
+- **NO code bug у validation step**
+
+**Likely root cause: `maxTokens: 2000` truncation**
+
+| Parameter | rescoreTop20 (per-product) | rescoreClientTop10 (per-client) |
+|---|---|---|
+| Candidates | up to 20 | up to 10 |
+| `maxTokens` | **3000** | **2000** |
+| Comment | `// Sprint G smoke: 2000 was sometimes hit на 20 candidates` | (no comment) |
+
+Math: 10 candidates × ~150-200 tokens (uuid + reasoning ≤120 chars + `{"id":"...","ai_score":XX,"reasoning":"...","confidence":0.X}` JSON overhead) ≈ 1500-2000 tokens output. Truncation at cap → JSON tail invalid. `extractJSON` 4-strategy fallback (block extract via `lastIndexOf('}')`) recovers complete head entries only → 5/10 explanation.
+
+**Recommended fix (defer to S6A.0.5):**
+- Bump `maxTokens` 2000 → **2500** (safe headroom для 10 candidates)
+- OR sync з rescoreTop20 (3000) для symmetry
+- OPTIONALLY: log warning якщо `rescored.length < matches.length` (visibility у `[CLAUDE]` log line)
+- OPTIONALLY: store `rescored_count` vs `candidates_count` у `enrichment_log.raw_payload` (post-mortem telemetry)
+
+**Not blocker** — current 5/10 ratio still produces useful AI signal на TOP rankings (highest priority matches). Fix is optimization, не correctness.
+
+### Verification status
+
+- Static cross-reference PASS (post-edits):
+  - `grep AiAnalyzeButton|analyze-client` — лише docs + comment example + tsbuildinfo (no live code refs)
+  - `grep alert\(` у client-detail-actions.tsx — zero remaining (migration complete)
+  - `grep confirm\(` у client-detail-actions.tsx — zero remaining
+  - krs-refresh: new message present, old message absent
+- pnpm tsc / lint / dev — НЕ виконувалось (CLAUDE.md "Ask before acting"); Vadym робить sam через PowerShell
+- Live verification — defer до next ship (Item 1+2+3 effects visible only post-deploy; Item 4 is research, no behavior change)
+
+### Files modified summary
+
+| File | Before | After | Δ | Action |
+|---|---|---|---|---|
+| `app/api/clients/[id]/krs-refresh/route.ts` | 148 | 148 | 0 | Item 1 (1-line message swap) |
+| `app/api/ai/analyze-client/route.ts` | 139 | — | -139 | Item 2 (DELETE) |
+| `app/(dashboard)/clients/ai-analyze-button.tsx` | 174 | — | -174 | Item 2 (DELETE) |
+| `components/clients/client-detail-actions.tsx` | 200 | 243 | +43 | Item 3 (AlertDialog + sonner) |
+| `docs/sztab-state.md` | ~990 | ~1100 | +110 | this entry |
+
+**Net code change: -270 lines** (z deleted orphan chain) for cleaner UX consistency.
 

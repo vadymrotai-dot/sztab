@@ -45,7 +45,7 @@ export async function POST(
       {
         ok: false,
         error:
-          'Brak numeru KRS у tym kliencie. Uruchom najpierw "Intelligence Lookup" (z menu ⋯) — pobierze KRS przez GUS.',
+          'Brak numeru KRS w tym kliencie. Uruchom "Analiza klienta" w panelu akcji powyżej — wzbogaci ona dane z KRS jeśli klient jest spółką.',
       },
       { status: 400 },
     )

@@ -15,6 +15,16 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { SparklesIcon, RefreshCwIcon, PencilIcon, DownloadIcon, RefreshCcwIcon, Trash2Icon } from 'lucide-react'
 import { ActionBar } from '@/components/action-bar'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { deleteClientRecord } from '@/app/actions/clients'
 
 interface Props {
@@ -45,6 +55,7 @@ interface KrsRefreshResponse {
 export function ClientDetailActions({ clientId, nip, hasProfile }: Props) {
   const router = useRouter()
   const [busy, setBusy] = useState<'fullAnalysis' | 'krs' | 'delete' | null>(null)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [, startTransition] = useTransition()
 
   // Sprint S6A Step 4 — Protocol 13 primary fundamental button.
@@ -125,21 +136,31 @@ export function ClientDetailActions({ clientId, nip, hasProfile }: Props) {
     }
   }
 
-  function deleteClient() {
-    if (!confirm('Czy na pewno usunąć tego klienta? Operacja nieodwracalna.')) return
+  // Sprint S6A.0 — migrate alert/confirm → AlertDialog + sonner.
+  // Two-step pattern: menu item opens dialog (requestDelete), dialog
+  // confirm action runs performDelete (server action + toast feedback).
+  function requestDelete() {
+    setConfirmDeleteOpen(true)
+  }
+
+  function performDelete() {
     setBusy('delete')
     startTransition(async () => {
       const result = await deleteClientRecord(clientId)
       if (!result.ok) {
-        alert(result.error ?? 'Usuwanie nie powiodło się')
+        toast.error(`Nie usunięto: ${result.error ?? 'nieznany błąd'}`)
         setBusy(null)
+        setConfirmDeleteOpen(false)
         return
       }
+      toast.success('Klient usunięty')
       router.push('/clients')
+      router.refresh()
     })
   }
 
   return (
+    <>
     <ActionBar
       primary={{
         label: hasProfile ? 'Pełna re-analiza' : 'Analiza klienta',
@@ -189,12 +210,34 @@ export function ClientDetailActions({ clientId, nip, hasProfile }: Props) {
         {
           label: 'Usuń',
           icon: <Trash2Icon className="size-3.5" />,
-          onClick: deleteClient,
+          onClick: requestDelete,
           disabled: busy !== null,
           variant: 'destructive',
           separatorBefore: true,
         },
       ]}
     />
+    <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Czy na pewno usunąć tego klienta?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Operacja jest nieodwracalna. Powiązane dopasowania, zadania i notatki
+            mogą również zostać usunięte (zależnie od cascade rules w DB).
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy === 'delete'}>Anuluj</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={performDelete}
+            disabled={busy === 'delete'}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {busy === 'delete' ? 'Usuwam...' : 'Usuń klienta'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }
