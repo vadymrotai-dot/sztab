@@ -585,7 +585,9 @@ export async function rescoreClientTop10(
     model: AI_MODELS.FAST,
     systemPrompt: CLIENT_RESCORE_SYSTEM_PROMPT,
     userPrompt,
-    maxTokens: 2000,
+    // Sprint S6A.0.6: 2000 → 3000 (was hitting cap on 10 candidates,
+    // causing partial JSON parse + dropped matches. Mirror rescoreTop20.)
+    maxTokens: 3000,
     temperature: 0.2,
   })
 

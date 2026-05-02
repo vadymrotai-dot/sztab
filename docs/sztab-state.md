@@ -1067,3 +1067,114 @@ Math: 10 candidates × ~150-200 tokens (uuid + reasoning ≤120 chars + `{"id":"
 
 **Net code change: -270 lines** (z deleted orphan chain) for cleaner UX consistency.
 
+
+---
+
+## 02.05.2026 — S6A.0.6 Untracked Cleanup + maxTokens Fix
+
+П'ять atomic items після discovery untracked debt в repo (`.claude/`, `tsconfig.tsbuildinfo`, mystery scripts, audit doc, diagnose-lock files) + bonus fix для AI rescore TOP-10 returning 5/10 problem знайденого в S6A.0 Item 4 investigation.
+
+### Item 1 — `.gitignore` updated
+
+Appended dedicated section:
+```
+# Sprint S6A.0.6 — local tooling artifacts
+.claude/
+tsconfig.tsbuildinfo
+diagnose-lock.log
+```
+
+Rationale per entry:
+- `.claude/` — Claude Code project state directory (settings, recent sessions). Local-only.
+- `tsconfig.tsbuildinfo` — TypeScript incremental build cache (~485KB). Regenerates on each build, varies per machine.
+- `diagnose-lock.log` — log artifact from `diagnose-lock.ps1` (Item 3). Log not tool. Regenerates on each script run.
+
+NOT ignored: `diagnose-lock.ps1` itself (Item 3 moves it to `scripts/cowork/` — keep tracked as cowork tooling).
+
+### Item 2 — 3 mystery scripts decisions
+
+| Script | Decision | Rationale |
+|---|---|---|
+| `scripts/diag-clients-id-500.ts` (163 lines) | **A KEEP у scripts/** | Symmetric з tracked siblings `diag-allegro-403.ts`, `diag-apify-*.ts`. Useful template на майбутні /clients/[id] regressions (KOZAK + DEKOB hardcoded UUIDs можуть бути reused). |
+| `scripts/diag-clients-render.ts` (153 lines) | **A KEEP у scripts/** | Pair з diag-clients-id-500.ts (post-query transformation probe). Same pattern justification. |
+| `scripts/seed-cd-projekt-test.ts` (210 lines) | **C DELETE** | Era застаріла (Sprint A+B+C smoke test, Sztab зараз S6). Sister patterns `seed-family-target-pkd.ts`, `seed-taxonomy.ts` доступні якщо знов треба template. Cleaner repo > history value here. |
+
+Net Item 2 impact: 2 untracked → tracked у Vadym commit (Items 2.1+2.2), 1 deleted (Item 2.3, -210 lines).
+
+### Item 3 — `diagnose-lock.ps1` moved до `scripts/cowork/`
+
+- Created directory: `scripts/cowork/`
+- Moved: `diagnose-lock.ps1` → `scripts/cowork/diagnose-lock.ps1`
+- Deleted: `diagnose-lock.log` (logs not tools, .gitignored anyway after Item 1)
+
+Hardcoded paths inside .ps1 use absolute `C:\Users\vadym\Projects\sztab\...` — script works correctly from new location (LogPath, .git\ references, Set-Location all absolute).
+
+Rationale: root-level placement violates organization hygiene; `scripts/cowork/` formalizes "tooling specifically for Cowork sandbox debugging" namespace. Fits Protocol 14 (Cowork virtiofs cache + handle.exe diagnostics).
+
+### Item 4 — `docs/audit-s6a-client-analysis.md` tracked
+
+File existed (439 lines, readable, not truncated) but was untracked. Confirmed via `git ls-files docs/audit-s6a-client-analysis.md` → empty.
+
+Audit doc was core artifact для Sprint S6A planning (Section 7 REFACTOR scope, Section 8 risks). Should be tracked alongside `sztab-state.md` and `sztab-protocols.md`.
+
+Action: Vadym `git add docs/audit-s6a-client-analysis.md` у commit (Cowork sandbox cannot run git commands per Protocol 14).
+
+### Item 5 — `maxTokens` 2000 → 3000 у `rescoreClientTop10`
+
+**Bug:** Sprint S6A Step 4 live verification showed TOP-10 candidates → 5 returned з ai_score (50% drop rate).
+
+**Root cause** (S6A.0 Item 4 investigation): Haiku output truncation у `lib/matching/ai-rescore.ts:588`. 10 candidates × ~150-200 tokens per JSON entry ≈ 1500-2000 tokens. `maxTokens: 2000` hit cap, JSON tail invalid, `extractJSON` fallback recovered head entries only.
+
+**Fix:** `lib/matching/ai-rescore.ts:588`
+
+```diff
+-    maxTokens: 2000,
++    // Sprint S6A.0.6: 2000 → 3000 (was hitting cap on 10 candidates,
++    // causing partial JSON parse + dropped matches. Mirror rescoreTop20.)
++    maxTokens: 3000,
+```
+
+`rescoreTop20` already uses 3000 з comment `// Sprint G smoke: 2000 was sometimes hit на 20 candidates`. Now both functions symmetric.
+
+**Cost impact:** +50% output capacity = +50% potential output token cost для same call. Realistic case: 10 candidates × ~150 tokens ≈ 1500 tokens output (під 3000 cap, не вдарить). Edge case: long reasoning strings ~200 chars each → ~2000 tokens (under cap). Safety headroom: ~1000 tokens. Approx incremental cost: $0.005 → $0.005-0.0075 per call (Haiku output $5/M).
+
+**Expected behavior change:** TOP-10 → 9-10/10 ai_scored (matching rescoreTop20 historical reliability rate).
+
+### Verification status
+
+- Static cross-reference PASS:
+  - `git ls-files .claude/ tsconfig.tsbuildinfo` returns empty (still untracked, .gitignore prevents future leak)
+  - `ls scripts/cowork/` shows diagnose-lock.ps1 у новій локації
+  - `ls scripts/seed-*` shows тільки `seed-family-target-pkd.ts` + `seed-taxonomy.ts` (CD PROJEKT test deleted)
+  - `grep "maxTokens: 2000" lib/matching/ai-rescore.ts` → 0 matches
+  - `grep "maxTokens: 3000" lib/matching/ai-rescore.ts` → 2 matches (rescoreTop20 + rescoreClientTop10)
+- pnpm tsc / lint / dev — НЕ виконувалось (CLAUDE.md "Ask before acting")
+- Live verification (Item 5 only meaningful behavior change) — defer до наступного "Analiza klienta" run; observe ai_scored count vs candidates_count у matches table
+
+### Files modified / moved / deleted summary
+
+| File | Action | Δ lines | Item |
+|---|---|---|---|
+| `.gitignore` | modified (+5 lines) | +5 | 1 |
+| `scripts/seed-cd-projekt-test.ts` | DELETED | -210 | 2.3 |
+| `diagnose-lock.ps1` (root) | MOVED → `scripts/cowork/` | 0 | 3 |
+| `diagnose-lock.log` (root) | DELETED | n/a (log) | 3 |
+| `lib/matching/ai-rescore.ts` | modified (+2 lines) | +2 | 5 |
+| `docs/sztab-state.md` | modified (this entry) | +90 | docs |
+
+**Net code change: -113 lines.**
+
+Newly tracked у Vadym commit (untracked → tracked):
+- `scripts/diag-clients-id-500.ts` (Item 2.1)
+- `scripts/diag-clients-render.ts` (Item 2.2)
+- `scripts/cowork/diagnose-lock.ps1` (Item 3, after move)
+- `docs/audit-s6a-client-analysis.md` (Item 4)
+
+### Next sprint candidates
+
+- **Sprint S-INTEL.1** (Discovery #5 — Market Intelligence Layer):
+  - ZSRIR open data API (free, dane.gov.pl)
+  - Phase 1 priorities (locked 02.05.2026): Polish food market price history, competitor analyses, HoReCa business model intel
+  - Foundation для S6B Product Analysis pipeline
+- **S6A.0.7** (deferred, conditional): Add `console.warn` + `enrichment_log.raw_payload` telemetry якщо `rescored.length < matches.length` post-Item 5 fix. Useful якщо Item 5 не повністю усуне drop rate.
+

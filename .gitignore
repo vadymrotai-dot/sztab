@@ -19,3 +19,8 @@ node_modules
 # CEIDG bootstrap state (resume checkpoints — local only)
 .ceidg-progress.json
 .ceidg-progress.json.tmp
+
+# Sprint S6A.0.6 — local tooling artifacts
+.claude/
+tsconfig.tsbuildinfo
+diagnose-lock.log
