@@ -36,6 +36,7 @@ import { searchCompanyOnline } from '@/lib/enrichment/web-search'
 import { analyzeBusinessProfile } from '@/lib/ai/business-analysis'
 import { startEnrichmentRun, finishEnrichmentRun } from '@/lib/profile/enrichment-log'
 import { computeMatchesForClient } from '@/lib/matching/engine'
+import { rescoreClientTop10 } from '@/lib/matching/ai-rescore'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -452,7 +453,13 @@ export async function POST(req: Request) {
   if (krsNumber) pending.push('rejestrio_v2')
   if (tavilyWillRun) pending.push('tavily')
   if (params.apify_api_token) pending.push('Apify_GMaps')
-  if (params.anthropic_api_key) pending.push('AI_business_analysis')
+  if (params.anthropic_api_key) {
+    pending.push('AI_business_analysis')
+    // Sprint S6A Step 2 — final Protocol 13 layer: AI rescore TOP-10 matches
+    // per-client після всіх sources. Може бути gracefully skipped в runPhaseB
+    // якщо budget tracker сигналізує про timeout risk.
+    pending.push('AI_match_rescore')
+  }
   response.phase_b_pending = pending
 
   after(async () => {
@@ -490,6 +497,12 @@ async function runPhaseB({
   }
 }): Promise<void> {
   const supabase = await createClient()
+
+  // Sprint S6A Step 2 — Phase B budget tracker для AI_match_rescore guard.
+  // Vercel function ceiling 120s; safety margin 10s перш ніж STEP 7 має bail
+  // gracefully (зберегти решту Phase B work від timeout).
+  const PHASE_B_BUDGET_MS = 110_000
+  const phaseBStartedAt = Date.now()
 
   // Lightweight response object для helper compat (mostly to track per-step
   // status у enrichment_log; not surfaced до user).
@@ -730,6 +743,60 @@ async function runPhaseB({
     await computeMatchesForClient(supabase, clientId)
   } catch (err) {
     console.error('[PhaseB] final match recompute failed:', err)
+  }
+
+  // ─── STEP 7 — AI rescore TOP-10 matches per-client (Sprint S6A Step 2) ───
+  // Final layer Protocol 13: AI re-score з ПОВНИМ contextom з усіх sources
+  // (BZP + rejestrio + Tavily + Apify + business_profile + final algo recompute).
+  // Захищено budget tracker — gracefully skip якщо <15s залишилось до 120s
+  // ceiling. Trade-off: occasional skipped rescore vs гарантовано не lose
+  // решту Phase B work через timeout.
+  // TODO (S6A.5 if timeout issues): Розглянути винесення AI_match_rescore у
+  // окремий after() chain з runPhaseB. Trade-off: lose Protocol 13 ordering
+  // (AI має final context з business_profile). Зараз: захищаємо timeout
+  // budget, gracefully skip якщо не встигаємо.
+  if (params.anthropic_api_key && clientId) {
+    const elapsedSoFar = Date.now() - phaseBStartedAt
+    const remainingBudget = PHASE_B_BUDGET_MS - elapsedSoFar
+    const RESCORE_BUDGET_MS = 15_000
+
+    const rescoreRunId = await startEnrichmentRun(supabase, {
+      target_type: 'company',
+      target_id: clientId,
+      source: 'AI_match_rescore',
+    })
+
+    if (remainingBudget < RESCORE_BUDGET_MS) {
+      // Skip — not enough time. Log як 'partial' (не 'error') so UI знає
+      // що це intentional skip, не bug.
+      await finishEnrichmentRun(supabase, rescoreRunId, {
+        status: 'partial',
+        error_message: `Skipped: only ${Math.floor(remainingBudget / 1000)}s budget remaining (need ${RESCORE_BUDGET_MS / 1000}s)`,
+        raw_payload: { skipped: true, elapsed_ms: elapsedSoFar },
+      })
+    } else {
+      try {
+        const result = await rescoreClientTop10(
+          supabase,
+          params.anthropic_api_key,
+          clientId,
+        )
+        await finishEnrichmentRun(supabase, rescoreRunId, {
+          status: result.ok ? 'success' : 'error',
+          cost_usd: result.cost_usd,
+          error_message: result.error,
+          raw_payload: {
+            rescored_count: result.rescored,
+            elapsed_ms: Date.now() - phaseBStartedAt,
+          },
+        })
+      } catch (err) {
+        await finishEnrichmentRun(supabase, rescoreRunId, {
+          status: 'error',
+          error_message: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
   }
 }
 

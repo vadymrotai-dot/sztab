@@ -364,3 +364,279 @@ export async function rescoreAllProducts(
     aborted,
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Sprint S6A Step 2 — Per-CLIENT AI rescore (TOP-10 products for ONE client)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Inverse perspective vs rescoreTop20: there it's 1 product × N candidates,
+// here it's 1 client × N products. AI sees full client business_profile
+// (Phase B output) + product details + algo_score + reason_codes.
+//
+// Triggered as STEP 7 у Phase B pipeline (lookup/route.ts) — final layer
+// Protocol 13: AI re-score з ПОВНИМ contextom з усіх sources, last step
+// перш ніж Phase B завершується.
+//
+// Cost: ~$0.005-0.01 per call (Haiku 4.5, ~1500 in + ~800 out tokens).
+// Per-client < per-product because we have 10 candidates not 20.
+
+interface MatchRowForClient {
+  id: string
+  product_id: string
+  algo_score: number
+  reason_codes: string[]
+}
+
+interface ClientForRescore {
+  id: string
+  title: string
+  nip: string | null
+  region: string | null
+  vat_status: string | null
+  krs_legal_form: string | null
+  pkd_2007_codes: string[] | null
+  pkd_2025_codes: string[] | null
+  business_profile: {
+    business_format?: string
+    estimated_locations?: number | null
+    product_categories_pl?: string[]
+    target_demographics_pl?: string[]
+    special_traits_pl?: string[]
+    business_summary_pl?: string
+    buyer_strength_for_chm?: number
+    buyer_reasoning_pl?: string
+  } | null
+}
+
+interface ProductForRescore {
+  id: string
+  name: string
+  brand: string | null
+  family_id: string | null
+  gramatura: string | null
+  category: string | null
+}
+
+const MAX_CLIENT_CANDIDATES = 10
+
+const CLIENT_RESCORE_SYSTEM_PROMPT = `Jesteś analitykiem sprzedaży B2B HoReCa w Polsce. Otrzymujesz JEDNEGO klienta i listę kandydatów-produktów. Twoja praca: ocenić realistyczne prawdopodobieństwo, że TEN klient kupi KAŻDY z produktów.
+
+KONTEKST:
+- Klient ma własny profil biznesowy (format, kategorie, demografia, traits, summary). Wykorzystaj wszystkie te sygnały.
+- Algorytmiczny pre-score (algo_score) bazuje na PKD-fit + status VAT/GUS + niche bonus z business_profile. Twoje zadanie: doprecyzować ten sygnał, nie powtarzać go.
+- AI ma finalny kontekst (po wszystkich źródłach Phase B), więc ocena ma być pełna.
+- Klient może być JDG, sp. z o.o. lub S.A. — analizuj realnie wg formatu działalności.
+
+ZASADY OCENY:
+- Wysoki score (70-100) — produkt pasuje do business_format / kategorii / demografii klienta (np. restauracja kupuje sałatki gotowe; sklep spożywczy kupuje kiszonki; catering kupuje buraki).
+- Średni score (40-69) — produkt adjacent, możliwy ad-hoc zakup ale nie core asortyment.
+- Niski score (0-39) — produkt nie pasuje (np. transport, usługi medyczne, manufacturing nie-spożywczy).
+- VAT czynny + GUS active = +5 do bazowej oceny (operuje aktywnie).
+- Brak business_profile signal — neutralny, polegaj na PKD + algo_score.
+
+OUTPUT: czysty JSON, bez preambuły, bez markdown. Format ŚCIŚLE:
+{"rescored": [{"id": "<match_id>", "ai_score": <0-100>, "reasoning": "<1 zdanie PL, max 120 znaków>", "confidence": <0.0-1.0>}, ...]}
+
+Jeden obiekt per produkt-kandydat, w tej samej kolejności co input. confidence: 0.9+ dla jasnych match/no-match, 0.5-0.7 dla ambiguous.`
+
+function buildClientUserPrompt(
+  client: ClientForRescore,
+  candidates: Array<{
+    match: MatchRowForClient
+    product: ProductForRescore
+    family_name: string | null
+  }>,
+): string {
+  const profile = client.business_profile
+  const meta: string[] = []
+  if (client.region) meta.push(client.region)
+  if (client.vat_status) meta.push(`VAT=${client.vat_status}`)
+  if (client.krs_legal_form) meta.push(client.krs_legal_form)
+
+  const pkdCodes = client.pkd_2007_codes ?? client.pkd_2025_codes ?? []
+  const pkdStr = pkdCodes.length > 0 ? pkdCodes.slice(0, 6).join(',') : '-'
+
+  const profileLines: string[] = []
+  if (profile) {
+    if (profile.business_format) profileLines.push(`format=${profile.business_format}`)
+    if (profile.estimated_locations) profileLines.push(`lokalizacje=${profile.estimated_locations}`)
+    if (profile.product_categories_pl?.length)
+      profileLines.push(`kategorie=[${profile.product_categories_pl.slice(0, 5).join(',')}]`)
+    if (profile.target_demographics_pl?.length)
+      profileLines.push(`demografia=[${profile.target_demographics_pl.slice(0, 3).join(',')}]`)
+    if (profile.special_traits_pl?.length)
+      profileLines.push(`traits=[${profile.special_traits_pl.slice(0, 3).join(',')}]`)
+    if (typeof profile.buyer_strength_for_chm === 'number')
+      profileLines.push(`buyer_strength=${profile.buyer_strength_for_chm}`)
+    if (profile.business_summary_pl)
+      profileLines.push(`summary="${profile.business_summary_pl.slice(0, 200)}"`)
+  }
+
+  const lines = candidates.map((c, i) => {
+    const familyName = c.family_name ?? '?'
+    const productLine = `${c.product.name}${c.product.gramatura ? ` (${c.product.gramatura})` : ''}, marka=${c.product.brand ?? '?'}, Family="${familyName}"${c.product.category ? `, kat=${c.product.category}` : ''}`
+    return `[${i + 1}] id="${c.match.id}", "${productLine}", algo=${c.match.algo_score}, reasons=[${c.match.reason_codes.slice(0, 3).join(',')}]`
+  })
+
+  return `KLIENT:
+"${client.title}", NIP=${client.nip ?? '-'}${meta.length > 0 ? `, ${meta.join(', ')}` : ''}
+PKD: ${pkdStr}
+${profileLines.length > 0 ? `Profil biznesowy:\n${profileLines.map((l) => '- ' + l).join('\n')}` : 'Profil biznesowy: brak (business_profile=null)'}
+
+KANDYDACI-PRODUKTY (po algo_score desc):
+${lines.join('\n')}
+
+Zwróć JSON z polem "rescored" zgodnie z instrukcją.`
+}
+
+/** Per-client AI rescore — TOP-10 products dla danego klienta. Mirror
+ *  rescoreTop20 pattern ale inverted perspective. Triggered у Phase B
+ *  лук-up pipeline як final Protocol 13 step (AI з повним contextom). */
+export async function rescoreClientTop10(
+  supabase: SupabaseClient,
+  apiKey: string,
+  clientId: string,
+): Promise<{ ok: boolean; rescored: number; cost_usd: number; error?: string }> {
+  // 0. Cost guards — graceful skip (ok:true so caller doesn't surface error)
+  if (!apiKey) {
+    return { ok: true, rescored: 0, cost_usd: 0 }
+  }
+
+  // 1. Load client + business_profile
+  const { data: clientRow } = await supabase
+    .from('clients')
+    .select(
+      'id, title, nip, region, vat_status, krs_legal_form, pkd_2007_codes, pkd_2025_codes, business_profile',
+    )
+    .eq('id', clientId)
+    .single()
+  if (!clientRow) {
+    return { ok: true, rescored: 0, cost_usd: 0, error: 'client not found' }
+  }
+  const client = clientRow as ClientForRescore
+  if (!client.business_profile) {
+    // Graceful skip — AI має нulоwy context, не варто витрачати tokens
+    return { ok: true, rescored: 0, cost_usd: 0 }
+  }
+
+  // 2. TOP-10 matches WHERE client_id=clientId
+  const { data: matchRows } = await supabase
+    .from('matches')
+    .select('id, product_id, algo_score, reason_codes')
+    .eq('client_id', clientId)
+    .order('algo_score', { ascending: false })
+    .limit(MAX_CLIENT_CANDIDATES)
+  const matches = (matchRows ?? []) as MatchRowForClient[]
+  if (matches.length === 0) {
+    return { ok: true, rescored: 0, cost_usd: 0 }
+  }
+
+  // 3. JOIN з products (one round-trip)
+  const productIds = matches.map((m) => m.product_id)
+  const { data: prodRows } = await supabase
+    .from('products')
+    .select('id, name, brand, family_id, gramatura, category')
+    .in('id', productIds)
+  const productMap = new Map<string, ProductForRescore>(
+    ((prodRows ?? []) as ProductForRescore[]).map((p) => [p.id, p]),
+  )
+
+  // 4. Resolve family names (one query)
+  const familyIds = Array.from(
+    new Set(
+      ((prodRows ?? []) as ProductForRescore[])
+        .map((p) => p.family_id)
+        .filter((id): id is string => id !== null && id !== undefined),
+    ),
+  )
+  const familyMap = new Map<string, string>()
+  if (familyIds.length > 0) {
+    const { data: famRows } = await supabase
+      .from('taxonomy_families')
+      .select('id, name_pl')
+      .in('id', familyIds)
+    for (const f of (famRows ?? []) as Array<{ id: string; name_pl: string }>) {
+      familyMap.set(f.id, f.name_pl)
+    }
+  }
+
+  // 5. Build candidate payload (skip matches з missing product row)
+  const candidates = matches
+    .map((m) => {
+      const product = productMap.get(m.product_id)
+      if (!product) return null
+      const family_name = product.family_id ? familyMap.get(product.family_id) ?? null : null
+      return { match: m, product, family_name }
+    })
+    .filter(
+      (c): c is { match: MatchRowForClient; product: ProductForRescore; family_name: string | null } =>
+        c !== null,
+    )
+
+  if (candidates.length === 0) {
+    return { ok: true, rescored: 0, cost_usd: 0 }
+  }
+
+  // 6. Single Claude Haiku call
+  const userPrompt = buildClientUserPrompt(client, candidates)
+  const ai = await callAI({
+    apiKey,
+    provider: 'anthropic',
+    model: AI_MODELS.FAST,
+    systemPrompt: CLIENT_RESCORE_SYSTEM_PROMPT,
+    userPrompt,
+    maxTokens: 2000,
+    temperature: 0.2,
+  })
+
+  if (ai.error || !ai.text) {
+    return { ok: false, rescored: 0, cost_usd: 0, error: ai.error ?? 'empty AI response' }
+  }
+
+  // 7. Parse JSON via shared extractJSON helper
+  let parsed: { rescored?: Array<{ id: string; ai_score: number; reasoning: string; confidence: number }> }
+  try {
+    parsed = extractJSON<typeof parsed>(ai.text)
+  } catch (err) {
+    return {
+      ok: false,
+      rescored: 0,
+      cost_usd: 0,
+      error: `parse failed: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+
+  const rescored = parsed.rescored ?? []
+  if (!Array.isArray(rescored) || rescored.length === 0) {
+    return { ok: false, rescored: 0, cost_usd: 0, error: 'AI returned empty rescored array' }
+  }
+
+  // 8. UPDATE matches rows
+  const now = new Date().toISOString()
+  const validIds = new Set(matches.map((m) => m.id))
+  let scored = 0
+  for (const r of rescored) {
+    if (!validIds.has(r.id)) continue
+    const aiScore = Math.min(Math.max(Math.round(r.ai_score), 0), 100)
+    const aiConfidence = Math.min(Math.max(r.confidence, 0), 1)
+    const aiReasoning = (r.reasoning ?? '').slice(0, 300)
+    const { error } = await supabase
+      .from('matches')
+      .update({
+        ai_score: aiScore,
+        ai_reasoning: aiReasoning,
+        ai_confidence: aiConfidence,
+        ai_scored_at: now,
+      })
+      .eq('id', r.id)
+    if (!error) scored++
+  }
+
+  // 9. Cost estimation (mirror rescoreTop20 approx)
+  const tokensApprox = ai.tokensUsed ?? 2000
+  const estCost =
+    (tokensApprox * 0.5 * HAIKU_INPUT_PER_M + tokensApprox * 0.5 * HAIKU_OUTPUT_PER_M) / 1_000_000
+  const costUsd = Math.round(estCost * 10000) / 10000
+
+  return { ok: true, rescored: scored, cost_usd: costUsd }
+}

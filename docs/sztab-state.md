@@ -733,3 +733,78 @@ S6B залежить від цих знахідок. S6A (клієнт) може
 - NIE modyfikacja `lookup/route.ts` (to STEP 2)
 - NIE modyfikacja UI components (to STEP 4)
 
+
+---
+
+## 02.05.2026 — S6A Step 2 (in progress)
+
+### Built
+
+- `rescoreClientTop10(supabase, apiKey, clientId)` — нова exported function у `lib/matching/ai-rescore.ts` (367 → 642 рядків, +275). Mirror `rescoreTop20` pattern ale inverted perspective: 1 client × N=10 products.
+  - Returns `{ ok, rescored, cost_usd, error? }`
+  - Re-uses `callAI` + `AI_MODELS.FAST` (claude-haiku-4-5) + `extractJSON`
+  - Cost guards: graceful skip (ok:true, rescored:0) якщо missing apiKey, no client, no business_profile, no matches, or empty product candidates
+  - Updates `matches.{ai_score, ai_reasoning, ai_confidence, ai_scored_at}` per row, identical fields як rescoreTop20
+- STEP 7 у `runPhaseB` (`app/api/intelligence/lookup/route.ts`, 1257 → 1324 рядків, +67) — final Protocol 13 layer. Triggers після STEP 6 final (computeMatchesForClient).
+- `phase_b_pending` тепер включає `'AI_match_rescore'` (conditional на `params.anthropic_api_key`).
+
+### Defensive timeout protection (Vadym GO STEP 1 modification)
+
+- Added `PHASE_B_BUDGET_MS = 110_000` (Vercel ceiling 120s minus 10s safety margin) i `phaseBStartedAt = Date.now()` na początku `runPhaseB`.
+- STEP 7 mierzy `elapsedSoFar` przed startem AI rescore. Jeśli `remainingBudget < 15_000ms` (RESCORE_BUDGET_MS), gracefully skip → `enrichment_log.status='partial'` z `error_message: 'Skipped: only Xs budget remaining...'` i `raw_payload: {skipped: true, elapsed_ms}`.
+- Skip jest INFO, не ERROR — UI rozróżni intentional skip od bug.
+- TODO comment: rozważyć split chain (osobny `after()` dla rescore) jeśli skip rate okaże się wysoki — trade-off lose Protocol 13 final-context guarantee.
+
+### Phase B timing analysis (STEP 0 budget reasoning)
+
+Live SQL query w Supabase Studio nie zadziałało przez Chrome MCP cookie isolation policy (authenticated `/api/platform/...` calls blocked). Decyzja oparta na documented timing z `audit-s6a-client-analysis.md` Section 8 Risks:
+
+| Source segment | Estimated avg |
+|---|---|
+| BZP + rejestrio_v2 (parallel) | ~10-20s |
+| persons (extractAndCreatePersons) | ~5-10s |
+| Tavily web search | ~5-15s |
+| Apify_GMaps | ~20-40s |
+| AI_business_analysis (Haiku) | ~5-10s |
+| Final computeMatchesForClient | ~3-5s |
+| **Phase B total (existing)** | **~60-100s** |
+| + AI_match_rescore TOP-10 (Haiku) | +5-10s |
+| **Phase B with rescore** | **~65-110s** |
+
+Decision: same `after()` chain (Variant 2 modified) z budget guard. W zone "90-110s — same chain + skip safety". Live verification SQL recommend Vadym wykonał manualnie po pierwszym ship żeby zaobserwować rzeczywiste runtime distributions.
+
+### Architecture: Final Protocol 13 step
+
+AI rescore = OSTATNI step Phase B, po wszystkich źródłach. Klient widzi pełny kontekst:
+- BZP signals → buying patterns
+- rejestrio_v2 → financials, persons, red flags
+- Tavily → web presence
+- Apify_GMaps → reviews, contact, location signals
+- business_profile (Haiku) → format, kategorie, demografia, traits, buyer_strength_for_chm
+- Final algo recompute → niche bonus z business_profile
+- **AI rescore** → ocenia każdy z TOP-10 algo matches z pełnym contextom
+
+Output: `matches.ai_score` / `ai_reasoning` / `ai_confidence` per produkt. Rendered w `MatchesPanel` na profile klienta.
+
+### Verification status
+
+- Static cross-reference PASS:
+  - `grep rescoreClientTop10` — exported у ai-rescore.ts:495, imported у lookup/route.ts:39, called у lookup/route.ts:779
+  - `grep AI_match_rescore` — pushed do phase_b_pending у lookup/route.ts:461, used як enrichment_log source у lookup/route.ts:766
+- pnpm tsc / pnpm lint / pnpm dev — НЕ виконувалось (CLAUDE.md "Ask before acting"); Vadym робить sam через PowerShell
+- Live verification (Protocol 4) — defer do shipnięcia całego S6A; STEP 4 UI rewire pozwoli Vadymowi przeanalizować klienta i obserwować rescored matches end-to-end
+
+### Next (S6A Step 3)
+
+- Refactor `EnrichmentProgressBanner` (`components/clients/enrichment-progress-banner.tsx`) do S5D pattern:
+  - Blue Loader → amber dashed border
+  - Copy "Wzbogacanie w toku..." → "🔄 Trwa w tle (~30-60s)" + helper text "Te źródła są pobierane w tle..."
+  - Render running sources jako outline badges (consistent z `lookup-form.tsx`)
+- Bonus: optionally consume initial `phase_b_pending` z full-analysis response (jeśli passed via prop)
+
+### Constraint reminder
+
+- NIE git operations (Vadym committs z PowerShell — Protocol 14)
+- NIE modyfikacja UI components (to STEP 3)
+- NIE modyfikacja `client-detail-actions.tsx` primary CTA (to STEP 4)
+
