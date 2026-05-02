@@ -1252,3 +1252,70 @@ Initial sandbox virtiofs cache (Protocol 14 family) showed false truncation у `
 - Sunday cron via Vercel Cron
 - Tables: `commodity_prices` + `market_signals` з `category` column (food-first ready-for-extension per Decision Framework)
 
+
+---
+
+## 02.05.2026 — Sprint S-INTEL.1.1.5 Backfill Script SHIP
+
+**Status:** 🟡 Code ready, NOT yet executed/migrated. Vadym виконує commit + run + review + apply 050 окремими steps.
+
+**Precondition:** S-INTEL.1.1 shipped (commit 4a705fb), migrations 048+049 applied. Schema has `cn_code TEXT NULLABLE` + `cn_code_review_pending BOOLEAN DEFAULT FALSE` columns.
+
+### Built
+
+- **`scripts/backfill-cn-codes.ts`** (260 рядків): bulk AI suggest для products WHERE cn_code IS NULL. Pattern mirror `scripts/run-ai-bulk-attributes.ts` (service-role Supabase client, `import '@/lib/env'` для .env.local). Idempotent — re-run skip-ить вже processed rows.
+  - Sequential з 1.5s rate limit (35 SKU × 1.5s + AI ~3s = ~2.5 min total, well under Anthropic 50 RPM)
+  - Per-SKU: call `suggestCnCode` → UPDATE products.cn_code + cn_code_review_pending=TRUE → log
+  - Persistent log file `scripts/cowork/backfill-cn-codes-{ISO_timestamp}.log` (Vadym може review без re-run)
+  - Console output structured (header, per-SKU progress, summary з confidence distribution)
+  - Cost tracking ($0.0008 per call estimate, total reported у summary)
+  - NO `enrichment_log` INSERT (CHECK constraint blokuje 'product' target_type — Option A locked)
+
+- **`scripts/050_cn_code_required.sql`** (26 рядків): `ALTER COLUMN cn_code SET NOT NULL` + COMMENT update. Pre-flight checks у file comments — Vadym виконує перш ніж apply щоб перевірити що 0 NULL і 0 review_pending=TRUE.
+
+### Decision locked
+
+**Option A — stdout-only logging (z persistent file у scripts/cowork/)**: Audit Section 7 line 503 caveat про enrichment_log outdated, тому що migration 031 CHECK constraint обмежує target_type до 'company'/'person'. Backfill = разовий event, persistence у text log file достатня. S6B пізніше може ввести 'product' target_type через свою CHECK extension коли product analysis pipeline буде потребувати persistent логування.
+
+### Files touched
+
+| File | Δ | Status |
+|---|---|---|
+| `scripts/backfill-cn-codes.ts` | NEW (260) | code ready, NOT yet executed |
+| `scripts/050_cn_code_required.sql` | NEW (26) | code ready, migration NOT yet applied |
+| `docs/sztab-state.md` | this entry | docs |
+
+### Vadym 4-step execution (in order)
+
+**Step 1 — Run backfill script (~2.5 min, ~$0.028 cost):**
+```powershell
+cd C:\Users\vadym\Projects\sztab
+pnpm exec tsx scripts/backfill-cn-codes.ts
+```
+Expected output: progress per SKU, summary stats, persistent log file path. 35 amber badges на /produkty після завершення.
+
+**Step 2 — Review suggestions через UI:**
+Open `https://sztab.vercel.app/produkty` → 35 amber "🔍 Review CN" badges. Click each SKU → /products/[id]/edit → перевір CN code + reasoning у toast (з Step 1 log file якщо потрібно). Якщо AI помилився — corrigue manually. Save edit clears `cn_code_review_pending` flag → badge зникає на /produkty.
+
+**Step 3 — Verify all reviewed:**
+Supabase Studio SQL Editor:
+```sql
+SELECT COUNT(*) FROM products WHERE cn_code_review_pending = TRUE;
+-- Має бути 0
+
+SELECT COUNT(*) FROM products WHERE cn_code IS NULL;
+-- Має бути 0
+```
+
+**Step 4 — Apply migration 050 (SET NOT NULL):**
+Supabase Studio → New query → paste `scripts/050_cn_code_required.sql` → Run.
+
+### Verification post-Step 4
+
+- [ ] `INSERT INTO products (name, owner_id) VALUES ('test', auth.uid());` → fails з NOT NULL violation на cn_code (proves constraint enforced)
+- [ ] `\d products` показує `cn_code | text | not null`
+
+### Next (S-INTEL.1.2 — wholesale data)
+
+Unchanged from S-INTEL.1.1 SHIP entry above. ZSRIR + fresh-market.pl + EU Agri-food + Sunday cron + commodity_prices + market_signals.
+
