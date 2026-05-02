@@ -685,3 +685,51 @@ S6B залежить від цих знахідок. S6A (клієнт) може
 - TGE relevant тільки для bulk commodities (sugar/grain/dairy futures), не finished food
 - CN code (Combined Nomenclature 8-digit) — bridge до всіх EU statistical sources, must-have field у products
 
+
+---
+
+## 02.05.2026 — S6A Step 1 (in progress)
+
+### Built
+
+- `app/api/clients/[id]/full-analysis/route.ts` (101 рядків) — wrapper endpoint dla "Analiza klienta" primary CTA (Protocol 13)
+- Resolves clientId → nip → forwards POST do `/api/intelligence/lookup` (internal fetch)
+- Cookie forwarding (`cookie` header) для auth — `supabase.auth.getUser()` читає JWT з cookies (через `@supabase/ssr` createServerClient)
+- Bearer token Authorization header — НЕ підтримується upstream (verified `lib/supabase/server.ts`), тому досить cookie
+- `maxDuration = 120` — aligned з upstream `app/api/intelligence/lookup/route.ts:42` (NIE 800 як було в template)
+- UUID regex check + 404 на missing client + 400 на missing NIP
+- Returns envelope as-is: `{ ok, response: {...LookupResponse...}, phase, enrichment_pending }` z `response.phase_b_pending`
+
+### Architecture decision (Q-arch lock)
+
+- **Option A** (internal fetch wrapper) chosen для мінімального blast radius першого commit S6A
+- Trade-off: 2x function invocation на Vercel (wrapper + lookup), але cleaner separation
+- Future: розглянути **Option B** (extract `runLookupPipeline(nip, supabase)` до `lib/intelligence/pipeline.ts`) якщо буде потреба перевикористання з інших routes
+
+### Other locked decisions (S6A Discovery #4 follow-up)
+
+- TOP-10 для AI rescore у Phase B (не TOP-5, не TOP-20) — реалізація STEP 2
+- Primary CTA name: "Analiza klienta" (Protocol 13 wording)
+- Orphan `/api/ai/analyze-client` НЕ deleteуємо в S6A — окремий S6A.0 cleanup
+- `maxDuration` = 120 (aligned з lookup ceiling)
+- Return shape: envelope as-is (zachowuje phase / enrichment_pending poza response)
+
+### Verification status
+
+- Static review PASS (cross-reference з `krs-refresh/route.ts`, `enrich-apify/route.ts`, `lookup/route.ts`)
+- pnpm tsc / pnpm lint / pnpm dev — НЕ виконувалось (CLAUDE.md "Ask before acting"); Vadym робить sam через PowerShell
+- Live verification (Protocol 4) — defer do shipnięcia całego S6A; wrapper wymaga STEP 4 UI rewire żeby być testowalny end-to-end
+
+### Next (S6A Step 2)
+
+- Add `AI_match_rescore` step у Phase B `runPhaseB()` w `app/api/intelligence/lookup/route.ts`
+- Update `phase_b_pending` list w lookup route do uwzględnienia `'AI_match_rescore'` (conditional na `params.anthropic_api_key`)
+- Build per-client `rescoreClientTop10(supabase, apiKey, clientId)` w `lib/matching/ai-rescore.ts` (TOP-10 matches WHERE client_id=?, jeden Haiku call, UPDATE matches.{ai_score, ai_reasoning, ai_confidence, ai_scored_at})
+- Phase B currently ~60-100s; AI rescore TOP-10 dodaje ~5-10s — zostaje pod 120s ceiling
+
+### Constraint reminder
+
+- NIE git operations (Vadym committs з PowerShell — Protocol 14)
+- NIE modyfikacja `lookup/route.ts` (to STEP 2)
+- NIE modyfikacja UI components (to STEP 4)
+
