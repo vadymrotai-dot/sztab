@@ -42,6 +42,7 @@ import {
   ChevronUpIcon,
   ChevronRightIcon,
   CommandIcon,
+  SearchIcon,
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -198,6 +199,7 @@ export function AppSidebar({ user, prospectHotCount = 0, counts = {} }: AppSideb
   // Top-level entries — order matches Vadym spec.
   const topNav: NavEntry[] = [
     { name: 'Dziś', href: '/pulpit/dzisiaj', icon: LayoutDashboardIcon },
+    { name: 'Szukanie firm', href: '/pulpit/szukaj', icon: SearchIcon },
     {
       name: 'Klienci',
       href: '/clients',

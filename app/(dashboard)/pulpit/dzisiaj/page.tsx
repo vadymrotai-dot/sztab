@@ -12,6 +12,7 @@ import { PageHeader } from '@/components/page-header'
 import { WarningsPanel } from '@/components/dzis/warnings-panel'
 import { CalendarShell } from '@/components/dzis/calendar-shell'
 import { HotLeadyChips, type HotLead } from '@/components/dzis/hot-leady-chips'
+import { IntelligenceModesBlock } from '@/components/dzis/intelligence-modes-block'
 import type { CalendarEvent, EventSeverity } from '@/components/dzis/calendar-types'
 
 export const dynamic = 'force-dynamic'
@@ -178,6 +179,9 @@ export default async function DailyDashboardPage() {
             </div>
           )}
         </div>
+
+        {/* Sprint S-CORE.1.C — 3 cards modes (Tryb pracy) — над WarningsPanel */}
+        <IntelligenceModesBlock />
 
         {/* Warnings panel — auto-hides gdy wszystko 0 */}
         <WarningsPanel
