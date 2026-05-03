@@ -1,9 +1,11 @@
 // lib/intelligence-engine/core/orchestrator.ts
-// Sprint S-CORE.1.A — stub. Real fan-out logic — S-CORE.1.B.
+// Sprint S-CORE.1.B — thin dispatch wrapper над 3 modes (A/B/C).
 //
-// Orchestrator coordinates 3 modes (A/B/C) per Protocol 13:
-//   ОДНА КНОПКА → fan-out до ВСІХ sources паралельно → агрегація → AI re-score.
-// AI ніколи не перший layer; AI завжди фінальний re-score.
+// Per Protocol 13: ОДНА КНОПКА → fan-out до ВСІХ sources → агрегація →
+// AI re-score В КІНЦІ. Цей orchestrator робить тільки crude dispatch
+// (mode → mode-runner). Реальний fan-out усередині runRegistryMode /
+// runCombinedMode (Promise.allSettled для combined). AI re-score буде
+// підключений у scoring-pipeline (S-CORE.2/3 wire).
 
 import type {
   Mode,
@@ -11,19 +13,34 @@ import type {
   RegistryFilters,
   ExistingFilters,
 } from '../types'
+import { runExistingMode } from './modes/existing-mode'
+import { runRegistryMode } from './modes/registry-mode'
+import { runCombinedMode, type CombinedFilters } from './modes/combined-mode'
+
+export type OrchestratorFilters =
+  | ExistingFilters
+  | RegistryFilters
+  | CombinedFilters
 
 export interface IOrchestrator {
-  run(
-    mode: Mode,
-    filters?: RegistryFilters | ExistingFilters,
-  ): Promise<RunResult>
+  run(mode: Mode, filters?: OrchestratorFilters): Promise<RunResult>
 }
 
 export class Orchestrator implements IOrchestrator {
   async run(
-    _mode: Mode,
-    _filters?: RegistryFilters | ExistingFilters,
+    mode: Mode,
+    filters?: OrchestratorFilters,
   ): Promise<RunResult> {
-    throw new Error('Not implemented — S-CORE.1.B Sub-Sprint')
+    switch (mode) {
+      case 'A':
+        return runExistingMode(filters as ExistingFilters | undefined)
+      case 'B':
+        return runRegistryMode(filters as RegistryFilters | undefined)
+      case 'C':
+        return runCombinedMode(filters as CombinedFilters | undefined)
+      default:
+        // Exhaustive check — за умови що Mode literal lock-нутий до 'A'|'B'|'C'.
+        throw new Error(`Unknown mode: ${String(mode)}`)
+    }
   }
 }
