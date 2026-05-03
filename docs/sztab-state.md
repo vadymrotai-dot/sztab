@@ -1808,3 +1808,99 @@ Sztab тепер має live external market intelligence pipeline (ZSRIR weekly
 
 Next focus area залежить від Vadym priority — CN review unlocks bridge BUG 2 fix → fresh-market expand → EU + signals. Or jump до S6B якщо хочемо швидше product analysis ship.
 
+---
+
+## 2026-05-03 — DAILY PLAN
+
+Goals (priority order):
+1. **BUG 2 fix** — bridge labels sync (commodity_to_cn_map не match з real ZSRIR labels) — 1h Cowork
+2. **CN review** — 35 SKU manual verify через /produkty UI + apply migration 050 (cn_code SET NOT NULL) — 1h Vadym focused
+3. **S-INTEL.1.2.2 повний sprint** — fresh-market.pl cheerio scraper, 5 markets (Bronisze WGRO Lublin Kraków Wrocław), extend commodity_to_cn_map, wire cron handler — 4h Cowork+Vadym
+4. **S-INTEL.1.2.3 audit** — read-only pre-implementation audit для EU Agri-food + signal generators — 1h Cowork
+5. **EOD reconciliation** (Protocol 19 evening звірка) — 30 хв
+
+Out of scope (consciously deferred):
+- S-INTEL.1.2.3 implementation (defer до 04.05 після audit)
+- S6B "Аналіз товару"
+- MEDIUM ZSRIR datasets (5 datasets — defer до wkh)
+- Allegro work (чекаємо verification issue #13352)
+
+Constraints today:
+- Available focus hours: 8-10h
+- Vadym blockers: none
+- Energy: rested
+
+**Total estimate:** 7.5h planned
+**Calibrated estimate** (0.55x multiplier з 02.05 EOD): 4-5h actual
+**Buffer:** 3-5h для unforeseen
+
+**Strategy (Plan B — major progress over conservative debt-cleanup):**
+- Goals 1-2 (~2h) закривають tech debt з 02.05 для clean state
+- Goal 3 (~4h) — повний наступний пайплайн ship-нутий
+- Goal 4 (~1h) — locked decisions для завтра
+- Goal 5 — discipline review per Protocol 19
+
+---
+
+## 2026-05-03 — DAILY PLAN REVISION (mid-day)
+
+**Original plan:** BUG 2 fix → CN review → S-INTEL.1.2.2 fresh-market.pl scraper → S-INTEL.1.2.3 EU audit. ~7.5h planned.
+
+**Revised after Vadym strategic input:**
+
+### Why revised
+Vadym pivoted strategic discussion на discovery джерел для Product Intelligence. Це призвело до 3 fundamental architectural decisions:
+
+1. **Unified Intelligence Engine** — replaces Sprint S6A/S6B okремі engines plan. ONE core + 4 entity profiles + 3 modes.
+2. **PIL-2d Outreach Pricing** — новий шар pricing intelligence через direct email/phone до hurtowni.
+3. **Pricing budget corrected** — $5-20/міс start, $120-210/міс scale (раніше було неправильно).
+
+### Today's revised tasks (from 8:24)
+
+1. ✅ **Update sztab-product-sources-discovery.md to v2** — додано PIL-2d, виправлені pricing details, unified engine architecture, 3 modes. (~5 хв, done at 8:29)
+
+2. ✅ **Add Protocol 20 (Unified Intelligence Engine) + Protocol 21 (Sources Taxonomy)** to sztab-protocols.md (~10 хв)
+
+3. ✅ **Update this state.md з новим планом** (~5 хв)
+
+4. ⏳ **Client sources discovery — comprehensive document** — з двома таблицями (discovery + enrichment), мінімум так само ретельний як product discovery (~2-3 години research + write)
+
+5. ⏳ **Discussion з Vadym** — review обох документів
+
+6. ⏳ **S-CORE.1 build** — після review
+
+### What's deferred
+- BUG 2 fix bridge labels — postponed до завтра. Не блокер для S-CORE work.
+- CN review 35 SKU + migration 050 — postponed до завтра.
+- S-INTEL.1.2.2 fresh-market.pl scraper — postponed (паралельний track, не блокер для S-CORE).
+- S-INTEL.1.2.3 EU Agri-food audit — postponed (паралельний track).
+
+### Architectural decisions locked today
+
+🔒 **Sprint S6A/S6B окремі engines — SCRAPPED.** Replaced з S-CORE.1-5 unified architecture.
+
+🔒 **Engine має 3 modes:** existing / registry / combined. Всі доступні одночасно.
+
+🔒 **Sources розділено на discovery + enrichment** — per Protocol 21. Some sources serve обидві задачі.
+
+🔒 **PIL-2d Outreach Pricing** — окремий source class у product sources.ts.
+
+🔒 **Budget realistic:** $5-20/міс current, $120-210/міс при scale. Apify і Tavily Free tiers покривають Sztab при поточному usage. Anthropic — pay-per-token, no subscription.
+
+### Next sprints sequence
+
+**Sprint S-CORE.1** — Build core engine (~5-7h)
+**Sprint S-CORE.2** — Wire client profile (~3-4h)
+**Sprint S-CORE.3** — Wire product profile + PIL-2d outreach (~4-6h)
+**Sprint S-CORE.4** — Wire market profile (~3-4h)
+**Sprint S-CORE.5** — Wire strategy profile cross-entity (~4-5h)
+
+Total ~19-26h. Будуємо unified core з самого початку, не refactor пізніше.
+
+### Notes for self (Claude)
+
+- Memory entry #15 оновлений з UNIFIED INTELLIGENCE ENGINE decision
+- Two new docs going to repo: sztab-product-sources-discovery.md (v2), sztab-client-sources-discovery.md (новий)
+- Protocols 20+21 додаються до sztab-protocols.md
+- Sprint S-CORE починається ТІЛЬКИ після Vadym review обох discovery docs
+

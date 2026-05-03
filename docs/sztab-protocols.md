@@ -619,3 +619,387 @@ Assumption-based parsing → 3+ ітерації hotfix, кожна на осн�
 - Saved hotfix iterations: 3-5 hours typical
 - Net positive ROI на parser tasks де structure не obvious
 
+---
+
+## ПРОТОКОЛ 19 — DAILY PLAN + EVENING RECONCILIATION (NEW 03.05.2026)
+
+Кожен робочий день має ранкове планування (~10 хв) і вечірню звірку. Без цього scope tracking + estimate calibration залишаються невидимими, а patterns відкриваються із запізненням.
+
+### Mechanism
+
+- **Ранок (~10 хв):** Vadym + Claude разом обирають 2-4 пріоритети + estimates. Запис у `docs/sztab-state.md` як секція `## YYYY-MM-DD — DAILY PLAN`.
+- **Вечір:** звірка у `docs/sztab-state.md` як секція `## YYYY-MM-DD — EOD RECONCILIATION`. Що завершили (commits + scope), що не встигли + чому, estimate accuracy (planned X / actual Y), surprises / scope creep, lessons для майбутніх planning rounds.
+
+### Format ранкового плану
+
+```markdown
+## 2026-05-XX — DAILY PLAN
+
+Goals (priority order):
+1. [Sprint name] — [scope] — [Claude estimate]
+2. ...
+
+Out of scope (consciously deferred):
+- ...
+
+Constraints today:
+- Available focus hours: X
+- Vadym blockers: ...
+```
+
+### Format вечірньої звірки
+
+```markdown
+## 2026-05-XX — EOD RECONCILIATION
+
+Shipped:
+- commit hash + scope (vs plan)
+
+Deferred / Carry-over:
+- item — reason
+
+Estimate accuracy:
+- Planned: Xh / Actual: Yh / Multiplier: Y/X
+- Lessons: ...
+
+Surprises:
+- ...
+
+Tomorrow's seed (optional):
+- ...
+```
+
+### Why this protocol matters
+
+- 02.05.2026 day shipped 13 commits, але estimates були ~1.7-2x optimistic (planned 14h, actual 8.5h — Cowork+Claude+Vadym parallel, але hotfixes не оцінені).
+- Без daily reconciliation — patterns виявляються із запізненням (estimate drift, hotfix overhead, parallel work multiplier).
+- Protocol 19 робить scope tracking + estimate calibration візуальним — кожен день має закриття.
+
+### Anti-patterns (blocked)
+
+- Стартувати день без ранкового плану ("просто почну з того що недоробив вчора") — STOP, спершу 10 хв planning round.
+- EOD без reconciliation ("завтра напишу") — STOP, без свіжого recap lessons губляться.
+- Planning без estimate ("просто зробимо") — STOP, без planned hours немає baseline для accuracy multiplier.
+- Estimate без actual tracking — STOP, multiplier це core signal протоколу.
+
+### Connection до інших протоколів
+
+- Protocol 4 (Post-ship verification): EOD reconciliation спирається на real ship status, не на Claude Code self-report.
+- Protocol 5 (Memory hygiene): Daily plan + EOD entries живуть у `docs/sztab-state.md`, не в memory. Memory тільки pointer.
+- Protocol 10 (Discovery log): Surprises у EOD — це trigger для discovery log entry якщо знахідка структурна.
+
+
+
+## PROTOCOL 20 — UNIFIED INTELLIGENCE ENGINE ARCHITECTURE
+
+**Locked:** 03.05.2026 by Vadym ("правильно з першого разу")
+**Supersedes:** Sprint S6A/S6B planning з окремими engines per entity (SCRAPPED)
+
+### Принцип
+
+Sztab Intelligence Engine — **ОДИН** core engine для всіх 4 entity types (client, product, market, strategy), НЕ окремі engines per domain.
+
+### Архітектура
+
+```
+sztab-intelligence-engine/
+├── core/
+│   ├── orchestrator.ts          ← shared source coordination
+│   ├── scoring-pipeline.ts      ← shared L5/L6/L7 pattern
+│   ├── ai-prompt-templates.ts   ← shared prompt patterns
+│   ├── cache-layer.ts           ← shared dedup/cache
+│   └── modes/
+│       ├── existing-mode.ts     ← scope=existing (process DB)
+│       ├── registry-mode.ts     ← scope=registry (CEIDG/KRS bulk)
+│       └── combined-mode.ts     ← scope=both (smart merge)
+├── entities/
+│   ├── client/
+│   │   ├── sources.ts           ← discovery + enrichment matrix
+│   │   ├── scoring-rules.ts
+│   │   └── ai-context.ts
+│   ├── product/
+│   ├── market/
+│   └── strategy/                ← cross-entity composition
+└── api/
+    └── analyze.ts               ← single endpoint
+```
+
+### 3 Modes (всі доступні одночасно)
+
+**Mode A — Existing:**
+- Process entities ВЖЕ у DB
+- Daily outreach planning
+- UI: "Опрацюй мою базу" на /pulpit
+
+**Mode B — Registry:**
+- Filter CEIDG/KRS by criteria
+- Bulk score, auto-add high-score (>70) як prospects
+- Weekly pipeline filling
+- UI: "Знайти нових в реєстрах"
+
+**Mode C — Combined (default):**
+- Both existing entities + new high-score prospects
+- Unified ranked output
+- Daily intelligence cycle
+- UI: "Пошук фірм" з filter form
+
+**Plus: Sequential pipeline cron** — overnight batch combining all 3.
+
+### Чому unified а не separate
+
+- Code reuse 60-70% — orchestration, retry, cache, AI patterns
+- Cross-entity insights можливі (product↔client matching one pass)
+- Vertikали (cosmetics, electronics) додаються як новий profile 2-4h
+- Маркетинговий argument: "один розумний engine для бізнесу"
+- Sztab core moat — це і є те що відрізняє від generic CRM
+
+### Anti-pattern якого уникаємо
+
+**Не робимо "S6A швидко, потім refactor у unified".** Це створює архітектурний дебт. Unified будуємо з самого початку.
+
+### Implementation order
+
+1. S-CORE.1 (5-7h) — Build core (orchestrator + pipeline + AI templates + 3 modes)
+2. S-CORE.2 (3-4h) — Wire client profile (port intelligence/lookup logic)
+3. S-CORE.3 (4-6h) — Wire product profile (включно з PIL-2d outreach)
+4. S-CORE.4 (3-4h) — Wire market profile
+5. S-CORE.5 (4-5h) — Wire strategy profile (cross-entity)
+
+**Total:** ~19-26h. Cosmetics/electronics майбутні vertikали = 2-4h per profile.
+
+---
+
+## PROTOCOL 21 — SOURCES TAXONOMY (Discovery vs Enrichment)
+
+**Locked:** 03.05.2026
+
+### Two source classes
+
+Кожна entity має дві категорії sources:
+
+**Discovery sources** (для Mode B — registry) — knaйти НОВИХ candidates:
+- Bulk filtered queries
+- Output: list of N candidates by criteria
+- Example для client: CEIDG bulk, KRS bulk, Google Maps places search, Tavily search by criteria, BZP tenders, LinkedIn search, PKT.pl, branżowe katalogi
+- Example для product: Apify category browsing, Tavily product search, Open Food Facts category, Allegro listings
+
+**Enrichment sources** (для Mode A — existing) — поглиблення вже відомого:
+- Per-entity lookup
+- Output: deep profile of 1 entity
+- Example для client: rejestr.io, GUS BIR, VAT BL, Tavily extract by name, Apify Maps lookup, KRD/BIG, BZP per NIP
+- Example для product: OFF EAN lookup, Allegro/Ceneo per product, Ceneo reviews, gazetki search
+
+### Some sources serve обидві задачі
+
+- Tavily — bulk search (discovery) + extract per URL (enrichment)
+- Google Maps — places search by criteria (discovery) + place details by ID (enrichment)
+- KRS rejestr.io — list filter (discovery) + per-NIP lookup (enrichment)
+
+### Per-entity matrix
+
+Кожен entity profile має `sources.ts` з двома таблицями:
+```typescript
+export const clientSources = {
+  discovery: [...],   // for registry mode
+  enrichment: [...],  // for existing mode
+}
+```
+
+Engine routing:
+- Mode A → use only enrichment sources on existing entities
+- Mode B → use only discovery sources, output candidates
+- Mode C → use enrichment sources on existing + discovery sources for new candidates → merge
+
+### NEW рекомендація для product entity (з discovery 03.05)
+
+🆕 **PIL-2d Outreach Pricing** — окремий sub-source class:
+- Direct email/phone до wholesalers
+- AI-generated email templates
+- Inbox monitoring + AI parsing oferty
+- Phone follow-up scripts
+
+Це не fits ні в discovery ні в enrichment cleanly — це **outreach** як шлях отримання даних. Treat як окремий source class у sources.ts.
+
+---
+
+## END OF PROTOCOLS 20-21
+
+## PROTOCOL 22 — MATRIX SCORING MODEL
+
+**Locked:** 03.05.2026 by Vadym ("один клієнт може мати 80 на ЧМ, 20 для ложки з медом і 70 для wędlin")
+**Supersedes:** Sprint F V1/V2 client-level scoring concept (всі клієнти отримували єдиний score)
+
+### Принцип
+
+**Скор — це властивість пари клієнт×товар, НЕ клієнта окремо.**
+
+Один і той самий клієнт має N різних скорів — по одному на кожен товар у нашому асортименті.
+
+### Архітектурна реалізація
+
+**Логіка скорингу ЦЕНТРАЛІЗОВАНА у `entities/product/scoring-rules.ts`:**
+
+```typescript
+computeMatchScore(product: Product, client: Client, context): MatchResult
+```
+
+**Клієнтський engine НЕ скорить самостійно** — викликає товарний engine у циклі для кожного продукту в нашому асортименті:
+
+```typescript
+matrix = allProducts.map(p => productScoring.computeMatchScore(p, client, ctx))
+```
+
+### Implications для UI
+
+**Сторінка /clients/[id] — БЕЗ єдиного скору:**
+- Профіль (8 шарів CIL)
+- Матриця матчів (товар × % match)
+- Top recommendation card
+
+**Сторінка /produkty/[id] — головний "продаючий" інструмент:**
+- Кнопка "Знайти клієнтів для цього товару"
+- Ranked топ-100 з % match
+- Сегментація hot/warm/cold + стратегія per segment
+
+**Сторінка /rynek/[product_id]:**
+- TAM/SAM/SOM аналіз
+- Match distribution histogram
+- External market context
+
+### Implications для Mode B (registry discovery)
+
+**Раніше:** алгоритм скорить candidates → high-score auto-add як Tier A.
+**Тепер:** додаємо ВСІХ валідних кандидатів (тільки фільтр active VAT + non-wykreślona). База = універсальний asset. Скор з'являється тільки при "Аналіз товару".
+
+### Що скасовано
+
+- Концепт "Tier A/B/C" як постійних tiers клієнтів
+- "score >= 70 → Tier A" auto-add у Mode B
+- Manual review у Mode B по threshold (немає threshold)
+- Глобальний "score клієнта" як єдина цифра
+
+### Що залишається
+
+- Validation фільтри при додаванні (VAT czynny, не wykreślona) — це не скоринг, це data hygiene
+- Loyalty tier multiplier на mережах (Żabka closed, Lewiatan hybrid) — це **per-product scoring модіфікатор**, не tier клієнта
+- Існуюча логіка з matches table — переписується але data preserved
+
+### Anti-pattern якого уникаємо
+
+❌ "Цей клієнт має score 80 → tier A → додай у когорту"
+✅ "Цей клієнт має 80% match для ЧМ → у hot segment для цього товару → cold call pitch"
+
+### Backward compatibility
+
+`matches` table зберігається але семантика змінюється:
+- Раніше: одна row per (client, current_product_focus)
+- Тепер: row per (client, product) — повна матриця
+
+Database migration буде у Sprint S-CORE.3 (після того як товарний engine ready).
+
+---
+
+## PROTOCOL 23 — UI-FIRST DEVELOPMENT
+
+**Locked:** 03.05.2026 by Vadym ("якщо функцію не видно — її НЕМАЄ")
+**Triggered by:** Audit #2 (01.05) виявив 5 потужних сторінок СХОВАНИХ від sidebar — це системна проблема, не одинокий баг
+
+### Принцип
+
+**Кожна функція ОБОВ'ЯЗКОВО має план інтерфейсу ПЕРЕД написанням коду.**
+
+UI-first, не code-first. Якщо функцію не видно у меню/головній сторінці — її технічно немає, незалежно від того скільки коду під капотом.
+
+### Що рахується як "UI план" (sprint planning checklist)
+
+Перед стартом sprint обов'язково відповісти на 5 питань:
+
+1. **Де знаходиться кнопка/посилання на нову функцію?** (точна сторінка + позиція)
+2. **Як до неї потрапити з головної сторінки?** (скільки кліків)
+3. **Що бачить користувач який заходить вперше БЕЗ контексту?** (новий користувач за 30 секунд)
+4. **Як зрозуміти що функція виконалась?** (повідомлення, оновлення даних, перенаправлення)
+5. **Як знайти результат функції пізніше?** (історія, бейджик, окрема сторінка)
+
+Якщо хоч на одне питання немає чіткої відповіді — sprint **не починається**.
+
+### Тест "30-секундного користувача"
+
+Уяви випадкову людину яка зайшла на сайт. Вона **не знає** що таке Pikniko, Czudowa Marka, kiszone ogórki, hurtownia, KRS.
+
+**Питання:** за 30 секунд **сама** вона зрозуміє що сайт робить і що з ним можна робити?
+
+Якщо ні — UI провалений. Незалежно від того скільки потужних функцій під капотом.
+
+### Workflow тестування
+
+**Первинна перевірка (Cowork):**
+- Я (Cowork) проходжу через сайт у incognito browser session
+- Записую кожне місце де "не зрозуміло куди далі"
+- Кожен незрозумілий термін
+- Кожну порожню сторінку
+- Складаю звіт з конкретними проблемами
+
+**Підсумкова перевірка (Vadym):**
+- Vadym дивиться звіт Cowork
+- Може дати сайт сторонній людині (друг, родич) для cross-check
+- Затверджує або вимагає виправлень
+
+### Sprint plan template — обов'язкова секція UI
+
+Кожен sprint plan містить секцію:
+
+```
+## UI ПЛАН
+
+### Точка входу
+- Сторінка: [path]
+- Елемент: [кнопка/посилання + позиція]
+- Іконка + текст підказки
+
+### User flow
+1. Користувач кліче [елемент]
+2. Бачить [результат A]
+3. Через [час] бачить [результат B]
+...
+
+### Як знайти результат пізніше
+- [бейджик / історія / окрема сторінка]
+
+### Тест 30-секундного користувача
+- Що бачить новий користувач відкривши сайт
+- Чи зрозуміло куди далі без пояснень
+
+### Edge cases UX
+- Що якщо запит занадто довгий (timeout)?
+- Що якщо немає даних?
+- Що якщо помилка джерела?
+```
+
+### Failure modes що блокую
+
+❌ "Зробимо API endpoint, потім UI" — це призводить до прихованих функцій
+❌ "Vadym знає де це" — Vadym = case A. Не репрезентативно для нових користувачів
+❌ "Sidebar додамо потім" — потім = ніколи. Sidebar = частина sprint completion
+❌ "Це internal tool, UI не критичний" — Vadym планує SaaS, UI критичний завжди
+❌ "Ну функція ж технічно працює" — функції не існує без UI входу
+
+### Anti-pattern recovery
+
+Якщо у sprint plan забули UI секцію:
+1. Стоп робота
+2. Заповнити UI план
+3. Перевірити з 5 питаннями
+4. Тільки тоді продовжити кодинг
+
+### Обов'язковий перший крок S-CORE.0
+
+Перед S-CORE.1 (build core engine) — обов'язковий **S-CORE.0 (UI макети)**:
+- UI аудит поточного сайту через incognito Cowork
+- Макети нових сторінок (статичний HTML/JSX без логіки)
+- Макет головної сторінки після додавання нових функцій
+- Макет нового sidebar з усіма entry points
+- Vadym затверджує макети ПЕРЕД тим як починаємо S-CORE.1
+
+---
+
+## END OF PROTOCOLS 22-23
