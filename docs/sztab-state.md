@@ -1904,3 +1904,104 @@ Total ~19-26h. Будуємо unified core з самого початку, не 
 - Protocols 20+21 додаються до sztab-protocols.md
 - Sprint S-CORE починається ТІЛЬКИ після Vadym review обох discovery docs
 
+---
+
+## 2026-05-03 — DAILY PLAN
+
+Goals (priority order):
+1. Sprint S-CORE.0 — UI макети 9 сторінок + UI аудит — Claude estimate ~6h (actual TBD у EOD)
+2. Sprint S-CORE.1 (Build Core Engine) — split на 3 sub-спринти ~2h each — стартує після макет approval
+3. EOD reconciliation у sekcji `## 2026-05-03 — EOD RECONCILIATION` (Protocol 19)
+
+Out of scope (consciously deferred):
+- /admin/health польський переклад (окремий cleanup-sprint)
+- /matches admin переробка (post S-CORE.5)
+- /handoff/pikniko переосмислення (memory: Pikniko ≠ customer Sztab)
+- Mobile layout (post S-CORE.5)
+- Cmd+K command palette (post S-CORE.5)
+- Англіцизми cleanup (inline у S-CORE.2-5)
+
+Constraints today:
+- Vadym available focus hours: ~5h
+- Cowork: full computer use + browser use (виконує рутину, файли, screenshots)
+- Claude in claude.ai: post-ship verification + sprint prompts + макети
+- Per Protocol 14 — git push виконує Vadym через PowerShell, не Cowork
+
+---
+
+## S-CORE.0 SHIP STATUS — 03.05.2026
+
+**Sprint:** S-CORE.0 (UI макети) — обов'язковий перший крок per Protocol 23
+**Status:** ✅ DONE — green approval Vadym 03.05.2026 evening
+
+### Per Protocol 23 deliverable checklist:
+
+- ✅ UI аудит поточного сайту через incognito Cowork — 11 сторінок перевірено в попередньому чаті
+- ✅ Макети нових сторінок (статичний HTML без логіки) — 9 макетів у файлі `sztab-makiety-v2.html` (97К chars, 1661 рядків)
+- ✅ Макет головної сторінки — /pulpit/dzisiaj з 3 modes + календар + hot pairs + Wymaga uwagi
+- ✅ Макет нового sidebar — Codzienność / Dane / Sprzedaż / Inne (card-sorting hub pattern)
+- ✅ Vadym затверджує макети — green approval 03.05.2026 evening
+
+### Покриті сторінки у макеті (9 шт):
+
+1. /pulpit/dzisiaj — Pulpit dnia з 3 modes + календарем
+2. /pulpit/szukaj — форма Mode B/C
+3. /clients — список (без score-сортування, per Protocol 22)
+4. /clients/[id] — 2 кнопки (Szybki + Pełny) + бізнес-профіль AI + 7 tabs + 8 CIL акордеон
+5. /produkty — список з групуванням по dostawcy/kategorii
+6. /produkty/[id] — 4 кнопки (товар/ринок/oferta/стратегія SKU) + 5 PIL tabs
+7. /strategia (drzewo) — навігація per SKU/kategoria/kanał/brand
+8. /strategia/[id] — long-form raport з 10 секцій
+9. /sprzedaz — Pipeline kanban з картами як парами клієнт×SKU
+
+### Iтерації мокапу:
+
+1. **v1** (3.05.2026 ранок) — забракована Vadym (3 мови, € замість zł, без календаря, одна кнопка клієнта, стратегія одна глобальна)
+2. **v2** (3.05.2026 вечір) — green approved (всі 5 правок враховано, web research застосовано: Progressive Disclosure / 5-Sec Rule / F-pattern / Calm UI / Active Insights)
+
+### Web research застосовано (UX 2026 принципи):
+
+- **Progressive Disclosure** (Nielsen 1995, NN/g) — Szybki preview → Pełna analiza; Top recommendation → 7 tabs deeper
+- **5-Second Rule** (Shopify dashboard pattern) — на /pulpit/dzisiaj за 5 сек видно 3 modes + hot pairs + календар
+- **F-pattern reading** (eye-tracking studies) — KPI зліва-зверху, дрібніше — нижче-справа
+- **Active Insight Generation** (2026 trend) — AI banner "Розгляньте outreach по ТОП-23..." замість голих цифр
+- **Calm UI / Functional Minimalism** (Linear/Notion/Stripe 2026) — один acent колір (emerald), whitespace між блоками
+- **Card-sorting у hubs** (HubSpot pattern) — sidebar згрупований Codzienność / Dane / Sprzedaż / Inne
+- **Bar charts > pie** (3-4x швидше interpretation) — всюди прогрес-бари (Match %), не круги
+
+**S-CORE.0 = DONE. Стартуємо S-CORE.1 split на 3 sub-спринти.**
+
+---
+
+## STRATEGY SHIFT 03.05.2026 evening — UI principles locked
+
+Per Protocol 11 (Strategy Updates). Три уточнення Vadymа сьогодні ввечері змінюють старі implications:
+
+| Раніше планували | Тепер lock-нуто |
+|---|---|
+| /clients/[id]: 1 кнопка "Глибокий аналіз клієнта" | **2 кнопки:** Szybki podgląd AI (~5s, 0,10 zł) + Pełna analiza klienta (~60s, 1,60 zł). Швидкий precursor для рішення чи робити глибокий. |
+| Strategia: одна на бренд (наприклад "стратегія ЧМ") | **Hierarchy 4 рівні:** SKU / kategoria / kanał / brand. ЧМ ≠ одна стратегія бо там і kiszonki, і sałatki, і HoReCa packaging, і retail mały — різні стратегії. |
+| Strategia: короткі висновки (cards) | **Long-form raport з 10 секцій:** Sytuacja / Cele / Segmentacja / Rekomendacja / Argumentacja / Konkurencja / Plan działania / Ryzyka / KPI / Założenia. Розгорнуті відповіді щоб правильно розуміти і коригувати. |
+| Mode B: фільтр active VAT + non-wykreślona | **Mode B = ВСІ** без фільтру активності. Per Protocol 22 база = універсальний asset, фільтр обмежує майбутню цінність. |
+
+### Implications:
+
+- Sprint S-CORE.2 (client wire) — 2 endpoints `/api/intelligence/quick` + `/api/intelligence/full`, не один
+- Sprint S-CORE.5 (strategy wire) — drzewo навігації (4 рівні) + long-form raport schema (10 секцій), складніше ніж очікували
+- Sprint S-CORE.1 (engine core) — Mode B simplified: тільки validation бар на NIP/REGON, без VAT/wykreślona фільтру
+
+### Estimate impact:
+
+- S-CORE.2 був 3-4h → тепер **4-6h** (2 endpoints + AI prompt template для Szybki)
+- S-CORE.5 був 4-5h → тепер **6-8h** (drzewo + 10-секційний raport schema + edit ручний per section)
+- S-CORE.1 без змін (5-7h)
+- **Total revised:** 22-31h (раніше 19-26h)
+
+### Принцип пріоритетності протоколів (за датою):
+
+При розбіжності між протоколами:
+- Новіші (Protocol 22, 23 — 03.05) > старіші (Protocol 13 — 01.05) > найстаріші (Protocols 1-12)
+- Сьогоднішнє вечірнє уточнення Vadymа > всі попередні протоколи
+
+Приклад: Protocol 22 каже "active VAT + non-wykreślona" як фільтр Mode B. Vadym 03.05 evening: "ВСІ, не валідних". → Vadym wins, мокап показує "Dodajemy WSZYSTKIE bez filtra".
+

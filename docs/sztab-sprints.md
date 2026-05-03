@@ -336,3 +336,205 @@ SHIPPED. Sztab lookup тепер honest про що готово і що буд�
 
 Sprint S6 (Two Fundamental Analysis Buttons) — наступним днем свіжими.
 
+---
+
+## Sprint S-CORE.1 — Build Core Engine
+
+**Locked:** 03.05.2026 evening (post макет approval + Strategy Shift)
+**Estimate:** 5-7h, split на 3 sub-sprints ~2h each
+**Approach:** UI-first per Protocol 23 — UI план першим, потім код
+
+### UI план (Protocol 23 — 5 питань)
+
+**1. Де знаходиться кнопка/посилання на нову функцію?**
+- Кнопки 3 modes (A/B/C) — на /pulpit/dzisiaj, перший блок під заголовком "Pulpit dnia"
+- Форма Mode B/C — на новій сторінці /pulpit/szukaj
+- Mode A → одразу runs з /pulpit/dzisiaj (toast + redirect на /clients з updated_at sort)
+
+**2. Як до неї потрапити з головної сторінки?**
+- 0 кліків — це і є головна сторінка для existing user (sztab.vercel.app → / → redirect → /pulpit/dzisiaj)
+- Sidebar entry "Pulpit dnia" — 1 клік для switch context
+
+**3. Що бачить користувач який заходить вперше БЕЗ контексту?**
+- 3 картки modes з emoji + опис + estimated cost (52 zł / Konfiguruj / Otwórz формуляр)
+- Mode C виділено зеленою рамкою + бейдж "DOMYŚLNE"
+- Календар праворуч (4-12 хвилинна задача)
+- Hot pary (3 пари клієнт×SKU) під картками
+- AI banner "Сугестія на цей тиждень"
+
+**4. Як зрозуміти що функція виконалась?**
+- Mode A: toast "Opracowanie bazy uruchomione" + progress bar в правому-нижньому куті + редирект на /клієнти з sort updated_at desc після завершення
+- Mode B: redirect на /pulpit/szukaj з prefilled tryb=B → запуск через Submit → toast → redirect на /clients?filter=newly-added
+- Mode C: redirect на /pulpit/szukaj з tryb=C → Submit → toast → редирект на /pulpit/dzisiaj з оновленими Hot pary
+
+**5. Як знайти результат функції пізніше?**
+- /клієнти sortable по updated_at (нова кнопка sort)
+- /клієнти filter "Dodano w ostatnich 24h" (новий chip)
+- /pulpit/dzisiaj — Hot pary update після кожного run
+- Toast persistence — bottom-right notification stack останніх 5 runs з timestamp
+
+---
+
+### Sub-Sprint S-CORE.1.A — Backend skeleton (~2h, 1 commit)
+
+**TASK:** Створити структуру `lib/intelligence-engine/` з типами, інтерфейсами, stub-функціями. Без real logic.
+
+**STEP 0 — sanity check:**
+1. ls lib/ — побачити existing intelligence/ folder
+2. ls app/api/intelligence/ — побачити existing endpoints
+3. STOP — report → чекай Vadym GO
+
+**STEP 1 — Create folder structure:**
+- lib/intelligence-engine/core/orchestrator.ts (interface + stub)
+- lib/intelligence-engine/core/scoring-pipeline.ts (interface + stub)
+- lib/intelligence-engine/core/ai-prompt-templates.ts (типи)
+- lib/intelligence-engine/core/cache-layer.ts (interface)
+- lib/intelligence-engine/core/modes/existing-mode.ts (stub)
+- lib/intelligence-engine/core/modes/registry-mode.ts (stub)
+- lib/intelligence-engine/core/modes/combined-mode.ts (stub)
+- lib/intelligence-engine/types.ts (shared types: Mode, EntityType, ScoreResult)
+
+**STEP 2 — Write types/interfaces:**
+- type Mode = 'A' | 'B' | 'C'
+- interface IOrchestrator { run(mode, filters?): Promise<RunResult> }
+- interface IScoringPipeline { score(client, product): MatchResult }
+- type RunResult = { sources_completed: string[], entities_processed: number, errors: any[] }
+
+**STEP 3 — Stub implementations:**
+- Кожна функція повертає `throw new Error('Not implemented — S-CORE.1.B')` поки що
+- Експорти готові для import у API layer
+
+**VALIDATE BUILD:**
+- npx tsc --noEmit → exit 0
+- Не пускати pnpm run build (бо це тільки types, не runtime change)
+
+**COMMIT:** `feat(s-core-1a): scaffolding intelligence engine — types + interfaces + stubs`
+
+**NON-GOALS:**
+- NIE запускати реальні API calls
+- NIE міняти existing /api/intelligence/lookup logic (це Sprint S-CORE.2 task)
+- NIE додавати UI (це S-CORE.1.C)
+- NIE інтегрувати AI prompts (це S-CORE.1.B)
+
+---
+
+### Sub-Sprint S-CORE.1.B — 3 Modes implementation (~2h, 1 commit)
+
+**TASK:** Реалізувати 3 modes (existing/registry/combined) над skeleton з S-CORE.1.A. AI templates винести в окремий файл.
+
+**STEP 0 — sanity check:** S-CORE.1.A merged?
+**STEP 1 — existing-mode.ts:** Iterate over DB clients, call enrichment sources sequentially, return RunResult
+**STEP 2 — registry-mode.ts:** Bulk fetch CEIDG/KRS by filters (no VAT/wykreślona filter — per Strategy Shift), insert raw → return RunResult з кількістю доданих
+**STEP 3 — combined-mode.ts:** Promise.allSettled([existing, registry]) → merge → dedupe by NIP → return
+**STEP 4 — ai-prompt-templates.ts:** 4 templates готові (clientQuick, clientFull, productAnalysis, strategySection)
+
+**VALIDATE:** npx tsc + smoke test з mocked filters
+**COMMIT:** `feat(s-core-1b): 3 engine modes (A/B/C) + AI prompt templates`
+
+**NON-GOALS:**
+- NIE wire UI (це S-CORE.1.C)
+- NIE робити real OpenAI/Anthropic calls (templates ready, calling — у S-CORE.2/3)
+
+---
+
+### Sub-Sprint S-CORE.1.C — UI wiring (~2h, 1-2 commits)
+
+**TASK:** UI кнопки 3 modes на /pulpit/dzisiaj + форма Mode B/C на /pulpit/szukaj + API endpoint.
+
+**STEP 0 — sanity check:** S-CORE.1.B merged? Макет sztab-makiety-v2.html передивитися ще раз?
+**STEP 1 — Створити app/api/intelligence/run/route.ts** — POST { mode, filters? } → returns { runId, status }
+**STEP 2 — Edit app/(dashboard)/pulpit/dzisiaj/page.tsx** — 3 cards modes (за макетом 1)
+**STEP 3 — Створити app/(dashboard)/pulpit/szukaj/page.tsx** — форма Mode B/C (за макетом 2)
+**STEP 4 — Wire onClick handlers** → fetch /api/intelligence/run → toast + redirect
+
+**VALIDATE BUILD:**
+- npx tsc --noEmit → exit 0
+- pnpm run build → "Compiled successfully"
+- Manual smoke test через browser MCP після ship — Vadym кликає Mode A → бачить toast → redirect
+
+**COMMIT:** `feat(s-core-1c): UI wiring — 3 modes на /pulpit + форма /pulpit/szukaj + /api/intelligence/run`
+
+**NON-GOALS:**
+- NIE робити повний enrichment pipeline (це S-CORE.2 для clients, S-CORE.3 для produkty)
+- NIE додавати progress bar UI (separate task post S-CORE.1)
+- NIE wire Hot pary update real-time (це у S-CORE.3)
+
+---
+
+### Post-S-CORE.1 verification (Protocol 4)
+
+Після всіх 3 sub-sprints — Claude (claude.ai) робить через browser MCP:
+1. Відкрити /pulpit/dzisiaj — побачити 3 cards modes? OK/FAIL
+2. Кликнути Mode A → побачити toast? OK/FAIL
+3. Перейти /pulpit/szukaj — побачити форму з radio Mode B/C? OK/FAIL
+4. Submit форму з тестовими фільтрами → 200 response? OK/FAIL
+
+Звіт Vadymу + EOD reconciliation у docs/sztab-state.md.
+
+---
+
+## Sprint S-CORE.2 — Wire Client Profile (planned)
+
+**Estimate:** 4-6h (revised after Strategy Shift — було 3-4h)
+**Depends on:** S-CORE.1 done
+
+**Scope:**
+- 2 endpoints: `/api/intelligence/quick` (~5s, 0,10 zł) + `/api/intelligence/full` (~60s, 1,60 zł)
+- Wire 2 кнопки на /clients/[id]
+- Бізнес-профіль AI блок (вихід Szybki podgląd)
+- 7 tabs (Profil / Macierz / Marketplace / Sygnały / Kontakty / Historia analiz)
+- 8 CIL акордеон
+
+---
+
+## Sprint S-CORE.3 — Wire Product Profile (planned)
+
+**Estimate:** 4-6h
+**Depends on:** S-CORE.2 done
+
+**Scope:**
+- 4 кнопки на /produkty/[id]: Analiza produktu / Analiza rynku / Wygeneruj prośbę o ofertę (PIL-2d) / Strategia SKU
+- ТОП-100 клієнтів × % match вихід
+- Сегментація hot/warm/cold
+- AI-стратегія per segment
+- 5 PIL tabs (Identity / Cennik / Popyt / Dystrybucja / Marka)
+
+---
+
+## Sprint S-CORE.4 — Wire Market Profile (planned)
+
+**Estimate:** 3-4h
+**Depends on:** S-CORE.3 done
+
+**Scope:**
+- /rynek/[product_id] — TAM/SAM/SOM analiza
+- Match histogram per товар
+- External market context (ZSRIR, fresh-market, EU Agri-food)
+- Конкуренти (Krakus, Roleski, local artisan)
+
+---
+
+## Sprint S-CORE.5 — Wire Strategy Profile (planned)
+
+**Estimate:** 6-8h (revised after Strategy Shift — було 4-5h)
+**Depends on:** S-CORE.4 done
+
+**Scope:**
+- /strategia — drzewo per SKU/kategoria/kanał/brand
+- /strategia/[id] — long-form raport з 10 секцій
+- Edit ручний per секція
+- Versioning (v1, v2, v3)
+- Eksport PDF, Stwórz zadania w kalendarzu, Udostępnij Pikniko
+
+**Sekcje raportu:**
+1. Sytuacja wyjściowa
+2. Cele strategiczne
+3. Segmentacja klientów
+4. Główna rekomendacja
+5. Argumentacja
+6. Konkurencja i positioning
+7. Plan działania (4 tygodnie)
+8. Ryzyka i scenariusze
+9. KPI i monitorowanie
+10. Założenia i ograniczenia
+
