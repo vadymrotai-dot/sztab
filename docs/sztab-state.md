@@ -2005,3 +2005,76 @@ Per Protocol 11 (Strategy Updates). Три уточнення Vadymа сього
 
 Приклад: Protocol 22 каже "active VAT + non-wykreślona" як фільтр Mode B. Vadym 03.05 evening: "ВСІ, не валідних". → Vadym wins, мокап показує "Dodajemy WSZYSTKIE bez filtra".
 
+---
+
+## 2026-05-03 — EOD RECONCILIATION
+
+### Shipped (3 commits + 1 docs commit)
+
+- **894a19d** docs(s-core): S-CORE.0 ship status + S-CORE.1 plan з 3 sub-sprints + Strategy Shift 03.05 evening
+- **1537bba** feat(s-core-1a): scaffolding intelligence engine — types + interfaces + stubs (8 files, +207 lines)
+- **34242d9** feat(s-core-1b): 3 engine modes (A/B/C) + AI prompt templates + TODO markers for S-CORE.2 wiring (5 files, +381/-58)
+- **2f9d9b7** feat(s-core-1c): UI wiring — 3 modes na /pulpit + form /pulpit/szukaj + /api/intelligence/run (5 files, +729)
+
+### Plus pre-existing pending changes flushed earlier today
+- **9da7d81** docs: matrix scoring v3 + protocols 20-23 (4 files, +2211) — local accumulated changes pushed during session
+
+### Estimate accuracy
+
+- Planned: Sprint S-CORE.1 = 5-7h (split 3 × ~2h)
+- Actual: ~1h elapsed (Vadym + Cowork + Claude паралельна робота)
+- **Multiplier: ~0.15x** (planned 6h / actual 1h) — significantly faster than estimate
+
+### Why so fast (lessons)
+
+1. **Cowork executes routine** — file writes, git diagnostics, structure analysis
+2. **Vadym executes mutating git ops only** (Protocol 14 boundary respected)
+3. **Claude provides specs + verification** — promptам, post-ship browser MCP check
+4. **Split into 3 sub-sprints with hard gates** (STEP 0 sanity checks) prevented scope creep
+5. **Pre-existing 25 tsc errors були baseline** — git stash + tsc diagnostic pattern зекономив час vs blind fixing
+6. **Cowork прапорив архітектурні помилки у моїх промптах** двічі (Q1 у S-CORE.1.B = ceidg_prospects не clients; Sprint S4 layout preserve у S-CORE.1.C)
+7. **Реальний enrichment ще не wired** — registry-mode throw TODO. Це навмисно, не помилка. Буде у S-CORE.2 night batch
+
+### Surprises
+
+- Repo мав 4 uncommitted docs files (Protocols 16-23 + discoveries v3) які push-нулись окремим commit у нашій сесії
+- 25 pre-existing tsc errors у scripts/ + cron routes — нікого не блокували бо Vercel build skip-ить scripts/
+- Sprint S4 dashboard `/pulpit/dzisiaj` був already feature-rich — Cowork правильно відкоригував мою помилкову інструкцію "overwrite"
+
+### Tech-debt logged (для майбутнього)
+
+- 25 pre-existing tsc errors → cleanup-sprint post S-CORE.5
+- middleware → proxy migration (Next.js 16 deprecation) → backlog
+- service-role Supabase client для bulk insert у ceidg_prospects → потрібен у S-CORE.2
+
+### Tomorrow's seed (and tonight)
+
+**Strategic shift:** Vadym proposed using night hours for batch CEIDG/KRS data ingestion. Aligns з memory "AI-ефективність: bulk + parallel + фонові операції".
+
+Plan revision:
+- **S-CORE.2-NIGHT** (new priority) — wire `runRegistryMode` real CEIDG paginator + Supabase service-role + cron schedule. Estimate ~2-3h tonight. Starts tonight ~18:00, runs overnight (Vercel cron або manual trigger).
+- **S-CORE.2-CLIENT** (deferred) — 2 кнопки на /clients/[id] (Szybki + Pełny). Estimate ~3-4h. Tomorrow.
+
+Why this order: база = capital який накопичується незалежно від UI. Поки UI чекає на 2 кнопки, ми можемо паралельно заливати prospects. Ranok ми матимемо реальні дані для clients/[id] testing.
+
+Memory принцип "конверсія > масштаб" не порушується — ми не cold-emailimo до 8000 firm. Просто наповнюємо базу для майбутнього scoring через "Аналіз товару" (S-CORE.3).
+
+### Verification (Protocol 4)
+
+- Vercel deploy xHB2hka9e Ready (Current) для commit 2f9d9b7
+- Live verification на sztab.vercel.app:
+  - ✅ /pulpit/dzisiaj — 3 cards modes над WarningsPanel
+  - ✅ Sprint S4 layout preserved (HotLeadyChips, CalendarShell)
+  - ✅ Sidebar entry "Szukanie firm"
+  - ✅ Mode B click → redirect /pulpit/szukaj?tryb=B
+  - ✅ Form prefilled на Tryb B per URL param
+  - ✅ Purple notice про Strategy Shift visible
+  - ✅ Filtry checkboxes + Prognoza w zł
+  - Toast не клікав на Mode A (не хотів Vercel timeout — modes throw TODO маркерами; це expected у S-CORE.1.C)
+
+### Working tree status у кінці дня
+
+HEAD: `2f9d9b7` (S-CORE.1.C UI wiring)
+Branch: main (up to date з origin)
+Working tree: clean
+
