@@ -4,7 +4,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export interface LogStartOptions {
-  target_type: 'company' | 'person'
+  /** Per migration 031 + 057 (Phase S-CORE.3.A α'): 'product' added.
+   *  DB CHECK extended; safe to use. */
+  target_type: 'company' | 'person' | 'product'
   target_id: string
   source: string
 }

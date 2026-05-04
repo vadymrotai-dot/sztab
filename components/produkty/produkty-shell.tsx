@@ -9,7 +9,14 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { SearchIcon, PlusIcon, UploadIcon } from 'lucide-react'
+import {
+  SearchIcon,
+  PlusIcon,
+  UploadIcon,
+  SparklesIcon,
+  Loader2Icon,
+} from 'lucide-react'
+import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -19,6 +26,10 @@ import {
   ResizableHandle,
 } from '@/components/ui/resizable'
 import { AccordionSection } from '@/components/clients/accordion-section'
+import {
+  ProductAnalysisSection,
+  type ProductBusinessProfile,
+} from '@/components/produkty/product-analysis-section'
 import { formatCnCode } from '@/lib/format/cn-code'
 import type { Product, Supplier } from '@/lib/types'
 
@@ -216,7 +227,49 @@ export function ProduktyShell({ products, suppliers }: Props) {
 }
 
 function ProductDetail({ product, supplier }: { product: Product; supplier: Supplier | null }) {
-  const currency = supplier?.default_currency ?? 'EUR'
+  // Sprint S-CORE.3.A α' — "Analiza produktu" CTA + ProductAnalysisSection.
+  const router = useRouter()
+  const [analyzing, setAnalyzing] = useState(false)
+
+  // products.business_profile JSONB (per migration 057) — read-only тут.
+  // Product type у lib/types ще може не мати поля — cast щоб уникнути TS error.
+  const businessProfile =
+    (product as Product & { business_profile?: ProductBusinessProfile | null })
+      .business_profile ?? null
+
+  async function handleAnalyzeProduct() {
+    if (analyzing) return
+    setAnalyzing(true)
+    const toastId = toast.loading('Trwa analiza produktu (~30-60s)…')
+    try {
+      const res = await fetch(`/api/products/${product.id}/full-analysis`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const json = (await res.json()) as {
+        ok: boolean
+        error?: string
+        cost_usd?: number
+      }
+      if (!res.ok || !json.ok) {
+        toast.error(json.error ?? `Błąd HTTP ${res.status}`, { id: toastId })
+        return
+      }
+      const costMsg = json.cost_usd
+        ? ` (cost $${json.cost_usd.toFixed(4)})`
+        : ''
+      toast.success(`Analiza zakończona${costMsg}`, { id: toastId })
+      router.refresh()
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : 'Błąd sieci',
+        { id: toastId },
+      )
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
   return (
     <>
       {/* Header */}
@@ -249,16 +302,40 @@ function ProductDetail({ product, supplier }: { product: Product; supplier: Supp
               )}
             </div>
           </div>
-          {supplier && (
-            <Link
-              href={`/suppliers?id=${supplier.id}`}
-              className="text-[12px] text-[#4F46E5] hover:underline whitespace-nowrap"
+          <div className="flex flex-col items-end gap-2">
+            <Button
+              size="sm"
+              onClick={handleAnalyzeProduct}
+              disabled={analyzing}
+              className="bg-purple-600 hover:bg-purple-700"
             >
-              Dostawca: {supplier.name} →
-            </Link>
-          )}
+              {analyzing ? (
+                <Loader2Icon className="mr-1.5 size-3.5 animate-spin" />
+              ) : (
+                <SparklesIcon className="mr-1.5 size-3.5" />
+              )}
+              {analyzing ? 'Analiza w toku…' : 'Analiza produktu'}
+            </Button>
+            {supplier && (
+              <Link
+                href={`/suppliers?id=${supplier.id}`}
+                className="text-[12px] text-[#4F46E5] hover:underline whitespace-nowrap"
+              >
+                Dostawca: {supplier.name} →
+              </Link>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Pending banner — shows during analyzing run */}
+      {analyzing && (
+        <div className="rounded-md border border-purple-200 bg-purple-50 p-3 text-[12px] leading-snug text-purple-900">
+          <strong className="font-medium">Trwa w tle (~30-60s).</strong>{' '}
+          Claude Sonnet 4.6 generuje strategię sprzedaży per segment + pitch
+          + następne kroki. Strona odświeży się po zakończeniu.
+        </div>
+      )}
 
       {/* Metric strip */}
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
@@ -303,6 +380,18 @@ function ProductDetail({ product, supplier }: { product: Product; supplier: Supp
             <dd>{product.hygiene_status ?? '—'}</dd>
           </div>
         </dl>
+      </AccordionSection>
+
+      <AccordionSection
+        title="Analiza biznesowa (AI)"
+        meta={
+          businessProfile?.analyzed_at
+            ? `${new Date(businessProfile.analyzed_at).toLocaleDateString('pl-PL')} · ${businessProfile.model_used ?? ''}`
+            : 'Brak analizy'
+        }
+        defaultOpen={Boolean(businessProfile)}
+      >
+        <ProductAnalysisSection productId={product.id} profile={businessProfile} />
       </AccordionSection>
 
       <AccordionSection title="Pozycje katalogu" meta="0 pozycji" detailHref={`/products`}>
