@@ -2078,3 +2078,97 @@ HEAD: `2f9d9b7` (S-CORE.1.C UI wiring)
 Branch: main (up to date з origin)
 Working tree: clean
 
+---
+
+## 2026-05-04 — EOD RECONCILIATION
+
+### Shipped (2 feature commits)
+
+- **41c575b** feat(s-core-2-night): Phase 2.8 KRS bulk wire — rejestr.io /org with email + decision_maker extraction (6 files, +1095 lines)
+- **67a85a6** feat(s-core-3a): products business_profile + Analiza produktu CTA + ProductAnalysisSection (5 files, +749 lines)
+
+### Migrations applied today
+
+- 055 unique constraints multi-source (drop NOT NULL ceidg_id + UNIQUE krs_number partial)
+- 056 email + decision_maker_name columns + email partial index
+- 057 products business_profile JSONB + last_analyzed_at + enrichment_log target_type='product' extension
+
+### KRS bulk smoke test (real DB)
+
+- 100 prospects ingested (4639Z × Mazowieckie, pages 0-1)
+- Coverage: 33% з email, 76% з decision_maker_name (KRS Biznes plan)
+- Cost: 0.30 zł rejestr.io probe + smoke
+- Tonight overnight: full 305 firm sweep planned (~0.25 zł, ~10 хв)
+
+### S-CORE.3.A end-to-end verified
+
+- /produkty/[id] master-detail: "Analiza produktu" button у header → Claude Sonnet 4.6 call (~30-60s) → page refresh з populated ProductAnalysisSection
+- Real AI output на product Ogórki kiszone: hot/warm/cold segments з real client names integration (Imperial, KOZAK OLEK, Domek Sushi) + real client count (537 у бази) + real prices (18.46 zł)
+- Cost per analysis: $0.0172
+- Telemetry verified у enrichment_log (target_type='product', source='AI_product_analysis', status='success')
+
+### Lessons (CRITICAL для майбутніх сесій)
+
+1. **Filesystem ≠ memory plan-vision.** Дві memory entries виявились застарілими сьогодні:
+   - Memory #14 казала "6 hidden pages" — реальність 5 з 6 уже у sidebar submenu (Klienci submenu: Wszyscy klienci/Prospekti/Lookup NIP/AI Discovery; Sprzedaż submenu: Pipeline/Dopasowania/Pikniko handoff). Sprint S5 Navigation Fix вже шиплений раніше, без commit msg.
+   - Memory #15 казала "unified engine для 4 entity types" — реальність: S-CORE engine = bulk runner для batch by-PKD/woj. S2B Phase 2 (April-era) = per-entity workflows на /clients/[id]. Дві паралельні architecture patterns by purpose, не unified.
+
+   **Урок:** перш ніж планувати "наступний sprint" — verify filesystem через Chrome MCP, git log, find. Memory часто містить planning intent, не shipped reality.
+
+2. **Cowork як architecture peer reviewer.** Cowork сьогодні прапорив 5 раз архітектурні помилки у моїх промптах:
+   - pkd_codes vs pkd_all (schema column на ceidg_prospects)
+   - Partial unique index vs Supabase JS .upsert() incompatibility
+   - Migration 022 номер collision (already exists 022_extract_krs_from_gus)
+   - KRS shape mismatch (czy_w_likwidacji vs w_likwidacji, kod_pocztowy vs kod, terc_wojewodztwo flat vs teryt nested)
+   - enrichment_log CHECK constraint blocked target_type='product' (extended у migration 057)
+
+   **Урок:** STEP 0 sanity check → REPORT → GO gates критичні. Cowork solo file inspection ловить runtime issues перш ніж commit.
+
+3. **Architecture revision honesty.** Memory #15 update був складний psychologически (admit що план "unified engine" не materialized). Але "two parallel patterns by purpose" — це не failure, це pragmatic reality для existing codebase. April-era S2B Phase 2 робить що потрібно, S-CORE engine знаходить свою роль у bulk operations.
+
+### Surprises
+
+- Allegro Issue #13352 closed з REJECT (decyzją biznesową dostęp do /offers/listing wstrzymany для всіх). Hybrid scraper.ts (Apify) залишається primary path — не блокер.
+- CEIDG paused page 21/335 (550 prospects) через recurrent HTML response error на page 22. Tech-debt: lib/ceidg/client.ts JSON.parse без graceful HTML fallback.
+- /produkty page architecture — master-detail з ?id= query param (НЕ /produkty/[id] route). S-CORE.3.A respected цей pattern.
+
+### Tech-debt logged
+
+- CEIDG JSON.parse graceful HTML fallback (defer post S-CORE.5 cleanup)
+- 25 baseline tsc errors (defer cleanup-sprint)
+- middleware → proxy migration (Next.js 16 deprecation, backlog)
+- Helper extraction lib/ai/product-analysis.ts (S-CORE.3.A inline для MVP, refactor якщо потрібен reuse)
+
+### Tomorrow's seed
+
+**S-CORE.3.B (priority next session, ~1.5-2h):**
+- TOP 25 client matching section на /produkty (читати matches table)
+- product_match_runs table + iterative exclusion logic ("Pokaż наступних 25")
+- Market intelligence: similar products / конкуренти (Allegro scraper + Tavily reuse)
+
+**Plus:**
+- CEIDG resume page 22+ (якщо API recovered)
+- S-CORE.4 market port (3-4h estimate)
+- S-CORE.5 strategy port (4-5h estimate)
+
+### Verification (Protocol 4)
+
+- Vercel deploy для 67a85a6 successfully shipped
+- Live verification на sztab.vercel.app/produkty:
+  - ✅ "Analiza produktu" button у detail panel header
+  - ✅ Click → "Trwa w tle (~30-60s)" purple banner
+  - ✅ После ~45s: button → "Analiza produktu" (active again)
+  - ✅ Section "Analiza biznesowa (AI)" populated з real Polish strategy
+  - ✅ Hot/warm/cold segments з icons + pitch + next steps
+  - ✅ Real client names + count footer
+- Supabase Studio verification:
+  - products.business_profile JSONB populated, last_analyzed_at recent
+  - enrichment_log target_type='product' з cost_usd $0.0172
+
+### Working tree status у кінці дня
+
+HEAD: `67a85a6` (S-CORE.3.A products business_profile)
+Branch: main (up to date з origin)
+Working tree: clean
+DB: 100 KRS prospects + 1 product analyzed
+

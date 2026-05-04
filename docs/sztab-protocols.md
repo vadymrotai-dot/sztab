@@ -1002,4 +1002,58 @@ UI-first, не code-first. Якщо функцію не видно у меню/�
 
 ---
 
-## END OF PROTOCOLS 22-23
+## Protocol 24: Filesystem-First Verification Before Planning (04.05)
+
+**Тригер:** перш ніж планувати "наступний sprint" або "next step"
+
+**Дія:**
+1. Verify filesystem стан через `git log --oneline -15` + `find -newer`
+2. Якщо потрібен UI-related — Chrome MCP read_page sidebar/route
+3. Compare actual з memory entry старшим за 24h
+4. Якщо discrepancy → update memory ПЕРШ ніж планувати
+
+**Чому:** memory entries часто містять planning intent від попередніх сесій, а не shipped реальність. Сьогодні (04.05) виявлено 2 застарілих memory entries — Sprint S5 Navigation done без commit msg, S-CORE.2 ніколи не існувало (S2B Phase 2 робить ту роботу).
+
+**Прикл уроку 04.05:** я майже планував Sprint S5 Navigation Fix; Vadym попросив verify сам; через Chrome MCP побачив що 5 з 6 hidden pages вже у submenu sidebar. Sprint вже зроблений.
+
+---
+
+## Protocol 25: Cowork as Architecture Peer Reviewer (04.05)
+
+**Тригер:** написання spec промпту для Cowork → виконання
+
+**Дія:**
+1. Завжди включати STEP 0 sanity check (read-only audit) у промпт
+2. Cowork REPORT з findings + decision points → STOP
+3. Чекати моє "GO" перш ніж STEP 1+
+4. НЕ skip-ати STEP 0 навіть для "простих" sprints
+
+**Чому:** Cowork постійно ловить runtime issues які я пропускаю у плані. 04.05 sprint count: 5 catches за один день.
+
+**Прикл уроку 04.05:**
+- pkd_codes vs pkd_all (schema column на ceidg_prospects) — INSERT би впав з 'column does not exist'
+- Partial unique index vs Supabase JS .upsert() incompatibility — runtime "no constraint matching ON CONFLICT" error
+- Migration 022 collision з existing 022_extract_krs_from_gus
+- KRS API shape mismatch (czy_/w_ field naming, nested teryt)
+- enrichment_log CHECK constraint blocked target_type='product'
+
+---
+
+## Protocol 26: Memory ≠ Filesystem Reality Disclaimer (04.05)
+
+**Тригер:** довіра memory entry старшим за 24h без verify
+
+**Дія:**
+1. Treat memory entries старші за 24h як plan-vision, не reality
+2. Якщо entry мовить про "shipped" — verify filesystem перш ніж плануvati "наступний крок"
+3. Якщо entry мовить про architecture decisions ("locked Vadym") — verify що рішення materialized у код
+
+**Чому:** memory entries records intent. Те що було locked у minulu сесію не обов'язково shipped. Filesystem — source of truth.
+
+**Прикл уроку 04.05:**
+- Memory #15: "Sztab 03.05 UNIFIED INTELLIGENCE ENGINE locked Vadym" → реальність: S-CORE.1 shipped engine скаффолдинг + 3 modes для bulk, але per-entity workflow живуть на S2B Phase 2 architecture (April-era). Не unified — two patterns by purpose.
+- Updated memory #15: "Sztab architecture (REVISED 04.05): TWO parallel patterns by purpose..."
+
+---
+
+## END OF PROTOCOLS 22-26

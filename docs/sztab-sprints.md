@@ -538,3 +538,99 @@ Sprint S6 (Two Fundamental Analysis Buttons) — наступним днем с�
 9. KPI i monitorowanie
 10. Założenia i ograniczenia
 
+---
+
+## SPRINT STATUS UPDATE — 04.05.2026
+
+Reconciliation існуючих "(planned)" labels проти реального ship status. Existing sections вище preserved як historical record (planning intent на 03.05 evening).
+
+### Phase 2.8 KRS bulk wire — SHIPPED 04.05.2026
+
+**Commit:** `41c575b` feat(s-core-2-night): Phase 2.8 KRS bulk wire — rejestr.io /org with email + decision_maker extraction (6 files, +1095 lines)
+
+**Files:**
+- `lib/rejestrio/search.ts` — typed shape per real test 2026-05-04 (KrsSearchAdres з nested teryt/kod, KrsSearchStan з w_*без czy_, KrsSearchKontakt + KrsSearchGlownaOsoba)
+- `scripts/sync-krs-bootstrap.ts` — pattern-match sync-ceidg-bootstrap.ts, INSERT/UPDATE pre-check pattern (Supabase JS .upsert не сумісний з partial unique)
+- `scripts/test-rejestrio-search.ts` — diagnostic single live call
+- `scripts/055_unique_constraints_multi_source.sql` — drop NOT NULL ceidg_id + UNIQUE krs_number partial
+- `scripts/056_email_decision_maker_columns.sql` — email column existed (014), decision_maker_name new
+- `scripts/probe-rejestrio-search.ts` DELETED (probe циклу закінчений)
+
+**Smoke test (real DB):**
+- 100 prospects ingested (4639Z × Mazowieckie, pages 0-1)
+- 33% з email, 76% з decision_maker_name (KRS Biznes plan rocks)
+- Cost: 0.30 zł
+- Tonight planned: full 305-firm sweep (~0.25 zł)
+
+### S-CORE.0 (UI макети) — REPLACED 04.05.2026
+
+**Original plan:** UI макети 9 сторінок + UI аудит через incognito Cowork (Protocol 23 enforce).
+
+**Reality:** filesystem audit (через Chrome MCP) виявив що більшість existing UI вже coverage Sprint S2B Phase 2 (April-era). UI макети як deliverable provided low practical value поверх existing codebase.
+
+**Per Protocol 24 (новий 04.05):** filesystem-first verification замінив UI макети як discovery primary path. Макети `sztab-makiety-v2.html` (97К chars) залишаються як reference, але S-CORE.0 deliverable вважається REPLACED.
+
+### S-CORE.1 (intelligence engine) — SHIPPED 03.05.2026
+
+Per попередніх sprint sections вище. 3 sub-sprints:
+- S-CORE.1.A scaffolding (commit 1537bba)
+- S-CORE.1.B 3 modes + AI templates (commit 34242d9)
+- S-CORE.1.C UI wiring (commit 2f9d9b7)
+
+**Realised role (REVISED 04.05):** S-CORE engine = bulk runner для batch operations by-PKD/woj. Per-entity workflows (Analiza klienta, Analiza produktu) живуть на dedicated endpoints (S2B Phase 2 pattern для clients, S-CORE.3.A pattern для products), НЕ через unified Orchestrator.
+
+### S-CORE.2 (Wire Client Profile) — RECONCILED 04.05.2026
+
+**Original plan:** "Wire client profile" — 2 endpoints `/api/intelligence/quick` + `/api/intelligence/full`, wire 2 кнопки на /clients/[id], бізнес-профіль AI блок.
+
+**Reality:** S2B Phase 2 (April-era, ~Sprint Sprint M) ВЖЕ реалізував per-client analysis workflow на /clients/[id]:
+- ClientDetailActions кнопки
+- BusinessProfileSection (clients.business_profile JSONB)
+- /api/clients/[id]/full-analysis (wrapper до /api/intelligence/lookup)
+- /api/ai/analyze-profile (AI-only re-run)
+- MatchesPanel + recompute-client endpoint
+
+S-CORE.2 plan-vision не materialized як unified engine call — S2B Phase 2 робить ту саму user-facing функціональність dedicated endpoints. Architecture decision (per Protocol 26): keep two parallel patterns by purpose.
+
+### S-CORE.3.A (products business_profile MVP) — SHIPPED 04.05.2026
+
+**Commit:** `67a85a6` feat(s-core-3a): products business_profile + Analiza produktu CTA + ProductAnalysisSection (5 files, +749 lines)
+
+**Files:**
+- `scripts/057_products_business_profile.sql` — business_profile JSONB + last_analyzed_at + enrichment_log CHECK extension to allow target_type='product'
+- `app/api/products/[id]/full-analysis/route.ts` — direct Claude Sonnet 4.6 call (mirror /api/ai/analyze-profile pattern)
+- `components/produkty/product-analysis-section.tsx` — Card з hot/warm/cold segments display
+- `components/produkty/produkty-shell.tsx` — Analiza produktu button у detail header + AccordionSection wrap
+- `lib/profile/enrichment-log.ts` — LogStartOptions union extended з 'product'
+
+**Verified end-to-end:**
+- /produkty: click product → "Analiza produktu" button → ~30-60s "Trwa w tle" banner → page refresh з populated section
+- Real AI output на Ogórki kiszone з real client integration (Imperial, KOZAK OLEK, Domek Sushi)
+- Cost: $0.0172 per analysis
+- Telemetry у enrichment_log target_type='product'
+
+### S-CORE.3.B (next session) — PLANNED
+
+**Estimate:** ~1.5-2h Cowork solo work
+
+**Scope:**
+- TOP 25 client matching section на /produkty detail panel (читати existing matches table WHERE product_id=X ORDER BY combined_score DESC LIMIT 25)
+- product_match_runs table — versioning + iterative exclusion logic ("Pokaż наступних 25 без overlap")
+- Market intelligence: similar products / конкуренти у segmencie (Allegro scraper.ts reuse + Tavily fallback)
+- Helper extraction lib/ai/product-analysis.ts якщо потрібен reuse
+
+### S-CORE.4 (Wire Market Profile) — PLANNED
+
+**Estimate:** 3-4h. Scope per S-CORE.3 sprint section вище — /rynek/[product_id], TAM/SAM/SOM, ZSRIR external context.
+
+### S-CORE.5 (Wire Strategy Profile) — PLANNED
+
+**Estimate:** 6-8h. Scope per existing section вище — /strategia drzewo + 10-секційний long-form raport.
+
+### Backlog tech-debt
+
+- CEIDG resume page 22+ (HTML response error на page 22, JSON.parse без graceful fallback)
+- 25 baseline tsc errors (cleanup-sprint post S-CORE.5)
+- middleware → proxy migration (Next.js 16 deprecation)
+- Helper extraction для shared AI patterns (product-analysis, business-analysis convergence)
+
