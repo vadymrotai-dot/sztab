@@ -31,3 +31,10 @@ scripts/cowork/backfill-cn-codes-*.log
 # Sprint S-INTEL.1.2.1 market-intelligence artifacts (regenerable)
 scripts/cowork/market-intelligence-*.log
 scripts/cowork/zsrir-*.xlsx
+
+# KRS bootstrap state
+.krs-progress.json
+.krs-progress.json.tmp
+
+# tsc diagnostic logs
+tsc-*.txt
