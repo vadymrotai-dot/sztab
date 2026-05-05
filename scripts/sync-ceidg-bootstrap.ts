@@ -33,7 +33,7 @@ import path from 'node:path'
 
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
-import { CeidgClient } from '@/lib/ceidg/client'
+import { CeidgClient, HtmlResponseError } from '@/lib/ceidg/client'
 import type {
   CeidgFilters,
   CeidgFirmaDetails,
@@ -377,6 +377,10 @@ async function main() {
   try {
     for (let page = startPage; page < endPageExclusive; page += 1) {
       const pageStart = Date.now()
+      // Per-page try/catch (Vadym 2026-05-04 HTML fallback fix).
+      // HtmlResponseError → page skip + advance state + continue.
+      // Інша помилка → re-throw до outer catch (existing fail logic).
+      try {
 
       // Reuse head dla page=0 — zaoszczędza 1 call (50s+).
       let list: CeidgListResponse
@@ -491,6 +495,20 @@ async function main() {
       console.log(
         `  page ${page}/${totalPages - 1}: ${summary}, ${firms.length} firms, ${fmtDuration(pageDuration)}${remaining > 0 ? ` (ETA ${fmtDuration(etaMs)})` : ''}`,
       )
+      } catch (pageErr) {
+        if (pageErr instanceof HtmlResponseError) {
+          console.warn(
+            `⚠ Page ${page} skipped — HTML response після 3 retries: ${pageErr.message}`,
+          )
+          state.last_processed_page = page
+          state.processed_pages += 1
+          state.skipped_count += 1
+          if (!flags.dryRun) await saveState(state)
+          continue
+        }
+        // Інша помилка — re-throw до outer catch (existing exit logic).
+        throw pageErr
+      }
     }
 
     // ── Mark completed jeśli reached end ──

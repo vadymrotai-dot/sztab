@@ -28,6 +28,33 @@ const DEFAULT_WINDOW_MS = 180_000
 
 const RETRY_DELAYS_MS = [1_000, 2_000, 4_000]
 
+// 5s delay для HTML response retry (per Vadym 2026-05-04 fix).
+// CEIDG cold-cache повертає HTML сторінку замість JSON з status 200,
+// що падає на JSON.parse. 5s buffer дає server warm-up time.
+const HTML_RETRY_DELAY_MS = 5_000
+
+// ────────────────────────────────────────────────────────────
+// Errors
+// ────────────────────────────────────────────────────────────
+
+/**
+ * CEIDG повернув HTML сторінку замість JSON (typowo cold-cache symptom
+ * на heavy filter combos). Status = 200, але body = '<!DOCTYPE html>...'.
+ * Per Vadym 2026-05-04 fix — retryable з 5s delay; якщо вичерпали retries,
+ * caller (sync script) робить page skip.
+ */
+export class HtmlResponseError extends Error {
+  constructor(
+    public readonly endpoint: string,
+    public readonly bodyPreview: string,
+  ) {
+    super(
+      `CEIDG returned HTML instead of JSON at ${endpoint} (preview: ${bodyPreview.slice(0, 80)}...)`,
+    )
+    this.name = 'HtmlResponseError'
+  }
+}
+
 // ────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────
@@ -283,7 +310,47 @@ export class CeidgClient {
           )
         }
 
-        const data = (await response.json()) as T
+        // Read body as text (per Vadym 2026-05-04 HTML fallback fix).
+        // CEIDG cold-cache symptom: status 200 + Content-Type=text/html
+        // body. response.json() would crash з SyntaxError, не retried.
+        const responseText = await response.text()
+        const sniff = responseText.trimStart().slice(0, 200).toLowerCase()
+        const isHtmlResponse =
+          sniff.startsWith('<!doctype') || sniff.startsWith('<html')
+
+        if (isHtmlResponse) {
+          // Retry з shared attempt counter — Q2=(a) max 3 retries будь-якого
+          // типу (включно з 429/5xx/timeout). 5s delay per HTML_RETRY_DELAY_MS.
+          lastError = new HtmlResponseError(
+            sanitizedUrl,
+            responseText.slice(0, 200),
+          )
+          console.warn(
+            `[CEIDG] GET HTML response (${response.status}) ${sanitizedUrl} (${durationMs}ms) — retryable, attempt ${attempt + 1}`,
+          )
+          if (attempt < RETRY_DELAYS_MS.length) {
+            await sleep(HTML_RETRY_DELAY_MS)
+            continue
+          }
+          throw lastError
+        }
+
+        let data: T
+        try {
+          data = JSON.parse(responseText) as T
+        } catch (parseErr) {
+          // Non-HTML invalid JSON — fail fast з body preview (per Q3=(a)).
+          // Не retryable бо unlikely to recover.
+          const msg =
+            parseErr instanceof Error ? parseErr.message : String(parseErr)
+          console.error(
+            `[CEIDG] GET ${response.status} ${sanitizedUrl} (${durationMs}ms) — invalid JSON`,
+            responseText.slice(0, 300),
+          )
+          throw new Error(
+            `CEIDG response invalid JSON: ${msg}; first 200 chars: ${responseText.slice(0, 200)}`,
+          )
+        }
         console.log(
           `[CEIDG] GET ${response.status} ${sanitizedUrl} (${durationMs}ms)`,
         )
