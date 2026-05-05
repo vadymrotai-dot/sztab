@@ -1057,3 +1057,214 @@ UI-first, не code-first. Якщо функцію не видно у меню/�
 ---
 
 ## END OF PROTOCOLS 22-26
+
+
+
+---
+
+## PROTOCOL 27 — Ziomek Fish reality is north star
+
+**Date:** 05.05.2026
+
+### Принцип
+
+Sztab служить операціям Ziomek Fish, не навпаки. Ziomek Fish — це бізнес з реальними борговими зобов'язаннями (100K нагальних, 250K майбутніх) і ціллю 150-200K маржі/міс через 6 місяців. Все інше — Sztab розробка, маркетинг, marathon-функції — підпорядковується цій реальності.
+
+### Розподіл часу Vadym (на період operations director у Pikniko, 06.05 — 06.08.2026)
+
+- **50%** Pikniko operations director (фізична присутність + координація + sales)
+- **30%** Sztab розробка для Pikniko (одночасно ROI для Ziomek через Sztab maturity → перший SaaS клієнт)
+- **15%** Ziomek продажі (SpoonJoy launch, Czudowа push, Karol/Cukiernia LOIs)
+- **5%** інше (юр-формальності, ad-hoc)
+
+### Заборонено
+
+- Запускати Sztab marathon-розробку (S-CORE.3.C, S-CORE.4, S-CORE.5) поки не закриті базові потреби Pikniko operations
+- Будувати Sztab features які не мають measurable ROI у Pikniko operations за 1-2 тижні
+- Ставити Sztab development вище за Ziomek продажі — Ziomek це source of revenue, Sztab це tool
+
+### Дозволено
+
+- Sztab розробка яка прямо вирішує спостережений pain point у Pikniko (per Protocol 28)
+- Refactor/cleanup Sztab якщо це потребує <30 хв і не блокує Pikniko deliverables
+- Документація + протоколи (як цей)
+
+### Failure mode без цього протоколу
+
+- Vadym будує Sztab features "бо цікаво" поки Pikniko чекає рішення
+- Час на marathon (S-CORE.3.C) замість на 6 проблем Pikniko
+- Месяць проходить без revenue → борги наростають → паніка
+
+---
+
+## PROTOCOL 28 — Observation-First перш ніж будувати
+
+**Date:** 05.05.2026
+
+### Принцип
+
+У Pikniko перші 3-5 днів = тільки спостереження + інтерв'ю. НЕ кодити. Без real data ми вгадуємо і будуємо не те що треба.
+
+### Що робити перші 3-5 днів у Pikniko
+
+1. Сидіти в офісі весь день, бачити як приймають замовлення live
+2. Записувати у нотатник: кожен раз коли когось щось затримує, кожна помилка, кожна frustracja
+3. Збирати real приклади: 10-15 фото папірців, screenshots WhatsApp, email texts
+4. 1-on-1 з 4-5 працівниками (по 30 хв each), 3 стандартні питання:
+   - Що тебе найбільше дратує у твоїй роботі?
+   - Які речі ти робиш 5+ разів на день що могли б бути швидші?
+   - Якби я тобі дав 1 інструмент — що б це було?
+5. Збирати metrics:
+   - Кількість замовлень/день
+   - % розподіл каналів (phone/WhatsApp/email/фото)
+   - Час обробки одного замовлення (від contact до "введено у систему")
+   - % помилок (виправлення продукту/кількості/ціни)
+   - % faktуру з помилками
+   - % клієнтів що отримали oferту (vs lost leads)
+
+### Перш ніж починати кодити будь-який Sztab модуль для Pikniko
+
+- Specific observed pain point з конкретними metrics (не "це проблемно", а "30% замовлень обробляється >20 хв")
+- Real приклади (фото/screenshots) як training data
+- Worker validation: "якщо я зроблю інструмент який X — це буде корисно?"
+
+### Заборонено
+
+- Кодити Sztab feature на основі assumptions без real data
+- Починати Modul A (Order Intake) у понеділок ранок 06.05.2026 — спочатку observation
+- Узагальнення "ми робитимемо AI parser" без specific examples як саме виглядають проблемні замовлення
+
+### Дозволено після 3-5 днів observation
+
+- Technical specs Modul A на основі real data
+- Pилотний test з 1-2 office workers перш ніж rollout до всіх 14
+- Iterative improvements на основі weekly feedback
+
+### Failure mode без цього протоколу
+
+- Vadym будує "AI parser для замовлень" а потім виявляється що 80% замовлень — phone calls які не парсяться текстом
+- Прайс-лист Matrix UI зроблений але працівникам зручніше Excel
+- Тиждень роботи на feature яку працівники не приймають
+
+---
+
+## PROTOCOL 29 — Pikniko Conflict of Interest Transparency
+
+**Date:** 05.05.2026
+
+### Принцип
+
+Vadym одночасно: (а) operations director Pikniko (керує операціями), (б) постачальник Czudowа Marka і SpoonJoy до Pikniko. Це фундаментальний conflict of interest. Захист — ПРОАКТИВНА ПРОЗОРІСТЬ, не reactive defense.
+
+### Що це означає practically
+
+1. **Ціни Vadym товарів = market-rate, не privileged**
+   - Czudowа Marka до Pikniko за ціною яка співрозмірна з ринковою для аналогічних kiszonek
+   - SpoonJoy за тим самим floor 0.80 zł що інші дистриб'ютори отримали б
+   - Не використовувати operations director позицію щоб отримати кращі payment terms ніж іншим постачальникам
+
+2. **Quarterly disclosure до Pikniko owner**
+   - Раз у квартал відкрита таблиця: "ось ціни Vadym товарів, ось ціни інших постачальників на подібні товари"
+   - Якщо є відхилення (Vadym дешевше або дорожче) — explanation чому
+   - Owner Pikniko має право змінити ціни/умови якщо суспіція unfair
+
+3. **Sztab AI = neutral pricing logic**
+   - AI рекомендує best fit за критеріями: марża dla Pikniko, fit do клієнта, dostępność
+   - НЕ privileged для Vadym brands у matching algorithm
+   - Code review для AI prompts — щоб не було скрытих biases
+
+4. **Pikniko owner final say**
+   - На pricing і terms — Vadym може рекомендувати, але owner вирішує
+   - На strategic decisions Pikniko (нові постачальники, регіони) — Vadym як operations director дає input, не повне рішення
+   - Особливо коли йдеться про конкуруючі продукти Vadym brand
+
+### Розмова з owner Pikniko 06.05.2026 ранок
+
+Перш ніж починати роботу — proactive transparency conversation:
+
+> "Розумію що conflict of interest існує. Пропоную: всі ціни моїх товарів — same як ринкові. Quarterly review разом. AI у Sztab — neutral pricing logic. Якщо колись виявите, що я вас disadvantage — ми разом припиняємо співпрацю."
+
+### Failure mode без цього протоколу
+
+- Owner Pikniko суспектує Vadym privileges свої товари → токсична ситуація
+- Інші постачальники Pikniko скаржаться → reputational damage
+- Юридичний ризик: jak Pikniko sue, можна звинуватити у unfair competition
+
+---
+
+## PROTOCOL 30 — Sztab over Subiekt (NOT replacement)
+
+**Date:** 05.05.2026
+
+### Принцип
+
+Pikniko працює на ERP Subiekt (Insert, GT або Nexo). Sztab НЕ замінює Subiekt — будує AI/intelligence layer над ним.
+
+### Розподіл відповідальності
+
+**Subiekt = system of record (база правди):**
+- Контрагенти (клієнти + постачальники) з NIP/REGON
+- Cenniki + indywidualne ceny per klient
+- Faktуру VAT, WZ, ZW, KP, KW
+- Magazyn stany + lokalizacje
+- Płatności + rozrachunki
+- KSeF integration (Insert розвиває)
+- Raporty financiowe
+
+**Sztab = AI/intelligence layer над Subiekt:**
+- AI парсинг intake (email/WhatsApp/Messenger/фото папірця → structured order)
+- Smart client matching (хто що купував, що рекомендувати)
+- Automated offerта generation (PDF за 30 секунд)
+- Order lifecycle visibility (Kanban для 14 людей)
+- Sales analytics + AI insights
+
+### Технічна архітектура
+
+```
+┌───────────────────────────────────────────────┐
+│         SZTAB (AI/Intelligence Layer)         │
+│  - Order intake parsing                       │
+│  - Smart client/product matching              │
+│  - Offerта generation                         │
+│  - AI sales recommendations                   │
+│  - Lifecycle visibility                       │
+└──────────────────┬────────────────────────────┘
+                   │ Sfere SDK (GT) або REST API (Nexo)
+                   │ read + write
+                   ▼
+┌───────────────────────────────────────────────┐
+│       SUBIEKT GT/NEXO (System of Record)      │
+│  - Контрагенти + cenniki                      │
+│  - Faktуру VAT + KSeF                         │
+│  - Magazyn stany                              │
+│  - Płatności + rozrachunki                    │
+└───────────────────────────────────────────────┘
+```
+
+### Інтеграція — етапи
+
+1. **Read-only (тиждень 1-2):** Sztab читає клієнтів, ціни, продукти з Subiekt — не пише
+2. **Write zamówień (тиждень 3):** Sztab створює замовлення у Subiekt
+3. **Write faktur (тиждень 4):** Sztab tworzy faktуру через Subiekt API + KSeF
+
+### Заборонено
+
+- Дублювати дані Subiekt у Sztab (контрагенти, ціни, faktуру) — це створює confusion і syncing problems
+- Замінювати Subiekt у Pikniko — вони на ньому 5+ років, їхні працівники навчені
+- Будувати Sztab features які duplicate Subiekt functionality замість покращення
+
+### Дозволено
+
+- Sztab cache читання з Subiekt (швидше відповідь користувачу)
+- Sztab збагачує Subiekt дані (наприклад, AI-generated client business profile)
+- Нові entities у Sztab які Subiekt не має (наприклад: lifecycle status, AI matches, intake source)
+
+### Failure mode без цього протоколу
+
+- Sztab дублює клієнтів → працівник створив у Sztab, у Subiekt його немає → faktура не виставляється
+- Sztab має свої ціни, Subiekt інші → у клієнта sale price інший ніж у faktура
+- Pikniko owner думає "Sztab замінює Subiekt" → купує SaaS думаючи що позбувся Subiekt → catastrophe
+
+---
+
+**END OF PROTOCOLS (30 total).**

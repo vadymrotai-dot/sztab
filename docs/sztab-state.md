@@ -2172,3 +2172,162 @@ Branch: main (up to date з origin)
 Working tree: clean
 DB: 100 KRS prospects + 1 product analyzed
 
+
+
+---
+
+## 2026-05-05 — STRATEGIC PIVOT: Operations Director у Pikniko
+
+### Контекст
+
+Vadym сьогодні (05.05.2026) став **Operations Director у Pikniko** на 3 місяці (до 06.08.2026), 50% time commitment. Це фундаментально змінює як Sztab розвивається на наступні 3 місяці.
+
+### Ziomek Fish реальність
+
+- **Виручки:** 0 (поточно). Бізнес живе на залишковому обороті ЧМ + позичках
+- **Витрати:** ~27K/міс зараз → ~19.5K після transition (Pikniko бере склад через ~1 міс)
+  - Інвестори: 9.5K/міс інфляційні
+  - Склад: 7.5K/міс (Pikniko забирає)
+  - Vadym life mini: ~10K/міс
+  - Розмитнення: variable
+- **Борги:** 100K нагальних (1-2 міс, постачальники/приватні/змішано) + 250K майбутніх (8-10 міс)
+- **VAT:** 5% non-recoverable до 31.05.2026 (Ziomek тимчасово викреслено з реєстру), потім restored
+- **Ціль 6 міс:** 150-200K маржі/міс (realistic baseline), 300K stretch
+
+### 5 продуктових потоків Ziomek (в порядку пріоритету)
+
+1. **Czudowа Marka** — бренд + identity. Pikniko стає дистриб'ютором, Vadym залишається імпортером. Маржа 20% старт → 15% при 3-4 фурах/міс. Czudowа дає відсрочку платежу (частина 100K боргу — це до Czudowа)
+2. **SpoonJoy ложки з медом** — 0.05 zł/ложка commission Vadym. Ексклюзив PL + потенційно Європа. Запуск червень 2026 (юр-дослідження статусу упаковки в процесі). 1 фура = 33 палети × 22,500 ложок = 37K commission
+3. **Pikniko товари** — 2-4% provizja. Ти продаєш як sales agent / партнер
+4. **Karol wędliny** — 2.5% маржа (НЕ 25%, виправлення). Договір готується. Opcionalne / fill volume
+5. **Cukiernia Gmurczyk** — 3% маржа. Переговори. Opcionalne / fill volume
+
+**Потенційний 6-й:** свіжі іспанські овочі через Cezary Spiżarnia (3-річні відносини, ostatnio активувався, експорт pomidory heritage RAF / sałata lodowa / cauliflower / judia plana з Hiszpanii)
+
+### Czudowа Marka fura economics (з kursом EUR/PLN safe 4.30)
+
+- **33 палети** ~12-15K EUR CIF з відсрочкою платежу
+- **Cash на кордоні:** ~5K (VAT 5% non-recoverable + cło/sanepid 2K)
+- **Profit per fura:** 14-17K при 20% маржі, 10-12K при 15%
+- **Логістика палет:**
+  - 5л відра 80 шт/палета (огірки/помідори зараз сезонно відсутні)
+  - 3кг (3000g) 125 шт/палета
+  - 0.9л (900g) 432 шт/палета
+  - Buraki gotowane 1500g 288 шт/палета
+  - Sałatка z buraków 3000g теж 125 шт/палета
+- **Малі упаковки** 300/350/400/500g — HoReCa не потрібні
+
+### Pikniko як partner (а не просто distributor)
+
+**Що сталось 05.05.2026:**
+- Pikniko = 14 людей (офіс + водії + склад)
+- Ріст останні місяці але задихаються від хаосу operations
+- Власник запропонував Vadym взяти operations director role на 3 місяці
+- Vadym погоджується — це поєднує: руки для Czudowа/SpoonJoy + доступ до клієнтської бази + Sztab real-world testing + paid role
+
+**ERP у них:** Subiekt (треба уточнити у понеділок чи GT чи Nexo)
+
+**6 проблем operations які Vadym має фіксити:**
+1. Замовлення приходять у різноформатному хаосі (phone/фото папірця/WhatsApp/email)
+2. Прайс-листи розпорошені — працівник не знає поточну ціну для клієнта
+3. Оферти не висилаються вчасно новим клієнтам — lost leads
+4. Розрив комунікації у ланцюгу клієнт→офіс→склад→водій→fakтура
+5. Faktуру висилаються пізно або з помилками (manual data entry)
+6. Немає operational dashboard видимості
+
+**Принцип Vadym:** "вирішення Pikniko = вирішення Vadym, прямопропорційні речі"
+
+### Винагорода Vadym у Pikniko
+
+Для negotiation з owner 06.05.2026 ранок:
+
+- **Базова зарплата operations director:** ~10-12K zł/міс
+- **Bonus 2-3% (FMCG-rate)** від обороту понад baseline
+- **Baseline =** average obrotu Pikniko за лютий-квітень 2026 (треба зафіксувати з Subiekt перш ніж старт, з підписом обох сторін)
+- **Excess від Vadym товарів** виключається з bonus calculation (per Protocol 29 conflict of interest)
+- **Monthly payouts**
+- **Faktуру VAT** від Ziomek Fish до Pikniko
+
+### Sztab нова стратегічна роль
+
+**Pikniko стає першим SaaS-клієнтом Sztab.**
+
+- Перші 3 міс — Sztab безкоштовно у пакеті operations director роботи Vadym
+- Місяць 4+ — paid SaaS subscription **2,500-4,000 zł/міс** (Growth tier для 14-25 employees B2B HoReCa wholesale)
+- Sztab IP залишається ВЛАСНІСТЬ Vadym / Ziomek Fish sp. z o.o.
+- Pikniko = ЛІЦЕНЗОВИЙ КОРИСТУВАЧ + data owner (RODO data processor model)
+
+**Це validates Sztab для зовнішнього SaaS** — польський B2B HoReCa wholesale market ~500-800 hurtowni. Realistic SaaS penetration 5% over 3 years = 25-40 customers × 3K avg = ~90K zł/міс recurring (паралельний бізнес з Ziomek 300K плану).
+
+### Sztab Pikniko — 5 модулів план (2 тижні з 06.05.2026)
+
+**Архітектура:** Sztab НЕ замінює Subiekt, будує AI/intelligence layer над ним (Protocol 30).
+
+| Модуль | Опис | Estimate |
+|---|---|---|
+| **A. ORDER INTAKE** | AI parser email/WhatsApp/Messenger/фото папірця → structured order | 1.5-2 дні Cowork |
+| **B. CLIENT PRICING MATRIX** | Індивідуальні ціни per client одним кліком | 1 день Cowork |
+| **C. OFFERTA GENERATOR** | PDF за 30 секунд з template + dane клієнта | 2 дні Cowork |
+| **D. ORDER LIFECYCLE TRACKER** | Kanban board для 14 людей (6 статусів) | 2-3 дні Cowork |
+| **E. INVOICE MVP** | Generate з order data, KSeF integration пізніше | 2 дні Cowork |
+
+**Subiekt integration:**
+- Через Sfere SDK (GT) або REST API (Nexo)
+- Read-only (тиждень 1-2) → Write zamówień (тиждень 3) → Write faktur (тиждень 4)
+- 3-4 тижні focused роботи на повний connector
+
+**Universal Inbox автоматизація (місяць 2-3):**
+- Email auto-intake через Gmail API/IMAP (1.5 тижня)
+- WhatsApp Business API через Twilio (2-3 тижні + Meta verification)
+- Messenger Platform API (1-1.5 тижня)
+- Telegram Bot API (бонус, 0.5-1 тиждень)
+
+### Plan на завтра (06.05.2026, понеділок) — OBSERVATION DAY
+
+Per Protocol 28 — НЕ кодити. Тільки спостереження.
+
+**Перші 2 години:**
+- Розмова з owner: SLA, винагорода, conflict of interest (Protocol 29), Sztab IP
+- Зафіксувати baseline obrotu (лютий+березень+квітень 2026 з Subiekt) з підписом обох
+
+**Наступні 4 години:**
+- Спостереження intake процесів — як приходять замовлення live
+- Записувати у нотатник: triggers, examples, metrics
+- Збір 10-15 examples real замовлень (фото папірців, screenshots WhatsApp, email texts)
+
+**Останні 2 години:**
+- 1-on-1 з 4-5 office workers (по 30 хв each)
+- Visit warehouse + 1 водій
+- Subiekt setup details (GT чи Nexo? IT-admin?)
+
+**Вечір:**
+- Звіт + real data до Claude
+- Sprint plan Modul A на основі real data (а не assumptions)
+
+### Time allocation Vadym на 3 місяці
+
+Per Protocol 27:
+
+| Активність | % часу |
+|---|---|
+| Pikniko operations director | **50%** |
+| Sztab розробка для Pikniko | **30%** |
+| Ziomek продажі (SpoonJoy launch, Czudowа push, Karol/Cukiernia LOIs) | **15%** |
+| Інше (юр, ad-hoc) | **5%** |
+
+### Що НЕ робимо у наступні 3 місяці
+
+- S-CORE.3.C, S-CORE.4, S-CORE.5 — ON HOLD
+- Marketing/marathon-розробка Sztab окрім Pikniko потреб — ON HOLD
+- Cohort 29 outreach (handoff до Pikniko як originally planned) — REPLACED by direct Pikniko integration
+- KRD/BIG enrichment — ON HOLD (low ROI)
+
+### Нові протоколи 27-30 додані
+
+- **Protocol 27** — Ziomek Fish reality is north star
+- **Protocol 28** — Observation-First перш ніж будувати
+- **Protocol 29** — Pikniko Conflict of Interest Transparency
+- **Protocol 30** — Sztab over Subiekt (NOT replacement)
+
+Деталі у `docs/sztab-protocols.md`.
+
