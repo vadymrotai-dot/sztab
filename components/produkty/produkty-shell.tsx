@@ -30,6 +30,7 @@ import {
   ProductAnalysisSection,
   type ProductBusinessProfile,
 } from '@/components/produkty/product-analysis-section'
+import { ProductMatchesSection } from '@/components/produkty/product-matches-section'
 import { formatCnCode } from '@/lib/format/cn-code'
 import type { Product, Supplier } from '@/lib/types'
 
@@ -406,10 +407,13 @@ function ProductDetail({ product, supplier }: { product: Product; supplier: Supp
         </p>
       </AccordionSection>
 
-      <AccordionSection title="Linked klienci" meta="—" detailHref={`/matches?product_id=${product.id}`}>
-        <p className="text-[12px] text-[#888]">
-          Klienci dopasowani до tego SKU. Otwórz Dopasowania по link wyżej.
-        </p>
+      <AccordionSection
+        title="TOP 25 dopasowanych klientów (algo + AI)"
+        defaultOpen
+        meta="Iteracyjne — Zkontaktowano wyklucza z następnej listy"
+        detailHref={`/matches?product_id=${product.id}`}
+      >
+        <ProductMatchesSection productId={product.id} />
       </AccordionSection>
     </>
   )
