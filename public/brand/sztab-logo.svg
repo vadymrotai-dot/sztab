@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 328" width="1100" height="328">
+  <title>sztab logo</title>
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&amp;display=swap');
+      .wordmark {
+        font-family: 'Archivo Black', system-ui, sans-serif;
+        font-weight: 900;
+        font-size: 280px;
+        fill: #0c2d6b;
+        letter-spacing: -8px;
+      }
+    </style>
+  </defs>
+
+  <!-- Symbol: 3x3 grid -->
+  <g id="symbol">
+    <!-- Row 1 — Primary Blue -->
+    <rect x="0"   y="0"   width="100" height="100" rx="18" fill="#1d4ed8"/>
+    <rect x="114" y="0"   width="100" height="100" rx="18" fill="#1d4ed8"/>
+    <rect x="228" y="0"   width="100" height="100" rx="18" fill="#1d4ed8"/>
+    <!-- Row 2 — Accent Teal -->
+    <rect x="0"   y="114" width="100" height="100" rx="18" fill="#14b8a6"/>
+    <rect x="114" y="114" width="100" height="100" rx="18" fill="#14b8a6"/>
+    <rect x="228" y="114" width="100" height="100" rx="18" fill="#14b8a6"/>
+    <!-- Row 3 — Primary Blue -->
+    <rect x="0"   y="228" width="100" height="100" rx="18" fill="#1d4ed8"/>
+    <rect x="114" y="228" width="100" height="100" rx="18" fill="#1d4ed8"/>
+    <rect x="228" y="228" width="100" height="100" rx="18" fill="#1d4ed8"/>
+  </g>
+
+  <!-- Wordmark: sztab -->
+  <text x="400" y="252" class="wordmark">sztab</text>
+</svg>
