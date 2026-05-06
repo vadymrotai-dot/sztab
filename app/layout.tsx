@@ -1,11 +1,17 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Geist, Geist_Mono, Archivo_Black } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
+const archivoBlack = Archivo_Black({
+  weight: '400',
+  subsets: ['latin'],
+  variable: '--font-archivo-black',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Sztab CRM',
@@ -36,7 +42,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="pl" className="bg-background">
+    <html lang="pl" className={`bg-background ${archivoBlack.variable}`}>
       <body className="font-sans antialiased">
         {children}
         <Toaster richColors closeButton />
