@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { sections, totalQuestions, type Question } from './questions'
 import { Check } from 'lucide-react'
 import { toast } from 'sonner'
@@ -13,12 +14,17 @@ interface ResponsesMap {
   [questionId: string]: AnswerValue
 }
 
-export default function DiscoveryPage({
-  searchParams,
-}: {
-  searchParams: { t?: string }
-}) {
-  const token = searchParams.t || ''
+export default function DiscoveryPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-50" />}>
+      <DiscoveryPageInner />
+    </Suspense>
+  )
+}
+
+function DiscoveryPageInner() {
+  const searchParams = useSearchParams()
+  const token = searchParams.get('t') || ''
   const isValidToken = VALID_TOKENS.includes(token)
 
   const [responses, setResponses] = useState<ResponsesMap>({})
