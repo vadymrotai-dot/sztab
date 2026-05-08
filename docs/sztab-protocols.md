@@ -1314,4 +1314,246 @@ Plus: `pnpm` не на sandbox PATH — тільки `npm`. `tsx` working якщ
 
 ---
 
-**END OF PROTOCOLS (31 total).**
+## Протокол 32 — UTF8NoBOM для git commit з файлу (08.05.2026)
+
+PowerShell 5.x `Set-Content -Encoding UTF8` додає невидимий BOM byte 
+(﻿) на початок файлу. Якщо commit message містить cyrillic/польські 
+chars + multi-line + slash/em dash, треба `git commit -F file.tmp` (бо 
+PowerShell argument parsing ламає `-m $msg`). Але `Set-Content` додасть 
+BOM у файл → BOM з'явиться як невидимий символ на початку subject line у 
+`git log`.
+
+Проблема (зафіксована у репо): commit `4335b5d ﻿feat(phase-2-krok-1b)...` 
+має невидимий BOM перед "feat". Не fixable без history rewrite.
+
+ШАБЛОН для file-based commit:
+```powershell
+$msg = @''
+...your commit message...
+''@
+
+[System.IO.File]::WriteAllText("$PWD\.commit-msg.tmp", $msg, [System.Text.UTF8Encoding]::new($false))
+git commit -F .commit-msg.tmp
+Remove-Item .commit-msg.tmp
+```
+
+Ключове: `[System.Text.UTF8Encoding]::new($false)` — explicit UTF-8 БЕЗ 
+BOM. PowerShell 5.x `Set-Content -Encoding UTF8` НЕ підтримує no-BOM 
+режим (PowerShell 7.x має `-Encoding UTF8NoBOM`, але Vadym 5.x).
+
+Чим це важливо: без шаблону кожен file-based commit отримує невидимий 
+BOM. Не блокер, але засмічує git log і може ламати tooling що strict 
+parses commit subject lines.
+
+---
+
+## Протокол 33 — Radix UI synthetic event sequence для browser MCP (08.05.2026)
+
+Radix UI primitives (Select, Checkbox, DropdownMenu, AlertDialog) НЕ 
+реагують на простий `element.click()` чи синтетичний 
+`dispatchEvent("click")`. Потребують повної послідовності pointer events 
+з правильним станом `buttons`.
+
+Проблема: під час smoke test Krok 1.C1 — клік на cohort Select option 
+не trigger'ив onValueChange. 30+ хвилин debug — виявилось testing 
+artifact, не bug у коді Cowork.
+
+ШАБЛОН для click на Radix Select.Item / Checkbox / DropdownMenu Item:
+```javascript
+const r = element.getBoundingClientRect();
+const opts = {
+  bubbles: true, cancelable: true, view: window,
+  clientX: r.x + r.width/2, clientY: r.y + r.height/2,
+  button: 0, buttons: 1,
+  pointerType: "mouse", isPrimary: true, pointerId: 1
+};
+// Критична послідовність:
+element.dispatchEvent(new PointerEvent("pointermove", {...opts, buttons: 0}));
+element.dispatchEvent(new PointerEvent("pointerdown", opts));
+element.dispatchEvent(new MouseEvent("mousedown", opts));
+element.dispatchEvent(new PointerEvent("pointerup", {...opts, buttons: 0}));
+element.dispatchEvent(new MouseEvent("mouseup", {...opts, buttons: 0}));
+element.dispatchEvent(new MouseEvent("click", {...opts, buttons: 0}));
+```
+
+Ключове:
+- `pointermove` ПЕРШИМ (buttons: 0) — Radix Select.Item registers 
+  pointer position перш ніж accept selection
+- `buttons: 0` на release events (pointerup/mouseup/click) — proper 
+  "button released" state
+
+Для відкриття trigger (Select / DropdownMenu / Dialog trigger): 
+послідовність БЕЗ pointermove достатня (pointerdown + mousedown + 
+pointerup + mouseup).
+
+Для React controlled input треба native value setter trick:
+```javascript
+const setReactValue = (el, value) => {
+  const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value").set;
+  setter.call(el, value);
+  el.dispatchEvent(new Event("input", {bubbles: true}));
+};
+```
+
+Чим це важливо: без правильної послідовності тестування Radix UI забирає 
+десятки хвилин на false positives. Browser MCP smoke tests без цього 
+шаблону = непродуктивні.
+
+---
+
+## Протокол 34 — Inline edit БЕЗ save-on-blur (08.05.2026)
+
+`onBlur={onSave}` у inline edit компонентах — antipattern через race 
+conditions:
+1. Browser може НЕ fire blur синхронно коли `inputElement.blur()` 
+   викликаний з keydown handler
+2. `editValue` closure capture у onBlur може бути stale (нове значення 
+   typed → blur fires до setState propagate)
+3. Click на Save button trigger'ить blur FIRST → save handler runs 
+   з попереднім editValue (часто пустим)
+
+Проблема (BUG #1 Krok 1.D1): notatka `callback пт 14:00` не зберігалась 
+через `onBlur` trigger. Network log = 0 POSTів за 5 спроб. 1 година 
+debug. Fix: replace blur-as-trigger з explicit Save button.
+
+ШАБЛОН для inline edit (notes, name edit, etc.):
+```jsx
+<input
+  value={editValue}
+  onChange={(e) => setEditValue(e.target.value)}
+  autoFocus
+  maxLength={MAX_LEN}
+  onKeyDown={(e) => {
+    if (e.key === "Enter") { e.preventDefault(); onSave(); }
+    if (e.key === "Escape") { onCancel(); }
+  }}
+  // НЕ onBlur — explicit Save only
+/>
+<button
+  onMouseDown={(e) => e.preventDefault()}  // КРИТИЧНО — keeps Input focused
+  onClick={onSave}
+  aria-label="Zapisz"
+  title="Zapisz (Enter)"
+><CheckIcon /></button>
+<button
+  onMouseDown={(e) => e.preventDefault()}
+  onClick={onCancel}
+  aria-label="Anuluj"
+  title="Anuluj (Esc)"
+><XIcon /></button>
+```
+
+Ключове:
+- `onMouseDown preventDefault` на кнопках — стопить blur input, тримає 
+  focus → click handler читає LATEST editValue з React state
+- Save через explicit click → state read синхронний з current paint
+- НЕ onBlur — блокує race condition повністю
+- Enter/Escape для keyboard користувачів
+
+Чим це важливо: save-on-blur здається UX-friendly, але призводить до 
+lost data + non-deterministic bugs які важко reproducе. Explicit Save 
+button — predictable + accessible (Tab → Enter саме працює).
+
+---
+
+## Протокол 35 — Cowork STEP 0 sanity check обовязковий (08.05.2026)
+
+Перед GO STEP 1+ Cowork завжди робить STEP 0: sanity audit реального 
+стану коду + DB. Catches schema discrepancies, redundancy, hallucinated 
+assumptions у Claude promптах.
+
+Проблема (зафіксована у Krok 1.C2): Claude писав prompтом "klienci 
+сторінка живе у /operacje/klienci/" → Cowork розпочав модифікувати → 
+виявилось `app/(dashboard)/clients/`, sidebar 404, atomic move з Phase 1 
+Krok 5 не зроблений. Без STEP 0 — час витрачений на rollback.
+
+Cowork STEP 0 ШАБЛОН для kroki з touched filesystem:
+1. `cat` / `ls` всі файли які prompt згадує — verify exist у припущених 
+   locations
+2. Schema audit для DB tables (existing columns, types, constraints, 
+   triggers, RLS policies)
+3. Existing primitive check (shadcn components у components/ui/, API 
+   routes у app/api/, server actions у lib/actions/)
+4. Existing logic conflict check (duplicate features, legacy systems, 
+   parallel implementations)
+5. STOP — рапортувати знаходження + ASK BEFORE PROCEEDING якщо conflict
+
+Cowork обовязково ASK BEFORE PROCEEDING коли:
+- Schema column не існує (потрібна нова міграція)
+- Primitive не встановлений (потрібен shadcn add — Vadym робить sam 
+  per Protocol 31)
+- Existing pattern conflicts з proposed
+- Path / file у іншому location ніж припускає prompt
+- Existing parallel system торкається тих самих tables (наприклад 
+  Krok 1.C2 виявив pikniko_handoff_cohorts колізію)
+
+Claude обовязково реагує на ASK — повертає decision або override з 
+обгрунтуванням, перш ніж GO STEP 1+.
+
+Чим це важливо:
+- Claude prompts based on memory + general assumptions = часто 
+  mismatched з реальним state коду
+- Cowork bash sees truncated files (Protocol 16) → не може "просто 
+  прочитати" повний файл перед роботою
+- STEP 0 catches ~90% of "wont compile" / "wont deploy" issues перш 
+  ніж writing code
+- Час на STEP 0 (~5 хв) vs час на rollback з broken main (~30+ хв)
+
+Failure mode без протоколу: Claude перепрошує "просто GO STEP 1 без 
+STEP 0 — це проста функція". Cowork shipе з false assumptions → broken 
+state → debug + revert → demoralizing.
+
+Завжди STEP 0 спочатку. NO exceptions для filesystem-touching kroki.
+
+---
+
+## Протокол 36 — Sub-sprint splits для kroki понад 2 години (08.05.2026)
+
+Kroki з ETA >2.5 год потрібно розбивати на sub-кроки (1.C → 1.C1+1.C2, 
+1.D → 1.D1+1.D2). Перевага: ship-able incrementally + кожен sub-крок 
+testable окремо + bug у одному sub-кроці не блокує інший.
+
+Проблема: Krok 1.C первинно описаний як "cohort UI prospects + clients 
++ enrichment + status mutation" — 5+ годин monolithic. Risk: bug у 
+одній частині блокує всі changes до commit, складно bisect.
+
+ШАБЛОН для splits:
+- Original Krok ETA ≥3 год → split на 1.X1 + 1.X2 (2 sub-кроки)
+- ≥5 год → split на 1.X1 + 1.X2 + 1.X3
+- Кожен sub-крок:
+  - ETA 1-2 год Cowork
+  - Has own STEP 0 (Protocol 35)
+  - Has own commit (git log granular, easier bisect)
+  - Has own browser smoke (8-12 scenarios)
+  - Has own backlog notes — що moved до next sub-кроку
+
+Розбивка по критеріях:
+- Тип файлу (prospects-side vs clients-side для polymorphic features)
+- Функціональний шар (status mutation окремий від bulk enrichment)
+- Risk level (high-risk parts окремо щоб easy revert)
+- Critical path (Monday-blocker parts first, nice-to-have later)
+
+Приклади з 08.05.2026 сесії:
+- Krok 1.C → 1.C1 (prospects, 1.5 год) + 1.C2 (clients polymorphic, 
+  1.5 год). Бенефіт: 1.C1 shipнувся раніше — Vadym міг тестувати 
+  prospects flow паралельно з 1.C2 розробкою
+- Krok 1.D → 1.D1 (status + notatka + filter chips, Monday-critical, 
+  2 год) + 1.D2 (bulk enrichment Apify, post-Monday, 2 год). Бенефіт: 
+  понеділковий obzwon workflow ready після 1.D1 — без waiting на 
+  enrichment
+
+Чим це важливо:
+- Smaller commits = easier review + bisect (git log granular history)
+- Faster feedback loop (smoke test 8 scenarios vs 16+)
+- Failure isolation (bug у 1.C2 не блокує 1.C1 на main)
+- Vadym може використовувати shipнутий sub-крок паралельно з next 
+  sub-крок розробкою
+- Mental load lower — легше holding 1 sub-крок у голові ніж monolith
+
+Failure mode без splits: 4-годинний krok → Cowork shipне → tsc 
+regression виявляється на 50%-завершеному коді → не зрозуміло що саме 
+сломано → rollback all → втрачений progress + frustration.
+
+---
+
+**END OF PROTOCOLS (36 total).**
