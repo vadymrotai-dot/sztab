@@ -1,39 +1,36 @@
 // app/intelligence/cohorts/[id]/page.tsx
 // Phase 2 Krok 1.C1 (08.05.2026) — Cohort detail view.
-// Per Vadym Q3: prospects side тільки. Krok 1.C2 додасть UNION ALL для clients.
-// Per Vadym Q4: status badges = read-only display (mutation у Krok 1.D).
+// Phase 2 Krok 1.C2 (08.05.2026 evening) — додано Klienci section.
+// Phase 2 Krok 1.D1 (08.05.2026 night) — status mutation (inline + bulk),
+// notes inline edit, filter chips ?status= URL param. Restructured:
+// server fetches + counts + chips, client component handles selection +
+// mutations.
 //
 // Polymorphic FK pattern — cohort_members.subject_id NOT а PostgREST FK
-// до scored_prospects (різні subject_types можливі). Тому 2-query merge
-// pattern: members first, then scored_prospects WHERE id IN (...).
+// до scored_prospects/clients (різні subject_types можливі). Тому 2-query
+// merge pattern per section.
+//
+// Composite PK (cohort_id, subject_type, subject_id) — server actions
+// accept tuple keys (per Krok 1.D1 Q2=B2).
 
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/page-header'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+  CohortMembersClient,
+  type ProspectMemberRow,
+  type ClientMemberRow,
+} from './_components/cohort-members-client'
+import type { CohortMemberStatus } from '@/lib/actions/cohorts'
 
 export const dynamic = 'force-dynamic'
 
 // ─── Types ────────────────────────────────────────────────────────
-
-type CohortStatus =
-  | 'pending'
-  | 'called'
-  | 'interested'
-  | 'not_interested'
-  | 'callback'
 
 interface CohortRow {
   id: string
@@ -43,12 +40,12 @@ interface CohortRow {
   created_by_user_id: string | null
 }
 
-interface MemberRow {
+interface MemberRowRaw {
   cohort_id: string
   subject_type: string
   subject_id: string
   added_at: string
-  status: CohortStatus
+  status: CohortMemberStatus
   notes: string | null
 }
 
@@ -64,9 +61,6 @@ interface ProspectSnapshot {
   has_contact: boolean | null
 }
 
-/** Phase 2 Krok 1.C2 — clients table snapshot. Schema gap (per Vadym Q3):
- *  no total_revenue / last_invoice_date columns (Subiekt не integrated).
- *  Picked basic substitute cols. */
 interface ClientSnapshot {
   id: string
   title: string
@@ -75,6 +69,41 @@ interface ClientSnapshot {
   industry: string | null
   segment: string | null
   status: string | null
+}
+
+// ─── Filter chips config ─────────────────────────────────────────
+
+const ALL_STATUSES: CohortMemberStatus[] = [
+  'pending',
+  'called',
+  'interested',
+  'not_interested',
+  'callback',
+]
+
+const STATUS_LABELS: Record<CohortMemberStatus | 'all', string> = {
+  all: 'Wszystkie',
+  pending: 'Pending',
+  called: 'Zadzwoniono',
+  interested: 'Zainteresowani',
+  not_interested: 'Nie zaint.',
+  callback: 'Callback',
+}
+
+function parseStatusParam(raw: string | undefined): CohortMemberStatus | null {
+  if (!raw || raw === 'all') return null
+  if ((ALL_STATUSES as string[]).includes(raw)) {
+    return raw as CohortMemberStatus
+  }
+  return null
+}
+
+function chipHref(
+  cohortId: string,
+  status: CohortMemberStatus | null,
+): string {
+  if (status === null) return `/intelligence/cohorts/${cohortId}`
+  return `/intelligence/cohorts/${cohortId}?status=${status}`
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────
@@ -92,69 +121,19 @@ function formatDate(iso: string): string {
   }
 }
 
-function formatDateTime(iso: string): string {
-  try {
-    const d = new Date(iso)
-    return d.toLocaleString('pl-PL', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  } catch {
-    return iso
-  }
-}
-
-function statusLabel(s: CohortStatus): string {
-  if (s === 'pending') return 'Pending'
-  if (s === 'called') return 'Zadzwoniono'
-  if (s === 'interested') return 'Zainteresowany'
-  if (s === 'not_interested') return 'Nie zainteresowany'
-  if (s === 'callback') return 'Callback'
-  return s
-}
-
-/** Display-only color map (Krok 1.D додасть mutation UI). Per Vadym
- *  decision message: pending=neutral, called=blue, interested=green,
- *  not_interested=red, callback=amber. */
-function statusBadgeClass(s: CohortStatus): string {
-  if (s === 'pending') return 'bg-gray-100 text-gray-700 hover:bg-gray-100'
-  if (s === 'called') return 'bg-sky-100 text-sky-700 hover:bg-sky-100'
-  if (s === 'interested')
-    return 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100'
-  if (s === 'not_interested')
-    return 'bg-rose-100 text-rose-700 hover:bg-rose-100'
-  if (s === 'callback') return 'bg-amber-100 text-amber-700 hover:bg-amber-100'
-  return 'bg-gray-100 text-gray-700'
-}
-
-function sourceLabel(p: ProspectSnapshot): string {
-  if (p.source === 'ceidg') return 'CEIDG (ФОП)'
-  if (p.source === 'krs') {
-    const lf = p.krs_legal_form?.toUpperCase() ?? ''
-    if (lf.includes('OGRANICZON')) return 'KRS (sp. z o.o.)'
-    if (lf.includes('AKCYJNA')) return 'KRS (S.A.)'
-    return 'KRS (inne)'
-  }
-  return p.source ?? '?'
-}
-
-function num(v: number | string | null | undefined): number {
-  if (v === null || v === undefined) return 0
-  const n = typeof v === 'number' ? v : parseFloat(v)
-  return Number.isFinite(n) ? n : 0
-}
-
 // ─── Page ────────────────────────────────────────────────────────
 
 export default async function CohortDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ status?: string }>
 }) {
   const { id } = await params
+  const sp = await searchParams
+  const statusFilter = parseStatusParam(sp.status)
+
   const supabase = await createClient()
 
   // Fetch cohort
@@ -170,28 +149,51 @@ export default async function CohortDetailPage({
 
   const cohortRow = cohort as CohortRow
 
-  // Phase 2 Krok 1.C2 — fetch BOTH prospect i client members у parallel.
+  // Phase 2 Krok 1.D1 — counts query (ALL statuses, NIE filter applied —
+  // chip labels show all-status counts).
+  const { data: allStatusRows } = await supabase
+    .from('cohort_members')
+    .select('status')
+    .eq('cohort_id', id)
+
+  const statusCounts: Record<CohortMemberStatus, number> = {
+    pending: 0,
+    called: 0,
+    interested: 0,
+    not_interested: 0,
+    callback: 0,
+  }
+  for (const r of (allStatusRows ?? []) as Array<{
+    status: CohortMemberStatus
+  }>) {
+    if (r.status in statusCounts) statusCounts[r.status]++
+  }
+  const totalAllStatus = (allStatusRows ?? []).length
+
+  // Members fetch (з filter applied якщо active)
+  let prospectQuery = supabase
+    .from('cohort_members')
+    .select('cohort_id, subject_type, subject_id, added_at, status, notes')
+    .eq('cohort_id', id)
+    .eq('subject_type', 'prospect')
+  if (statusFilter) prospectQuery = prospectQuery.eq('status', statusFilter)
+  prospectQuery = prospectQuery.order('added_at', { ascending: false })
+
+  let clientQuery = supabase
+    .from('cohort_members')
+    .select('cohort_id, subject_type, subject_id, added_at, status, notes')
+    .eq('cohort_id', id)
+    .eq('subject_type', 'client')
+  if (statusFilter) clientQuery = clientQuery.eq('status', statusFilter)
+  clientQuery = clientQuery.order('added_at', { ascending: false })
+
   const [
     { data: prospectMembersRaw, error: memErr },
     { data: clientMembersRaw, error: clientMemErr },
-  ] = await Promise.all([
-    supabase
-      .from('cohort_members')
-      .select('cohort_id, subject_type, subject_id, added_at, status, notes')
-      .eq('cohort_id', id)
-      .eq('subject_type', 'prospect')
-      .order('added_at', { ascending: false }),
-    supabase
-      .from('cohort_members')
-      .select('cohort_id, subject_type, subject_id, added_at, status, notes')
-      .eq('cohort_id', id)
-      .eq('subject_type', 'client')
-      .order('added_at', { ascending: false }),
-  ])
+  ] = await Promise.all([prospectQuery, clientQuery])
 
-  // Prospect side: fetch scored_prospects снапшот через 2-query merge
-  // (polymorphic subject_id не PostgREST FK).
-  const prospectMembers = (prospectMembersRaw ?? []) as MemberRow[]
+  // Snapshot fetches (2-query merge per polymorphic FK pattern)
+  const prospectMembers = (prospectMembersRaw ?? []) as MemberRowRaw[]
   const prospectIds = prospectMembers.map((m) => m.subject_id)
 
   let prospectMap = new Map<string, ProspectSnapshot>()
@@ -207,8 +209,7 @@ export default async function CohortDetailPage({
     )
   }
 
-  // Client side: fetch clients table снапшот, same 2-query merge
-  const clientMembers = (clientMembersRaw ?? []) as MemberRow[]
+  const clientMembers = (clientMembersRaw ?? []) as MemberRowRaw[]
   const clientIds = clientMembers.map((m) => m.subject_id)
 
   let clientMap = new Map<string, ClientSnapshot>()
@@ -222,7 +223,32 @@ export default async function CohortDetailPage({
     )
   }
 
-  const totalCount = prospectMembers.length + clientMembers.length
+  // Compose final row shapes для client component
+  const prospectRows: ProspectMemberRow[] = prospectMembers.map((m) => {
+    const snap = prospectMap.get(m.subject_id)
+    return {
+      cohort_id: m.cohort_id,
+      subject_type: 'prospect',
+      subject_id: m.subject_id,
+      added_at: m.added_at,
+      status: m.status,
+      notes: m.notes,
+      snapshot: snap ?? null,
+    }
+  })
+
+  const clientRows: ClientMemberRow[] = clientMembers.map((m) => {
+    const snap = clientMap.get(m.subject_id)
+    return {
+      cohort_id: m.cohort_id,
+      subject_type: 'client',
+      subject_id: m.subject_id,
+      added_at: m.added_at,
+      status: m.status,
+      notes: m.notes,
+      snapshot: snap ?? null,
+    }
+  })
 
   return (
     <div className="flex flex-col">
@@ -244,8 +270,48 @@ export default async function CohortDetailPage({
         <p className="text-xs text-muted-foreground">
           Utworzono {formatDate(cohortRow.created_at)} ·{' '}
           {prospectMembers.length} prospektów + {clientMembers.length}{' '}
-          klientów = {totalCount}
+          klientów{' '}
+          {statusFilter && (
+            <span className="text-amber-700">
+              (filtr: {STATUS_LABELS[statusFilter]})
+            </span>
+          )}
         </p>
+      </div>
+
+      {/* Filter chips — Phase 2 Krok 1.D1 */}
+      <div className="flex flex-wrap items-center gap-2 px-6 pt-3">
+        <span className="text-sm text-muted-foreground">Status:</span>
+        <Button
+          asChild
+          size="sm"
+          variant={statusFilter === null ? 'default' : 'outline'}
+        >
+          <Link href={chipHref(id, null)}>
+            {STATUS_LABELS.all}{' '}
+            <span className="ml-1 text-xs opacity-70">
+              ({totalAllStatus})
+            </span>
+          </Link>
+        </Button>
+        {ALL_STATUSES.map((s) => {
+          const count = statusCounts[s]
+          const active = statusFilter === s
+          return (
+            <Button
+              key={s}
+              asChild
+              size="sm"
+              variant={active ? 'default' : 'outline'}
+              className={cn(count === 0 && !active && 'opacity-50')}
+            >
+              <Link href={chipHref(id, s)}>
+                {STATUS_LABELS[s]}{' '}
+                <span className="ml-1 text-xs opacity-70">({count})</span>
+              </Link>
+            </Button>
+          )
+        })}
       </div>
 
       {(memErr || clientMemErr) && (
@@ -257,239 +323,20 @@ export default async function CohortDetailPage({
         </div>
       )}
 
-      <div className="px-6 pb-6 pt-4 space-y-6">
-        {totalCount === 0 ? (
-          <div className="rounded-md border p-12 text-center text-sm text-muted-foreground">
-            <p className="font-medium">Cohort пуста.</p>
-            <p className="mt-2">
-              Idź do{' '}
-              <Link
-                href="/intelligence/prospects"
-                className="text-primary underline"
-              >
-                /intelligence/prospects
-              </Link>
-              {' '}або{' '}
-              <Link href="/clients" className="text-primary underline">
-                /clients
-              </Link>{' '}
-              щoб dodać members.
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* Prospekti section (Krok 1.C1) — TOP */}
-            <section>
-              <h2 className="mb-2 text-sm font-medium">
-                Prospekti{' '}
-                <span className="text-muted-foreground">
-                  ({prospectMembers.length})
-                </span>
-              </h2>
-              {prospectMembers.length === 0 ? (
-                <div className="rounded-md border p-6 text-center text-xs text-muted-foreground">
-                  Brak prospektów. Idź do{' '}
-                  <Link
-                    href="/intelligence/prospects"
-                    className="text-primary underline"
-                  >
-                    /intelligence/prospects
-                  </Link>{' '}
-                  щoб dodać.
-                </div>
-              ) : (
-                <div className="rounded-md border overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Nazwa</TableHead>
-                        <TableHead>Źródło</TableHead>
-                        <TableHead>Miasto</TableHead>
-                        <TableHead>Kanał</TableHead>
-                        <TableHead className="text-right">Score</TableHead>
-                        <TableHead className="text-center">Kontakt</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-xs text-muted-foreground">
-                          Dodano
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {prospectMembers.map((m) => {
-                        const p = prospectMap.get(m.subject_id)
-                        if (!p) {
-                          return (
-                            <TableRow key={m.subject_id}>
-                              <TableCell
-                                colSpan={8}
-                                className="text-xs text-muted-foreground italic"
-                              >
-                                Prospekt {m.subject_id.slice(0, 8)}… (orphan
-                                — może usunięty z bazy)
-                              </TableCell>
-                            </TableRow>
-                          )
-                        }
-                        const meta = num(p.horeca_meta_score)
-                        return (
-                          <TableRow key={m.subject_id}>
-                            <TableCell>
-                              <div className="font-medium">{p.name}</div>
-                              {p.owner_name && (
-                                <div className="text-xs text-muted-foreground">
-                                  {p.owner_name}
-                                </div>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="text-xs">
-                                {sourceLabel(p)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {p.miejscowosc ?? '—'}
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {p.dominant_channel ?? '—'}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {meta.toFixed(1)}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {p.has_contact ? (
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs text-emerald-700 border-emerald-200"
-                                >
-                                  ✓
-                                </Badge>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  —
-                                </span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                className={cn(
-                                  'text-xs font-normal',
-                                  statusBadgeClass(m.status),
-                                )}
-                              >
-                                {statusLabel(m.status)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">
-                              {formatDateTime(m.added_at)}
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </section>
+      <CohortMembersClient
+        cohortId={id}
+        prospects={prospectRows}
+        clients={clientRows}
+        statusFilter={statusFilter}
+        statusFilterLabel={
+          statusFilter ? STATUS_LABELS[statusFilter] : null
+        }
+      />
 
-            {/* Klienci section (Krok 1.C2) — BELOW */}
-            <section>
-              <h2 className="mb-2 text-sm font-medium">
-                Klienci{' '}
-                <span className="text-muted-foreground">
-                  ({clientMembers.length})
-                </span>
-              </h2>
-              {clientMembers.length === 0 ? (
-                <div className="rounded-md border p-6 text-center text-xs text-muted-foreground">
-                  Brak klientów. Idź do{' '}
-                  <Link href="/clients" className="text-primary underline">
-                    /clients
-                  </Link>{' '}
-                  щoб dodać.
-                </div>
-              ) : (
-                <div className="rounded-md border overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Nazwa</TableHead>
-                        <TableHead>Miasto</TableHead>
-                        <TableHead>NIP</TableHead>
-                        <TableHead>Industry</TableHead>
-                        <TableHead>Segment</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-xs text-muted-foreground">
-                          Dodano
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {clientMembers.map((m) => {
-                        const c = clientMap.get(m.subject_id)
-                        if (!c) {
-                          return (
-                            <TableRow key={m.subject_id}>
-                              <TableCell
-                                colSpan={7}
-                                className="text-xs text-muted-foreground italic"
-                              >
-                                Klient {m.subject_id.slice(0, 8)}… (orphan —
-                                może usunięty z bazy)
-                              </TableCell>
-                            </TableRow>
-                          )
-                        }
-                        return (
-                          <TableRow key={m.subject_id}>
-                            <TableCell>
-                              <Link
-                                href={`/clients/${c.id}`}
-                                className="font-medium hover:underline"
-                              >
-                                {c.title}
-                              </Link>
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {c.city ?? '—'}
-                            </TableCell>
-                            <TableCell className="font-mono text-xs">
-                              {c.nip ?? '—'}
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {c.industry ?? '—'}
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {c.segment ?? '—'}
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                className={cn(
-                                  'text-xs font-normal',
-                                  statusBadgeClass(m.status),
-                                )}
-                              >
-                                {statusLabel(m.status)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">
-                              {formatDateTime(m.added_at)}
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </section>
-          </>
-        )}
-
-        <div className="mt-4">
-          <Button asChild variant="outline" size="sm">
-            <Link href="/intelligence/cohorts">← Wszystkie cohortі</Link>
-          </Button>
-        </div>
+      <div className="px-6 pb-6">
+        <Button asChild variant="outline" size="sm">
+          <Link href="/intelligence/cohorts">← Wszystkie cohortі</Link>
+        </Button>
       </div>
     </div>
   )

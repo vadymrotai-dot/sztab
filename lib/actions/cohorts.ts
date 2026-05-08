@@ -216,3 +216,154 @@ export async function addClientsToCohort(
   revalidatePath('/clients')
   return { added: newRows.length, skipped: existingSet.size }
 }
+
+// ─── Phase 2 Krok 1.D1 — status mutation + notes edit ────────────
+
+const NOTES_MAX = 200
+
+export type CohortMemberStatus =
+  | 'pending'
+  | 'called'
+  | 'interested'
+  | 'not_interested'
+  | 'callback'
+
+const VALID_STATUSES: CohortMemberStatus[] = [
+  'pending',
+  'called',
+  'interested',
+  'not_interested',
+  'callback',
+]
+
+/** Composite PK identifier (per migration 060 PRIMARY KEY).
+ *  Per Krok 1.D1 Q2=B2 — NIE schema change, keep tuple keys. */
+export interface MemberKey {
+  cohort_id: string
+  subject_type: 'prospect' | 'client'
+  subject_id: string
+}
+
+function validateStatus(s: string): CohortMemberStatus {
+  if (!VALID_STATUSES.includes(s as CohortMemberStatus)) {
+    throw new Error(`Invalid status: "${s}"`)
+  }
+  return s as CohortMemberStatus
+}
+
+// ─── updateCohortMemberStatus ────────────────────────────────────
+
+/** Single-row status mutation. Composite WHERE on PK tuple. */
+export async function updateCohortMemberStatus(
+  key: MemberKey,
+  status: CohortMemberStatus,
+): Promise<{ ok: true }> {
+  const validStatus = validateStatus(status)
+  if (!key.cohort_id || !key.subject_type || !key.subject_id) {
+    throw new Error('MemberKey requires cohort_id, subject_type, subject_id')
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('cohort_members')
+    .update({ status: validStatus })
+    .eq('cohort_id', key.cohort_id)
+    .eq('subject_type', key.subject_type)
+    .eq('subject_id', key.subject_id)
+
+  if (error) throw new Error(`Status update failed: ${error.message}`)
+
+  revalidatePath(`/intelligence/cohorts/${key.cohort_id}`)
+  return { ok: true }
+}
+
+// ─── updateCohortMemberNotes ─────────────────────────────────────
+
+/** Single-row notes mutation. Pre-existing 'notes' column (з 's') used
+ *  per Krok 1.D1 Q1=A1 — NIE додаємо 'note' без 's'. */
+export async function updateCohortMemberNotes(
+  key: MemberKey,
+  notes: string | null,
+): Promise<{ ok: true }> {
+  if (!key.cohort_id || !key.subject_type || !key.subject_id) {
+    throw new Error('MemberKey requires cohort_id, subject_type, subject_id')
+  }
+
+  const trimmed = notes?.trim() ?? null
+  if (trimmed && trimmed.length > NOTES_MAX) {
+    throw new Error(`Notatka max ${NOTES_MAX} znaków (${trimmed.length})`)
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('cohort_members')
+    .update({ notes: trimmed && trimmed.length > 0 ? trimmed : null })
+    .eq('cohort_id', key.cohort_id)
+    .eq('subject_type', key.subject_type)
+    .eq('subject_id', key.subject_id)
+
+  if (error) throw new Error(`Notes update failed: ${error.message}`)
+
+  revalidatePath(`/intelligence/cohorts/${key.cohort_id}`)
+  return { ok: true }
+}
+
+// ─── bulkUpdateCohortMemberStatus ────────────────────────────────
+
+/** Bulk status mutation. Composite tuple IN не natively supported у
+ *  Supabase JS, тому 2 окремі UPDATE statements per subject_type
+ *  (per Vadym additional clarification #1). Returns sum of affected. */
+export async function bulkUpdateCohortMemberStatus(
+  keys: MemberKey[],
+  status: CohortMemberStatus,
+): Promise<{ updated: number }> {
+  const validStatus = validateStatus(status)
+  if (keys.length === 0) return { updated: 0 }
+  if (keys.length > 200) {
+    throw new Error(`Bulk update max 200 rows (otrzymano ${keys.length})`)
+  }
+
+  // Group by cohort_id + subject_type for IN clauses
+  const byCohort = new Map<string, { prospect: string[]; client: string[] }>()
+  for (const k of keys) {
+    if (!byCohort.has(k.cohort_id)) {
+      byCohort.set(k.cohort_id, { prospect: [], client: [] })
+    }
+    const bucket = byCohort.get(k.cohort_id)!
+    if (k.subject_type === 'prospect') bucket.prospect.push(k.subject_id)
+    else if (k.subject_type === 'client') bucket.client.push(k.subject_id)
+  }
+
+  const supabase = await createClient()
+  let totalUpdated = 0
+
+  for (const [cohortId, bucket] of byCohort) {
+    if (bucket.prospect.length > 0) {
+      const { error, count } = await supabase
+        .from('cohort_members')
+        .update({ status: validStatus }, { count: 'exact' })
+        .eq('cohort_id', cohortId)
+        .eq('subject_type', 'prospect')
+        .in('subject_id', bucket.prospect)
+      if (error) {
+        throw new Error(`Bulk update (prospect) failed: ${error.message}`)
+      }
+      totalUpdated += count ?? 0
+    }
+    if (bucket.client.length > 0) {
+      const { error, count } = await supabase
+        .from('cohort_members')
+        .update({ status: validStatus }, { count: 'exact' })
+        .eq('cohort_id', cohortId)
+        .eq('subject_type', 'client')
+        .in('subject_id', bucket.client)
+      if (error) {
+        throw new Error(`Bulk update (client) failed: ${error.message}`)
+      }
+      totalUpdated += count ?? 0
+    }
+    revalidatePath(`/intelligence/cohorts/${cohortId}`)
+  }
+
+  return { updated: totalUpdated }
+}
