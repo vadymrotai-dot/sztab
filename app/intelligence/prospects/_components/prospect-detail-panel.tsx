@@ -3,6 +3,9 @@
 // Side panel z prospect details + score breakdown.
 //
 // TODO (Phase 1 Krok 4, 08.05.2026): _shared/* relocation backlog.
+// (Note: Phase 2 Krok 1.A added Źródło column у sibling prospects-table.tsx —
+//  this panel still treats ceidg_id як non-null, треба audit якщо KRS rows
+//  open detail panel. Defer fix до окремого cleanup sprint.)
 // Currently imports VatSection / GusSection / KrsSection / StatusBadgesRow з
 // @/app/(dashboard)/_shared/. Per empirical scope grep, ці компоненти
 // використовуються ТІЛЬКИ тут (не у dashboard root) — naming "_shared"
@@ -155,7 +158,10 @@ export function ProspectDetailPanel({
     breakdown.chain?.loyalty_tier ??
     (breakdown.chain?.tier_status === 'unverified' ? 'unverified' : null)
 
-  const ceidgUrl = `https://aplikacja.ceidg.gov.pl/CEIDG/CEIDG.Public.UI/SearchDetails.aspx?Id=${encodeURIComponent(prospect.ceidg_id)}`
+  // Phase 2 Krok 1.A: ceidg_id nullable (KRS prospekti не мають CEIDG ID).
+  const ceidgUrl = prospect.ceidg_id
+    ? `https://aplikacja.ceidg.gov.pl/CEIDG/CEIDG.Public.UI/SearchDetails.aspx?Id=${encodeURIComponent(prospect.ceidg_id)}`
+    : null
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
@@ -438,14 +444,16 @@ export function ProspectDetailPanel({
           />
 
           {/* Footer actions */}
-          <div className="flex items-center gap-2 border-t pt-4">
-            <Button variant="outline" size="sm" asChild>
-              <a href={ceidgUrl} target="_blank" rel="noopener noreferrer">
-                <ExternalLinkIcon className="mr-1 size-3" />
-                Otwórz w CEIDG
-              </a>
-            </Button>
-          </div>
+          {ceidgUrl && (
+            <div className="flex items-center gap-2 border-t pt-4">
+              <Button variant="outline" size="sm" asChild>
+                <a href={ceidgUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLinkIcon className="mr-1 size-3" />
+                  Otwórz w CEIDG
+                </a>
+              </Button>
+            </div>
+          )}
         </div>
       </SheetContent>
     </Sheet>

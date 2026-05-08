@@ -38,12 +38,19 @@ import { ProspectDetailPanel } from './prospect-detail-panel'
 
 export interface ProspectRow {
   id: string
-  ceidg_id: string
+  /** Phase 2.8 (migration 055) made ceidg_id nullable — KRS-only prospekti
+   *  не мають CEIDG counterpart. Type updated 08.05.2026 Phase 2 Krok 1.A. */
+  ceidg_id: string | null
   nip: string | null
   regon: string | null
   name: string
   owner_name: string | null
   status: string
+  /** 'ceidg' | 'krs' (default 'ceidg' per migration 014).
+   *  Phase 2 Krok 1.A — added до interface для "Źródło" column display. */
+  source: string | null
+  /** Phase 2.8 — KRS prezes/chairman name з glowna_osoba.imiona_i_nazwisko. */
+  decision_maker_name?: string | null
   pkd_main: string | null
   pkd_all: string[] | null
   wojewodztwo: string | null
@@ -123,6 +130,33 @@ function num(v: number | string | null | undefined): number {
   if (typeof v === 'number') return v
   const parsed = Number.parseFloat(v)
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+// ─── Phase 2 Krok 1.A — "Źródło" column helpers ───────────────
+
+/** Derive display label з row.source + krs_legal_form ILIKE classification.
+ *  Mirror server-side filter logic у page.tsx for consistent UX. */
+function sourceLabel(row: ProspectRow): string {
+  if (row.source === 'ceidg') return 'CEIDG (ФОП)'
+  if (row.source === 'krs') {
+    const lf = row.krs_legal_form?.toUpperCase() ?? ''
+    if (lf.includes('OGRANICZON')) return 'KRS (sp. z o.o.)'
+    if (lf.includes('AKCYJNA')) return 'KRS (S.A.)'
+    return 'KRS (inne)'
+  }
+  return row.source ?? '?'
+}
+
+/** Tailwind classes для Badge color coding by source/legal-form. */
+function sourceBadgeClass(row: ProspectRow): string {
+  if (row.source === 'ceidg') return 'bg-emerald-100 text-emerald-800 border-transparent'
+  if (row.source === 'krs') {
+    const lf = row.krs_legal_form?.toUpperCase() ?? ''
+    if (lf.includes('OGRANICZON')) return 'bg-indigo-100 text-indigo-800 border-transparent'
+    if (lf.includes('AKCYJNA')) return 'bg-violet-100 text-violet-800 border-transparent'
+    return 'bg-slate-100 text-slate-700 border-transparent'
+  }
+  return 'bg-muted text-muted-foreground border-transparent'
 }
 
 function scoreColorClass(score: number): string {
@@ -548,6 +582,8 @@ export function ProspectsTable({ initialProspects }: ProspectsTableProps) {
                     onSort={setSort}
                   />
                 </TableHead>
+                {/* Phase 2 Krok 1.A — Źródło column (CEIDG/KRS classification) */}
+                <TableHead>Źródło</TableHead>
                 <TableHead>Właściciel</TableHead>
                 <TableHead>
                   <SortHeader
@@ -596,6 +632,15 @@ export function ProspectsTable({ initialProspects }: ProspectsTableProps) {
                       />
                     </TableCell>
                     <TableCell className="font-medium">{p.name}</TableCell>
+                    {/* Phase 2 Krok 1.A — Źródło Badge */}
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={cn('text-[10px]', sourceBadgeClass(p))}
+                      >
+                        {sourceLabel(p)}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {p.owner_name ?? '—'}
                     </TableCell>

@@ -1267,4 +1267,51 @@ Pikniko працює на ERP Subiekt (Insert, GT або Nexo). Sztab НЕ за�
 
 ---
 
-**END OF PROTOCOLS (30 total).**
+## Protocol 31 — Cowork Sandbox Credential Boundary (08.05.2026)
+
+Cowork bash sandbox НЕ успадковує `.env.local` з Vadym's local shell. Це означає що операції які потребують env vars (Supabase service role key, Anthropic API key, Apify token, etc.) НЕ можуть виконуватись у Cowork.
+
+### ЗАБЛОКОВАНО у Cowork sandbox
+
+- `pnpm dlx tsx scripts/apply-migration.ts` (potrebuje `SUPABASE_SERVICE_ROLE_KEY`)
+- Будь-який Supabase write через `@supabase/supabase-js` (auth keys missing)
+- API calls до third-party services (Apify, Anthropic, GUS, KRS rejestrio)
+- Будь-який скрипт який читає `process.env.<SECRET>`
+
+Plus: `pnpm` не на sandbox PATH — тільки `npm`. `tsx` working якщо через `npx` з local `node_modules`.
+
+### ДОЗВОЛЕНО у Cowork sandbox
+
+- Файлові операції (read/write/edit/delete)
+- bash утиліти (grep/sed/awk/find/wc)
+- `npm install` / `build` (з `node_modules` pre-installed)
+- `tsc --noEmit` (без credentials)
+- git read commands (status/log/diff/show — Protocol 14)
+- File-based migrations DRAFT (write SQL file, ale nie apply)
+
+### PATTERN для migrations
+
+1. Cowork DRAFTS `migration_NNN.sql` у `scripts/`
+2. Cowork RAПОРТУЄ filename + content + apply command
+3. Vadym RUNS apply у own PowerShell:
+   ```powershell
+   pnpm dlx tsx scripts/apply-migration.ts scripts/NNN_*.sql
+   ```
+4. Vadym CONFIRMS success/error у chat
+5. Claude smoke tests effect через browser MCP (no DB credentials needed)
+
+### PATTERN для secret-dependent verify queries
+
+1. Cowork CANNOT run query, але CAN suggest expected outcome
+2. Vadym runs у Studio або pnpm script
+3. АБО Claude smoke through browser UI (functional proof: page works = view OK)
+
+### Failure mode без цього protocol
+
+- Claude promises "Cowork apply migration автоматично" → Vadym rolls eyes, bo не може
+- Marnowany context window на bounce-back retries
+- Vadym doubt у memory rule #4 fidelity
+
+---
+
+**END OF PROTOCOLS (31 total).**
