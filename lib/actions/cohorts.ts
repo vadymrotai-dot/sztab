@@ -160,3 +160,59 @@ export async function addProspectsToCohort(
   revalidatePath('/intelligence/prospects')
   return { added: newRows.length, skipped: existingSet.size }
 }
+
+// ─── addClientsToCohort ──────────────────────────────────────────
+
+/** Phase 2 Krok 1.C2 (08.05.2026) — clients side parallel до prospects.
+ *  Same 2-step idempotent pattern. subject_type='client' branch of
+ *  polymorphic FK у cohort_members.
+ *
+ *  Caller (clients/bulk-action-bar.tsx) повинен pre-filter selected IDs
+ *  щоб тільки entity_type='client' rows потрапляли — entity_type='prospect'
+ *  rows у тій самій clients table мали б ходити через addProspectsToCohort
+ *  flow (але вони CEIDG-derived, тому не пересікаються; safety filter
+ *  у bulk-action-bar). */
+export async function addClientsToCohort(
+  cohortId: string,
+  clientIds: string[],
+): Promise<{ added: number; skipped: number }> {
+  if (!cohortId) throw new Error('cohortId required')
+  if (clientIds.length === 0) return { added: 0, skipped: 0 }
+
+  const uniqueIds = Array.from(new Set(clientIds))
+  const supabase = await createClient()
+
+  // Step 1 — pre-check existing memberships
+  const { data: existing, error: selErr } = await supabase
+    .from('cohort_members')
+    .select('subject_id')
+    .eq('cohort_id', cohortId)
+    .eq('subject_type', 'client')
+    .in('subject_id', uniqueIds)
+
+  if (selErr) throw new Error(`Pre-check failed: ${selErr.message}`)
+
+  const existingSet = new Set(
+    (existing ?? []).map((r) => r.subject_id as string),
+  )
+  const newRows = uniqueIds
+    .filter((id) => !existingSet.has(id))
+    .map((id) => ({
+      cohort_id: cohortId,
+      subject_type: 'client' as const,
+      subject_id: id,
+    }))
+
+  // Step 2 — INSERT only new rows
+  if (newRows.length > 0) {
+    const { error: insErr } = await supabase
+      .from('cohort_members')
+      .insert(newRows)
+    if (insErr) throw new Error(`Insert failed: ${insErr.message}`)
+  }
+
+  revalidatePath(`/intelligence/cohorts/${cohortId}`)
+  revalidatePath('/intelligence/cohorts')
+  revalidatePath('/clients')
+  return { added: newRows.length, skipped: existingSet.size }
+}

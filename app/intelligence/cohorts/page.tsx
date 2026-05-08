@@ -28,7 +28,11 @@ interface CohortListRow {
   name: string
   description: string | null
   created_at: string
-  cohort_members: { count: number }[] | null
+}
+
+interface SplitCount {
+  prospect: number
+  client: number
 }
 
 function formatDate(iso: string): string {
@@ -47,12 +51,30 @@ function formatDate(iso: string): string {
 export default async function CohortsListPage() {
   const supabase = await createClient()
 
-  // Embedded count via PostgREST: cohort_members(count) returns
-  // [{ count: N }] per parent row. Standard idiom.
-  const { data, error } = await supabase
-    .from('cohorts')
-    .select('id, name, description, created_at, cohort_members(count)')
-    .order('created_at', { ascending: false })
+  // Phase 2 Krok 1.C2 — split count by subject_type. PostgREST embedded
+  // count не distinguishes types; parallel aggregation query (cohort_id +
+  // subject_type) і JS bucket. ~few hundred rows expected — cheap.
+  const [{ data, error }, { data: allMembers }] = await Promise.all([
+    supabase
+      .from('cohorts')
+      .select('id, name, description, created_at')
+      .order('created_at', { ascending: false }),
+    supabase.from('cohort_members').select('cohort_id, subject_type'),
+  ])
+
+  // Aggregate split counts per cohort_id
+  const splitMap = new Map<string, SplitCount>()
+  for (const m of (allMembers ?? []) as Array<{
+    cohort_id: string
+    subject_type: 'prospect' | 'client'
+  }>) {
+    if (!splitMap.has(m.cohort_id)) {
+      splitMap.set(m.cohort_id, { prospect: 0, client: 0 })
+    }
+    const bucket = splitMap.get(m.cohort_id)!
+    if (m.subject_type === 'prospect') bucket.prospect++
+    else if (m.subject_type === 'client') bucket.client++
+  }
 
   if (error) {
     return (
@@ -124,7 +146,8 @@ export default async function CohortsListPage() {
               </TableHeader>
               <TableBody>
                 {cohorts.map((c) => {
-                  const memberCount = c.cohort_members?.[0]?.count ?? 0
+                  const split = splitMap.get(c.id) ?? { prospect: 0, client: 0 }
+                  const memberCount = split.prospect + split.client
                   return (
                     <TableRow key={c.id}>
                       <TableCell>
@@ -141,7 +164,17 @@ export default async function CohortsListPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {memberCount}
+                        {memberCount === 0 ? (
+                          <span className="text-muted-foreground">0</span>
+                        ) : (
+                          <span className="text-xs">
+                            <span className="font-medium">{split.prospect}</span>
+                            <span className="text-muted-foreground"> prospektów</span>
+                            <span className="mx-1 text-muted-foreground">+</span>
+                            <span className="font-medium">{split.client}</span>
+                            <span className="text-muted-foreground"> klientów</span>
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {formatDate(c.created_at)}

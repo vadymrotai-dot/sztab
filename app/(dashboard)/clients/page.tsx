@@ -7,18 +7,37 @@
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/page-header'
 import { ClientsHub, type UnifiedRow } from '@/components/clients/clients-hub'
+import type { CohortOption } from '@/components/clients/bulk-action-bar'
 import type { Client } from '@/lib/types'
 
 export default async function ClientsPage() {
   const supabase = await createClient()
 
-  const [{ data: clients }, { data: topMatches }] = await Promise.all([
-    supabase.from('clients').select('*').order('title', { ascending: true }),
-    supabase
-      .from('matches')
-      .select('client_id, prospect_id, combined_score')
-      .order('combined_score', { ascending: false }),
-  ])
+  const [{ data: clients }, { data: topMatches }, { data: cohortRows }] =
+    await Promise.all([
+      supabase.from('clients').select('*').order('title', { ascending: true }),
+      supabase
+        .from('matches')
+        .select('client_id, prospect_id, combined_score')
+        .order('combined_score', { ascending: false }),
+      // Phase 2 Krok 1.C2 — cohorts list для bulk-action dropdown.
+      supabase
+        .from('cohorts')
+        .select('id, name, cohort_members(count)')
+        .order('created_at', { ascending: false }),
+    ])
+
+  const cohorts: CohortOption[] = (
+    (cohortRows ?? []) as Array<{
+      id: string
+      name: string
+      cohort_members: { count: number }[] | null
+    }>
+  ).map((c) => ({
+    id: c.id,
+    name: c.name,
+    member_count: c.cohort_members?.[0]?.count ?? 0,
+  }))
 
   const topByEntity = new Map<string, number>()
   for (const m of (topMatches ?? []) as Array<{
@@ -53,7 +72,11 @@ export default async function ClientsPage() {
   return (
     <div className="flex flex-col h-full">
       <PageHeader title="Klienci" />
-      <ClientsHub clients={clientsList} unifiedRows={unifiedRows} />
+      <ClientsHub
+        clients={clientsList}
+        unifiedRows={unifiedRows}
+        cohorts={cohorts}
+      />
     </div>
   )
 }

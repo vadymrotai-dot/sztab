@@ -38,7 +38,10 @@ import {
 } from 'lucide-react'
 import { ClientsTable } from '@/components/clients/clients-table'
 import { AddCompanyButton } from '@/components/clients/add-company-button'
-import { BulkActionBar } from '@/components/clients/bulk-action-bar'
+import {
+  BulkActionBar,
+  type CohortOption,
+} from '@/components/clients/bulk-action-bar'
 import type { Client } from '@/lib/types'
 
 export interface UnifiedRow {
@@ -57,6 +60,9 @@ export interface UnifiedRow {
 interface Props {
   clients: Array<Client & { entity_type?: 'client' | 'prospect' }>
   unifiedRows: UnifiedRow[]
+  /** Phase 2 Krok 1.C2 — cohort options для bulk-action dropdown.
+   *  Server-fetched у parent app/(dashboard)/clients/page.tsx. */
+  cohorts?: CohortOption[]
 }
 
 const TABS = [
@@ -65,7 +71,7 @@ const TABS = [
   { value: 'wszystko', label: 'Wszystko' },
 ]
 
-export function ClientsHub({ clients, unifiedRows }: Props) {
+export function ClientsHub({ clients, unifiedRows, cohorts = [] }: Props) {
   const clientCount = unifiedRows.filter((r) => r.type === 'client').length
   const prospectCount = unifiedRows.filter((r) => r.type === 'prospect').length
   // Subset of clients[] with entity_type='client' для existing ClientsTable
@@ -372,9 +378,18 @@ export function ClientsHub({ clients, unifiedRows }: Props) {
         )}
       </div>
 
-      {/* S4 Phase 2B: BulkActionBar appears when ≥1 row selected. */}
+      {/* S4 Phase 2B: BulkActionBar appears when ≥1 row selected.
+          Phase 2 Krok 1.C2: pass cohorts + filtered clientTypedSelectedIds
+          (entity_type='client' subset тільки) для cohort dropdown. */}
       {selectedCount > 0 && (
-        <BulkActionBar selectedIds={Array.from(selected)} onClear={clearSelection} />
+        <BulkActionBar
+          selectedIds={Array.from(selected)}
+          clientTypedSelectedIds={unifiedRows
+            .filter((r) => r.type === 'client' && selected.has(r.id))
+            .map((r) => r.id)}
+          cohorts={cohorts}
+          onClear={clearSelection}
+        />
       )}
     </div>
   )

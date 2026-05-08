@@ -64,6 +64,19 @@ interface ProspectSnapshot {
   has_contact: boolean | null
 }
 
+/** Phase 2 Krok 1.C2 — clients table snapshot. Schema gap (per Vadym Q3):
+ *  no total_revenue / last_invoice_date columns (Subiekt не integrated).
+ *  Picked basic substitute cols. */
+interface ClientSnapshot {
+  id: string
+  title: string
+  city: string | null
+  nip: string | null
+  industry: string | null
+  segment: string | null
+  status: string | null
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────
 
 function formatDate(iso: string): string {
@@ -157,30 +170,59 @@ export default async function CohortDetailPage({
 
   const cohortRow = cohort as CohortRow
 
-  // Fetch members (prospect side тільки у Krok 1.C1)
-  const { data: members, error: memErr } = await supabase
-    .from('cohort_members')
-    .select('cohort_id, subject_type, subject_id, added_at, status, notes')
-    .eq('cohort_id', id)
-    .eq('subject_type', 'prospect')
-    .order('added_at', { ascending: false })
+  // Phase 2 Krok 1.C2 — fetch BOTH prospect i client members у parallel.
+  const [
+    { data: prospectMembersRaw, error: memErr },
+    { data: clientMembersRaw, error: clientMemErr },
+  ] = await Promise.all([
+    supabase
+      .from('cohort_members')
+      .select('cohort_id, subject_type, subject_id, added_at, status, notes')
+      .eq('cohort_id', id)
+      .eq('subject_type', 'prospect')
+      .order('added_at', { ascending: false }),
+    supabase
+      .from('cohort_members')
+      .select('cohort_id, subject_type, subject_id, added_at, status, notes')
+      .eq('cohort_id', id)
+      .eq('subject_type', 'client')
+      .order('added_at', { ascending: false }),
+  ])
 
-  // Fetch scored_prospects снапшот для всех subject_id
-  const memberRows = (members ?? []) as MemberRow[]
-  const memberIds = memberRows.map((m) => m.subject_id)
+  // Prospect side: fetch scored_prospects снапшот через 2-query merge
+  // (polymorphic subject_id не PostgREST FK).
+  const prospectMembers = (prospectMembersRaw ?? []) as MemberRow[]
+  const prospectIds = prospectMembers.map((m) => m.subject_id)
 
   let prospectMap = new Map<string, ProspectSnapshot>()
-  if (memberIds.length > 0) {
+  if (prospectIds.length > 0) {
     const { data: prospects } = await supabase
       .from('scored_prospects')
       .select(
         'id, name, owner_name, source, krs_legal_form, miejscowosc, dominant_channel, horeca_meta_score, has_contact',
       )
-      .in('id', memberIds)
+      .in('id', prospectIds)
     prospectMap = new Map(
       ((prospects ?? []) as ProspectSnapshot[]).map((p) => [p.id, p]),
     )
   }
+
+  // Client side: fetch clients table снапшот, same 2-query merge
+  const clientMembers = (clientMembersRaw ?? []) as MemberRow[]
+  const clientIds = clientMembers.map((m) => m.subject_id)
+
+  let clientMap = new Map<string, ClientSnapshot>()
+  if (clientIds.length > 0) {
+    const { data: clientsData } = await supabase
+      .from('clients')
+      .select('id, title, city, nip, industry, segment, status')
+      .in('id', clientIds)
+    clientMap = new Map(
+      ((clientsData ?? []) as ClientSnapshot[]).map((c) => [c.id, c]),
+    )
+  }
+
+  const totalCount = prospectMembers.length + clientMembers.length
 
   return (
     <div className="flex flex-col">
@@ -200,23 +242,25 @@ export default async function CohortDetailPage({
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          Utworzono {formatDate(cohortRow.created_at)} · {memberRows.length}{' '}
-          {memberRows.length === 1 ? 'członek' : 'członków'}
+          Utworzono {formatDate(cohortRow.created_at)} ·{' '}
+          {prospectMembers.length} prospektów + {clientMembers.length}{' '}
+          klientów = {totalCount}
         </p>
       </div>
 
-      {memErr && (
+      {(memErr || clientMemErr) && (
         <div className="px-6 pt-2">
           <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-            Błąd ładowania członków: {memErr.message}
+            Błąd ładowania członków:{' '}
+            {memErr?.message ?? clientMemErr?.message ?? 'unknown'}
           </div>
         </div>
       )}
 
-      <div className="px-6 pb-6 pt-4">
-        {memberRows.length === 0 ? (
+      <div className="px-6 pb-6 pt-4 space-y-6">
+        {totalCount === 0 ? (
           <div className="rounded-md border p-12 text-center text-sm text-muted-foreground">
-            <p>Brak członków.</p>
+            <p className="font-medium">Cohort пуста.</p>
             <p className="mt-2">
               Idź do{' '}
               <Link
@@ -224,93 +268,221 @@ export default async function CohortDetailPage({
                 className="text-primary underline"
               >
                 /intelligence/prospects
+              </Link>
+              {' '}або{' '}
+              <Link href="/clients" className="text-primary underline">
+                /clients
               </Link>{' '}
-              щоб dodać prospektów do cohortu.
+              щoб dodać members.
             </p>
           </div>
         ) : (
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nazwa</TableHead>
-                  <TableHead>Źródło</TableHead>
-                  <TableHead>Miasto</TableHead>
-                  <TableHead>Kanał</TableHead>
-                  <TableHead className="text-right">Score</TableHead>
-                  <TableHead className="text-center">Kontakt</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-xs text-muted-foreground">
-                    Dodano
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {memberRows.map((m) => {
-                  const p = prospectMap.get(m.subject_id)
-                  if (!p) {
-                    return (
-                      <TableRow key={m.subject_id}>
-                        <TableCell colSpan={8} className="text-xs text-muted-foreground italic">
-                          Prospekt {m.subject_id.slice(0, 8)}… (orphan — może
-                          usunięty z bazy)
-                        </TableCell>
+          <>
+            {/* Prospekti section (Krok 1.C1) — TOP */}
+            <section>
+              <h2 className="mb-2 text-sm font-medium">
+                Prospekti{' '}
+                <span className="text-muted-foreground">
+                  ({prospectMembers.length})
+                </span>
+              </h2>
+              {prospectMembers.length === 0 ? (
+                <div className="rounded-md border p-6 text-center text-xs text-muted-foreground">
+                  Brak prospektów. Idź do{' '}
+                  <Link
+                    href="/intelligence/prospects"
+                    className="text-primary underline"
+                  >
+                    /intelligence/prospects
+                  </Link>{' '}
+                  щoб dodać.
+                </div>
+              ) : (
+                <div className="rounded-md border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nazwa</TableHead>
+                        <TableHead>Źródło</TableHead>
+                        <TableHead>Miasto</TableHead>
+                        <TableHead>Kanał</TableHead>
+                        <TableHead className="text-right">Score</TableHead>
+                        <TableHead className="text-center">Kontakt</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-xs text-muted-foreground">
+                          Dodano
+                        </TableHead>
                       </TableRow>
-                    )
-                  }
-                  const meta = num(p.horeca_meta_score)
-                  return (
-                    <TableRow key={m.subject_id}>
-                      <TableCell>
-                        <div className="font-medium">{p.name}</div>
-                        {p.owner_name && (
-                          <div className="text-xs text-muted-foreground">
-                            {p.owner_name}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs">
-                          {sourceLabel(p)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {p.miejscowosc ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {p.dominant_channel ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {meta.toFixed(1)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {p.has_contact ? (
-                          <Badge variant="outline" className="text-xs text-emerald-700 border-emerald-200">
-                            ✓
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={cn(
-                            'text-xs font-normal',
-                            statusBadgeClass(m.status),
-                          )}
-                        >
-                          {statusLabel(m.status)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {formatDateTime(m.added_at)}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </div>
+                    </TableHeader>
+                    <TableBody>
+                      {prospectMembers.map((m) => {
+                        const p = prospectMap.get(m.subject_id)
+                        if (!p) {
+                          return (
+                            <TableRow key={m.subject_id}>
+                              <TableCell
+                                colSpan={8}
+                                className="text-xs text-muted-foreground italic"
+                              >
+                                Prospekt {m.subject_id.slice(0, 8)}… (orphan
+                                — może usunięty z bazy)
+                              </TableCell>
+                            </TableRow>
+                          )
+                        }
+                        const meta = num(p.horeca_meta_score)
+                        return (
+                          <TableRow key={m.subject_id}>
+                            <TableCell>
+                              <div className="font-medium">{p.name}</div>
+                              {p.owner_name && (
+                                <div className="text-xs text-muted-foreground">
+                                  {p.owner_name}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs">
+                                {sourceLabel(p)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {p.miejscowosc ?? '—'}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {p.dominant_channel ?? '—'}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {meta.toFixed(1)}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {p.has_contact ? (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs text-emerald-700 border-emerald-200"
+                                >
+                                  ✓
+                                </Badge>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">
+                                  —
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                className={cn(
+                                  'text-xs font-normal',
+                                  statusBadgeClass(m.status),
+                                )}
+                              >
+                                {statusLabel(m.status)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {formatDateTime(m.added_at)}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </section>
+
+            {/* Klienci section (Krok 1.C2) — BELOW */}
+            <section>
+              <h2 className="mb-2 text-sm font-medium">
+                Klienci{' '}
+                <span className="text-muted-foreground">
+                  ({clientMembers.length})
+                </span>
+              </h2>
+              {clientMembers.length === 0 ? (
+                <div className="rounded-md border p-6 text-center text-xs text-muted-foreground">
+                  Brak klientów. Idź do{' '}
+                  <Link href="/clients" className="text-primary underline">
+                    /clients
+                  </Link>{' '}
+                  щoб dodać.
+                </div>
+              ) : (
+                <div className="rounded-md border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nazwa</TableHead>
+                        <TableHead>Miasto</TableHead>
+                        <TableHead>NIP</TableHead>
+                        <TableHead>Industry</TableHead>
+                        <TableHead>Segment</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-xs text-muted-foreground">
+                          Dodano
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {clientMembers.map((m) => {
+                        const c = clientMap.get(m.subject_id)
+                        if (!c) {
+                          return (
+                            <TableRow key={m.subject_id}>
+                              <TableCell
+                                colSpan={7}
+                                className="text-xs text-muted-foreground italic"
+                              >
+                                Klient {m.subject_id.slice(0, 8)}… (orphan —
+                                może usunięty z bazy)
+                              </TableCell>
+                            </TableRow>
+                          )
+                        }
+                        return (
+                          <TableRow key={m.subject_id}>
+                            <TableCell>
+                              <Link
+                                href={`/clients/${c.id}`}
+                                className="font-medium hover:underline"
+                              >
+                                {c.title}
+                              </Link>
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {c.city ?? '—'}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {c.nip ?? '—'}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {c.industry ?? '—'}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {c.segment ?? '—'}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                className={cn(
+                                  'text-xs font-normal',
+                                  statusBadgeClass(m.status),
+                                )}
+                              >
+                                {statusLabel(m.status)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {formatDateTime(m.added_at)}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </section>
+          </>
         )}
 
         <div className="mt-4">
