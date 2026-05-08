@@ -1,5 +1,6 @@
-// app/(dashboard)/intelligence/lookup/page.tsx
+// app/intelligence/lookup/page.tsx
 // Sprint K / Phase 3 — intelligence lookup form.
+// Phase 1 Krok 4 (08.05.2026) — moved з app/(dashboard)/intelligence/lookup/.
 
 import { PageHeader } from '@/components/page-header'
 import { LookupForm } from '@/components/intelligence/lookup-form'

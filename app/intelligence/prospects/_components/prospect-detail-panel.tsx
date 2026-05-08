@@ -1,6 +1,15 @@
 'use client'
 
 // Side panel z prospect details + score breakdown.
+//
+// TODO (Phase 1 Krok 4, 08.05.2026): _shared/* relocation backlog.
+// Currently imports VatSection / GusSection / KrsSection / StatusBadgesRow з
+// @/app/(dashboard)/_shared/. Per empirical scope grep, ці компоненти
+// використовуються ТІЛЬКИ тут (не у dashboard root) — naming "_shared"
+// misleading. Post-Phase 1 cleanup: move @/app/(dashboard)/_shared/* →
+// @/app/intelligence/_shared/* (5 файлів — vat/gus/krs/status-badges +
+// orphan enrichment-section TBD verify). Rewrite 6 imports у цьому файлі +
+// prospects-table.tsx (type-only krs-section imports).
 
 import { useState } from 'react'
 import { toast } from 'sonner'

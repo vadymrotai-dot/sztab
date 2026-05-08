@@ -1,6 +1,7 @@
-// app/(dashboard)/intelligence/prospects/page.tsx
+// app/intelligence/prospects/page.tsx
 // Phase 2.6 / Promt 3: Prospects table page (table-first variant A).
 // Reads scored_prospects view (RLS via security_invoker=true on view).
+// Phase 1 Krok 4 (08.05.2026) — moved з app/(dashboard)/intelligence/prospects/.
 
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/page-header'

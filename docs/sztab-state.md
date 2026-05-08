@@ -2331,3 +2331,47 @@ Per Protocol 27:
 
 Деталі у `docs/sztab-protocols.md`.
 
+
+---
+
+## 2026-05-08 — DAY WRAP — Phase 1 Dual-Workspace SHIPPED
+
+### Strategic context
+
+06-07.05.2026: Pikniko deal зірвався (5+ tygodni ghosting, неоплачена faktura 4042 PLN, договір не підписаний). Pivot на пряму sprzedaż Czudowа Marka до ~50 faktura клієнтам. Sztab development resumed з Dual-Workspace Architecture: ONE backend/DB/migrations, TWO UI workspace prefixes (`app/operacje/` + `app/intelligence/`). Pattern: HubSpot Hubs + Modular Monolith + CQRS (operational write vs analytical read on shared DB). Mета: понеділок 12.05 — start обзвонів з робочою операційкою.
+
+### Phase 1 ship (4 kroki, ~3.5 год total)
+
+| Krok | Що | Verified |
+|---|---|---|
+| 1/5 | `app/operacje/{layout,pulpit/page}.tsx` + `components/operacje/sidebar.tsx` (~330 lines) — amber theme, 6 nav entries (Pulpit/Zamówienia/Klienci/Faktury/Wysyłki/Kalendarz) | ✓ live JS DOM read |
+| 2/5 | `app/intelligence/{layout,pulpit/page}.tsx` + `components/intelligence/sidebar.tsx` (~370 lines) — indigo theme, 6 nav entries (Pulpit/Prospekti/Lookup NIP/Discovery/Dopasowania/Analizy) | ✓ live JS DOM read |
+| 3/5 | `components/workspace-switcher.tsx` (~184 lines) + `lib/workspace/switch.ts` (~42 lines) — DropdownMenu у sidebar header + server action setWorkspace cookie (sztab_workspace, 1y, lax, httpOnly:false) | ✓ bidirectional flow + cookie set+overwrite |
+| 4/5 | Migrated 6 files з `app/(dashboard)/intelligence/` → `app/intelligence/` атомарно (mv preserves bytes 1:1): root page, lookup, prospects + 2 _components, deep-discovery/[product_id] | ✓ /intelligence + /lookup + /prospects under INTELLIGENCE layout post-migration |
+
+### TSC progression (баseline 25 → 23 post-Phase-1, -2)
+
+- pre-Phase-1: 25 errors (всі pre-existing: scripts/diag-* + bzp-monitor + lookup tavily key + persons/[id] + zsrir)
+- post-Krok-1: 24 / post-Krok-2: 23 / post-Krok-3: 23 / post-Krok-4: 23
+- ZERO нових errors від коду Phase 1
+- Krok 4 mid-step мав 4 phantom errors у .next/types/validator.ts (stale typed-routes cache після mv) — resolved через `Remove-Item .next/types -Force` + page hit для regeneration
+
+### Verification methodology
+
+- Chrome MCP screenshot tool заблокований Next.js HMR websocket (document_idle timeout 45s на Turbopack dev). Stable workaround: JS DOM read через `javascript_tool`
+- Radix UI DropdownMenuTrigger потребує PointerEvents — synthetic `.click()` не trigger'ує. Note для майбутніх E2E tests (Playwright/Cypress nativni драйвери це обробляють)
+
+### Backlog items added (Phase 2 / cleanup)
+
+1. `app/(dashboard)/_shared/` (5 файлів: vat/gus/krs/status-badges-row/enrichment-section) → relocation до `app/intelligence/_shared/`. Сейчас кросс-tree imports працюють через `@/*` alias. NOT urgent. TODO comment у prospect-detail-panel.tsx
+2. BreadcrumbSeparator hydration error — shadcn рендерить `<li>` усередині `<li role="presentation">`, invalid HTML nesting. SSR/CSR mismatch на всіх сторінках з PageHeader. Page рендериться OK (React rebuild client-side, не functional break)
+3. Root `/` cookie-aware redirect (читає sztab_workspace → redirect /operacje/pulpit або /intelligence/pulpit) — ~15 хв, 1-2 файли
+4. PL slug standardization — sidebar entries label PL ("Prospekti"/"Lookup NIP") але hrefs EN (/prospects, /lookup). Cleanup-sprint
+5. enrichment-section.tsx confirmed NOT orphaned — used by 3 _shared peers (vat/gus/krs), deeper PS grep verified (Cowork's surface grep пропустив)
+6. middleware → proxy migration (Next.js 16 deprecation) — existing proxy.ts вже працює, видалити старий middleware
+7. 25→23 baseline tsc errors — окремий cleanup-sprint post Phase 2
+
+### Next: Phase 2 vs direct sales mobilization
+
+Phase 1 розблоковує operational tool path. Понеділок 12.05 обзвони використовуватимуть /operacje/* для tracking + /intelligence/lookup для NIP enrichment. Phase 2 priority Vadym вирішує: order intake AI parser, client pricing matrix, oferta generator, lifecycle tracker, faktury MVP через Fakturownia API.
+

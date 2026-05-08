@@ -38,3 +38,6 @@ scripts/cowork/zsrir-*.xlsx
 
 # tsc diagnostic logs
 tsc-*.txt
+
+# Chat context bundles (handoff only, not source)
+sztab-context-bundle.md
