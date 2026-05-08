@@ -45,6 +45,7 @@ import {
   CompassIcon,
   Link2Icon,
   ListChecksIcon,
+  LayersIcon,
   ChevronUpIcon,
   SettingsIcon,
   LogOutIcon,
@@ -146,6 +147,12 @@ export function IntelligenceSidebar({
       href: '/intelligence/prospects', // EN slug (existing route)
       icon: UsersIcon,
       badgeCount: counts.prospects,
+    },
+    {
+      // Phase 2 Krok 1.C1 — cohort management для curated outreach lists.
+      name: 'Cohorts',
+      href: '/intelligence/cohorts',
+      icon: LayersIcon,
     },
     {
       name: 'Lookup NIP',

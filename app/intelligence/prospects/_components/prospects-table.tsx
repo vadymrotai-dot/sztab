@@ -31,6 +31,7 @@ import {
 import { cn } from '@/lib/utils'
 
 import { ProspectDetailPanel } from './prospect-detail-panel'
+import { BulkActionBar, type CohortOption } from './bulk-action-bar'
 
 // ────────────────────────────────────────────────────────────
 // Types
@@ -260,9 +261,16 @@ function filterToUrl(f: FilterState): string {
 
 export interface ProspectsTableProps {
   initialProspects: ProspectRow[]
+  /** Phase 2 Krok 1.C1 — cohort options для bulk-action dropdown.
+   *  Server-fetched у parent /intelligence/prospects/page.tsx. Empty array
+   *  показує "Brak cohortów" placeholder + opens "+ Nowa cohort" dialog. */
+  cohorts?: CohortOption[]
 }
 
-export function ProspectsTable({ initialProspects }: ProspectsTableProps) {
+export function ProspectsTable({
+  initialProspects,
+  cohorts = [],
+}: ProspectsTableProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [pending, startTransition] = useTransition()
@@ -513,29 +521,9 @@ export function ProspectsTable({ initialProspects }: ProspectsTableProps) {
         </div>
       </div>
 
-      {/* Bulk action bar */}
-      {selected.size > 0 && (
-        <div className="flex items-center gap-3 rounded-md border border-primary/30 bg-primary/5 p-3">
-          <span className="text-sm font-medium">
-            {selected.size} zaznaczonych
-          </span>
-          <Button
-            size="sm"
-            onClick={handleAddToClients}
-            disabled={pending}
-          >
-            {pending ? 'Dodawanie…' : 'Dodaj do klientów'}
-          </Button>
-          <Button
-            variant="link"
-            size="sm"
-            onClick={clearSelection}
-            className="ml-auto h-auto p-0 text-xs text-muted-foreground"
-          >
-            Wyczyść zaznaczenie
-          </Button>
-        </div>
-      )}
+      {/* Bulk action bar — Phase 2 Krok 1.C1 (08.05.2026):
+          inline bar relocated to sticky bottom + extended з cohort UI.
+          See <BulkActionBar /> below table closing tag. */}
 
       {/* Table */}
       {filtered.length === 0 ? (
@@ -687,6 +675,17 @@ export function ProspectsTable({ initialProspects }: ProspectsTableProps) {
             </TableBody>
           </Table>
         </div>
+      )}
+
+      {/* Sticky bulk action bar — Phase 2 Krok 1.C1 */}
+      {selected.size > 0 && (
+        <BulkActionBar
+          selectedIds={Array.from(selected)}
+          cohorts={cohorts}
+          onAddToClients={handleAddToClients}
+          onClear={clearSelection}
+          pending={pending}
+        />
       )}
 
       {/* Detail panel */}

@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 import { ProspectsTable, type ProspectRow } from './_components/prospects-table'
+import type { CohortOption } from './_components/bulk-action-bar'
 
 export const dynamic = 'force-dynamic'
 
@@ -200,6 +201,26 @@ export default async function ProspectsPage({
     if (refetch.error) error = refetch.error
   }
 
+  // Phase 2 Krok 1.C1 — fetch cohorts list для bulk-action dropdown.
+  // Embedded count via PostgREST: cohort_members(count) → [{count: N}].
+  // Failure here is non-fatal (cohorts dropdown shows empty placeholder).
+  const { data: cohortRows } = await supabase
+    .from('cohorts')
+    .select('id, name, cohort_members(count)')
+    .order('created_at', { ascending: false })
+
+  const cohorts: CohortOption[] = (
+    (cohortRows ?? []) as Array<{
+      id: string
+      name: string
+      cohort_members: { count: number }[] | null
+    }>
+  ).map((c) => ({
+    id: c.id,
+    name: c.name,
+    member_count: c.cohort_members?.[0]?.count ?? 0,
+  }))
+
   if (error) {
     return (
       <div className="flex flex-col">
@@ -283,7 +304,10 @@ export default async function ProspectsPage({
         </div>
       )}
 
-      <ProspectsTable initialProspects={(prospects ?? []) as ProspectRow[]} />
+      <ProspectsTable
+        initialProspects={(prospects ?? []) as ProspectRow[]}
+        cohorts={cohorts}
+      />
 
       {/* Pagination footer (Phase 2 Krok 1.B) */}
       <div className="mt-4 flex items-center justify-between px-6 pb-6">
