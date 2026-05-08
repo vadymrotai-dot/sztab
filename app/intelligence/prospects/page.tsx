@@ -4,11 +4,17 @@
 // Phase 1 Krok 4 (08.05.2026) — moved з app/(dashboard)/intelligence/prospects/.
 // Phase 2 Krok 1.A (post-08.05) — server-side filter "Тип фірми" via
 // ?type= CSV param (fop / spzoo / sa / inne, multi-select). Default — всі.
+// Phase 2 Krok 1.B (08.05.2026 evening) — server-side pagination via
+// ?page= + ?size= params. Default size=50, valid sizes [50, 100, 200].
+// Removed hard limit(100) — unblocks 205 KRS prospekti previously invisible
+// (поточний pool: 100 ФОП + 305 sp.z o.o. — без pagination Vadym бачив
+// тільки top 100 по horeca_meta_score).
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 import { ProspectsTable, type ProspectRow } from './_components/prospects-table'
 
@@ -25,6 +31,26 @@ const TYPE_OPTIONS = [
 
 type TypeId = (typeof TYPE_OPTIONS)[number]['id']
 const ALL_TYPES = TYPE_OPTIONS.map((o) => o.id) as TypeId[]
+
+// ─── Pagination constants ────────────────────────────────────────
+
+const PAGE_SIZES = [50, 100, 200] as const
+type PageSize = (typeof PAGE_SIZES)[number]
+const DEFAULT_SIZE: PageSize = 50
+
+function parseSize(raw: string | undefined): PageSize {
+  const n = parseInt(raw ?? '', 10)
+  if ((PAGE_SIZES as readonly number[]).includes(n)) return n as PageSize
+  return DEFAULT_SIZE
+}
+
+function parsePage(raw: string | undefined): number {
+  const n = parseInt(raw ?? '', 10)
+  if (!Number.isFinite(n) || n < 1) return 1
+  return n
+}
+
+// ─── Type param parsing ─────────────────────────────────────────
 
 function parseTypeParam(raw: string | undefined): Set<TypeId> | null {
   if (!raw) return null // null sentinel = "all" (no filter)
@@ -63,24 +89,64 @@ function buildTypeFilterExpression(selected: Set<TypeId>): string | null {
   return parts.length > 0 ? parts.join(',') : null
 }
 
-/** Build href що toggles single TypeId у current selection.
- *  Default (selected=null = all) → toggling одне deselect → set з решти 3.
- *  Якщо result == ALL_TYPES (всі) → drop param (back to default).
- *  Якщо result порожнє → drop param too (показати всі знов).
+// ─── URL builders ────────────────────────────────────────────────
+
+/** Convert selected Set to canonical CSV string (preserves ALL_TYPES order),
+ *  or null якщо "all"/empty (means "drop ?type= param"). */
+function selectedToTypeStr(selected: Set<TypeId> | null): string | null {
+  if (!selected) return null
+  if (selected.size === 0 || selected.size === ALL_TYPES.length) return null
+  const ordered = ALL_TYPES.filter((t) => selected.has(t))
+  return ordered.length > 0 ? ordered.join(',') : null
+}
+
+/** Canonical URL builder. Drops params at default (size=50, page=1, type=all). */
+function buildHref(opts: {
+  type?: string | null
+  page?: number
+  size?: PageSize
+}): string {
+  const sp = new URLSearchParams()
+  if (opts.type) sp.set('type', opts.type)
+  if (opts.page && opts.page > 1) sp.set('page', String(opts.page))
+  if (opts.size && opts.size !== DEFAULT_SIZE) sp.set('size', String(opts.size))
+  const s = sp.toString()
+  return s ? `/intelligence/prospects?${s}` : '/intelligence/prospects'
+}
+
+/** Toggle single TypeId; resets page to 1; preserves size.
+ *  - Toggling одне з default (selected=null=all) → deselect → решта 3.
+ *  - Result == ALL_TYPES або порожнє → drop ?type= (back to default).
  */
-function chipHref(typeId: TypeId, selected: Set<TypeId> | null): string {
+function chipHref(
+  typeId: TypeId,
+  selected: Set<TypeId> | null,
+  size: PageSize,
+): string {
   const next = selected ? new Set(selected) : new Set<TypeId>(ALL_TYPES)
   if (next.has(typeId)) {
     next.delete(typeId)
   } else {
     next.add(typeId)
   }
-  if (next.size === 0 || next.size === ALL_TYPES.length) {
-    return '/intelligence/prospects'
-  }
-  // Preserve canonical order для stable URLs
-  const ordered = ALL_TYPES.filter((t) => next.has(t))
-  return `/intelligence/prospects?type=${ordered.join(',')}`
+  const typeStr = selectedToTypeStr(next)
+  return buildHref({ type: typeStr, size })
+}
+
+/** Set explicit page; preserves type + size. */
+function pageHref(
+  target: number,
+  selected: Set<TypeId> | null,
+  size: PageSize,
+): string {
+  const typeStr = selectedToTypeStr(selected)
+  return buildHref({ type: typeStr, page: target, size })
+}
+
+/** Set page size; resets page to 1; preserves type. */
+function sizeHref(target: PageSize, selected: Set<TypeId> | null): string {
+  const typeStr = selectedToTypeStr(selected)
+  return buildHref({ type: typeStr, size: target })
 }
 
 // ─── Page ────────────────────────────────────────────────────────
@@ -88,30 +154,51 @@ function chipHref(typeId: TypeId, selected: Set<TypeId> | null): string {
 export default async function ProspectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string }>
+  searchParams: Promise<{ type?: string; page?: string; size?: string }>
 }) {
   const sp = await searchParams
   const selected = parseTypeParam(sp.type)
+  const size = parseSize(sp.size)
+  let page = parsePage(sp.page)
 
   const supabase = await createClient()
 
-  // Default ordering: meta DESC, NULLS LAST (unscored prospekti на dnie).
-  // Limit 100 — UI mode dla 25-100 рекордів; pagination V2 (Krok 1.B)
-  // gdy >100 потрібно бачити всі (e.g. KRS 305 prospekti).
-  let query = supabase
-    .from('scored_prospects')
-    .select('*')
-    .order('horeca_meta_score', { ascending: false, nullsFirst: false })
-    .limit(100)
-
-  if (selected) {
-    const expr = buildTypeFilterExpression(selected)
-    if (expr) {
-      query = query.or(expr)
+  // Query factory — re-builds для optional refetch якщо page > totalPages.
+  function buildQuery() {
+    let q = supabase
+      .from('scored_prospects')
+      .select('*', { count: 'exact' })
+      .order('horeca_meta_score', { ascending: false, nullsFirst: false })
+    if (selected) {
+      const expr = buildTypeFilterExpression(selected)
+      if (expr) {
+        q = q.or(expr)
+      }
     }
+    return q
   }
 
-  const { data: prospects, error } = await query
+  let { data: prospects, count, error } = await buildQuery().range(
+    (page - 1) * size,
+    page * size - 1,
+  )
+
+  const totalCount = count ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalCount / size))
+
+  // If user-requested page is past end → fallback to last valid page.
+  // (Edge: filter zmiana може reduce pool < current page * size.)
+  let pageCorrected = false
+  if (page > totalPages && totalCount > 0) {
+    page = totalPages
+    pageCorrected = true
+    const refetch = await buildQuery().range(
+      (page - 1) * size,
+      page * size - 1,
+    )
+    prospects = refetch.data
+    if (refetch.error) error = refetch.error
+  }
 
   if (error) {
     return (
@@ -134,6 +221,16 @@ export default async function ProspectsPage({
   }
 
   const isAllActive = selected === null
+
+  // Range counter "{N1} – {N2} z {total}".
+  // Empty result → "0 – 0 z 0".
+  const rowsLen = prospects?.length ?? 0
+  const rangeStart = totalCount === 0 ? 0 : (page - 1) * size + 1
+  const rangeEnd = totalCount === 0 ? 0 : (page - 1) * size + rowsLen
+  const counterText = `${rangeStart} – ${rangeEnd} z ${totalCount}`
+
+  const prevDisabled = page <= 1
+  const nextDisabled = page >= totalPages || totalCount === 0
 
   return (
     <div className="flex flex-col">
@@ -158,7 +255,7 @@ export default async function ProspectsPage({
               asChild
             >
               <Link
-                href={chipHref(opt.id, selected)}
+                href={chipHref(opt.id, selected, size)}
                 className={active ? 'pointer-events-auto' : undefined}
               >
                 {opt.label}
@@ -168,15 +265,80 @@ export default async function ProspectsPage({
         })}
         {!isAllActive && (
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/intelligence/prospects">Reset</Link>
+            <Link href={buildHref({ size })}>Reset</Link>
           </Button>
         )}
         <span className="ml-auto text-xs text-muted-foreground">
-          {prospects?.length ?? 0} z 100 max (Krok 1.B = pagination)
+          {counterText}
         </span>
       </div>
 
+      {/* Page-correction note (Phase 2 Krok 1.B) */}
+      {pageCorrected && (
+        <div className="px-6 pt-2">
+          <p className="text-xs text-muted-foreground">
+            Перенаправлено на сторінку {page} (попередня сторінка поза
+            межами для поточного фільтра).
+          </p>
+        </div>
+      )}
+
       <ProspectsTable initialProspects={(prospects ?? []) as ProspectRow[]} />
+
+      {/* Pagination footer (Phase 2 Krok 1.B) */}
+      <div className="mt-4 flex items-center justify-between px-6 pb-6">
+        <p className="text-sm text-muted-foreground">{counterText}</p>
+        <div className="flex items-center gap-2">
+          {/* Size selector — STEP 4 */}
+          <span className="text-xs text-muted-foreground">Per page:</span>
+          {PAGE_SIZES.map((s) => (
+            <Button
+              key={s}
+              asChild
+              variant={size === s ? 'default' : 'outline'}
+              size="sm"
+            >
+              <Link href={sizeHref(s, selected)}>{s}</Link>
+            </Button>
+          ))}
+
+          {/* Spacer */}
+          <span className="mx-2 h-4 w-px bg-border" aria-hidden />
+
+          {/* Prev/Next — STEP 3 */}
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            disabled={prevDisabled}
+            className={cn(prevDisabled && 'pointer-events-none opacity-50')}
+          >
+            <Link
+              href={prevDisabled ? '#' : pageHref(page - 1, selected, size)}
+              aria-disabled={prevDisabled || undefined}
+            >
+              ← Poprzednia
+            </Link>
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {page} / {totalPages}
+          </span>
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            disabled={nextDisabled}
+            className={cn(nextDisabled && 'pointer-events-none opacity-50')}
+          >
+            <Link
+              href={nextDisabled ? '#' : pageHref(page + 1, selected, size)}
+              aria-disabled={nextDisabled || undefined}
+            >
+              Następna →
+            </Link>
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }
