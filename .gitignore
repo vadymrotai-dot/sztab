@@ -38,6 +38,9 @@ scripts/cowork/zsrir-*.xlsx
 # Phase B paralel sync — per-PKD-woj state files
 .krs-progress-*.json
 .krs-progress-*.json.tmp
+# Phase A.2 KRS rozdzial-ogolny enrichment state
+.enrich-krs-rozdzial-progress.json
+.enrich-krs-rozdzial-progress.json.tmp
 
 # tsc diagnostic logs
 tsc-*.txt
