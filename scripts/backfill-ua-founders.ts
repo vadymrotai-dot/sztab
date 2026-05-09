@@ -73,6 +73,33 @@ interface PersonLinkRowRaw {
     | null
 }
 
+/** Phase B HOTFIX (10.05.2026) — pagination wrapper.
+ *  Supabase JS default LIMIT 1000 silently caps fetches. KRS sync доcadił
+ *  +1416 sp.z o.o. → ceidg_prospects тепер ~2761 rows. Без pagination
+ *  backfill processing тільки first 1000 → нові firms без ua_founders_signal. */
+async function fetchAllPaginated<T>(
+  table: 'clients' | 'ceidg_prospects',
+  selectColumns: string,
+): Promise<T[]> {
+  const PAGE = 1000
+  let from = 0
+  const all: T[] = []
+  while (true) {
+    const { data, error } = await supabase
+      .from(table)
+      .select(selectColumns)
+      .range(from, from + PAGE - 1)
+    if (error) {
+      throw new Error(`${table} pagination at offset ${from}: ${error.message}`)
+    }
+    if (!data || data.length === 0) break
+    all.push(...(data as T[]))
+    from += data.length
+    if (data.length < PAGE) break
+  }
+  return all
+}
+
 async function fetchPersonNames(
   table: 'client_id' | 'prospect_id',
   entityId: string,
@@ -106,15 +133,21 @@ async function backfillClients(): Promise<Stats> {
   // People-name heuristic sources для clients:
   //   1. crbr_beneficiaries (verified UA citizenship/residency)
   //   2. persons via person_company_links (heuristic-only)
-  const { data: clients, error } = await supabase
-    .from('clients')
-    .select('id, title')
-
-  if (error) {
-    console.error('❌ clients fetch failed:', error.message)
+  // Phase B HOTFIX (10.05.2026) — pagination wraps Supabase 1000-row default.
+  let clients: Array<{ id: string; title: string }>
+  try {
+    clients = await fetchAllPaginated<{ id: string; title: string }>(
+      'clients',
+      'id, title',
+    )
+  } catch (e) {
+    console.error(
+      '❌ clients fetch failed:',
+      e instanceof Error ? e.message : String(e),
+    )
     return stats
   }
-  if (!clients || clients.length === 0) {
+  if (clients.length === 0) {
     console.log('  (no clients)')
     return stats
   }
@@ -122,7 +155,7 @@ async function backfillClients(): Promise<Stats> {
   stats.total = clients.length
   console.log(`  → ${stats.total} clients to process\n`)
 
-  for (const c of clients as Array<{ id: string; title: string }>) {
+  for (const c of clients) {
     try {
       // CRBR beneficiaries (verified UA citizenship/residency)
       const { data: crbr } = await supabase
@@ -168,17 +201,30 @@ async function backfillClients(): Promise<Stats> {
 
 async function backfillProspects(): Promise<Stats> {
   const stats = emptyStats()
-  console.log('📋 Fetching ceidg_prospects...')
+  console.log('📋 Fetching ceidg_prospects (з pagination)...')
 
-  const { data: prospects, error } = await supabase
-    .from('ceidg_prospects')
-    .select('id, name, decision_maker_name, owner_name')
-
-  if (error) {
-    console.error('❌ prospects fetch failed:', error.message)
+  // Phase B HOTFIX (10.05.2026) — pagination wraps Supabase 1000-row default.
+  // Post-KRS sync ceidg_prospects ~2761 rows (1080 ФОПи + 1681 sp.z o.o.).
+  type ProspectFetch = {
+    id: string
+    name: string
+    decision_maker_name: string | null
+    owner_name: string | null
+  }
+  let prospects: ProspectFetch[]
+  try {
+    prospects = await fetchAllPaginated<ProspectFetch>(
+      'ceidg_prospects',
+      'id, name, decision_maker_name, owner_name',
+    )
+  } catch (e) {
+    console.error(
+      '❌ prospects fetch failed:',
+      e instanceof Error ? e.message : String(e),
+    )
     return stats
   }
-  if (!prospects || prospects.length === 0) {
+  if (prospects.length === 0) {
     console.log('  (no prospects)')
     return stats
   }
@@ -186,12 +232,7 @@ async function backfillProspects(): Promise<Stats> {
   stats.total = prospects.length
   console.log(`  → ${stats.total} prospects to process\n`)
 
-  for (const p of prospects as Array<{
-    id: string
-    name: string
-    decision_maker_name: string | null
-    owner_name: string | null
-  }>) {
+  for (const p of prospects) {
     try {
       const personNames = await fetchPersonNames('prospect_id', p.id)
 

@@ -393,6 +393,40 @@ interface BulkSummary {
   errors: string[]
 }
 
+// Phase B HOTFIX (10.05.2026) — pagination wraps Supabase 1000-row default.
+// Post-KRS sync ceidg_prospects ~2761 rows (1080 ФОПи + 1681 sp.z o.o.).
+// Без pagination bulkRecomputeAll silently processed first 1000 only,
+// нові firms не отримували matches → "де нові sp.z o.o.?"
+async function fetchAllPaginated<T>(
+  supabase: SupabaseClient,
+  table: 'clients' | 'ceidg_prospects',
+  selectColumns: string,
+  orFilter?: string,
+): Promise<{ data: T[]; error: string | null }> {
+  const PAGE = 1000
+  let from = 0
+  const all: T[] = []
+  while (true) {
+    let q = supabase
+      .from(table)
+      .select(selectColumns)
+      .range(from, from + PAGE - 1)
+    if (orFilter) q = q.or(orFilter)
+    const { data, error } = await q
+    if (error) {
+      return {
+        data: all,
+        error: `${table} pagination at offset ${from}: ${error.message}`,
+      }
+    }
+    if (!data || data.length === 0) break
+    all.push(...(data as T[]))
+    from += data.length
+    if (data.length < PAGE) break
+  }
+  return { data: all, error: null }
+}
+
 export async function bulkRecomputeAll(
   supabase: SupabaseClient,
   options: { clientsOnly?: boolean; prospectsOnly?: boolean } = {},
@@ -419,13 +453,14 @@ export async function bulkRecomputeAll(
 
   // Clients
   if (!options.prospectsOnly) {
-    const { data: clientRows, error: cErr } = await supabase
-      .from('clients')
-      .select(
-        'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile, bankruptcy_flag, liquidation_flag, restructuring_flag, suspended_at, branch_offices_count, last_filing_date, ua_founders_signal',
-      )
-    if (cErr) summary.errors.push(`clients fetch: ${cErr.message}`)
-    const rows = (clientRows ?? []) as ClientRow[]
+    // Phase B HOTFIX — pagination wrapper instead of single SELECT (1000-cap)
+    const clientFetch = await fetchAllPaginated<ClientRow>(
+      supabase,
+      'clients',
+      'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile, bankruptcy_flag, liquidation_flag, restructuring_flag, suspended_at, branch_offices_count, last_filing_date, ua_founders_signal',
+    )
+    if (clientFetch.error) summary.errors.push(`clients fetch: ${clientFetch.error}`)
+    const rows = clientFetch.data
     summary.clients_processed = rows.length
 
     // Delete existing client-side matches (для всіх клієнтів — bulk fresh
@@ -458,24 +493,26 @@ export async function bulkRecomputeAll(
   // Prospects (HoReCa pre-filter via SQL — division 10/11/46/47/56)
   if (!options.clientsOnly) {
     // Use SQL filter в Postgres (faster ніж pulling всіх then filter app-side).
+    // Phase B HOTFIX — pagination wraps 1000-cap. ceidg_prospects post-KRS
+    // sync ~2761 rows; без pagination 1416 нових sp.z o.o. silent dropped.
     const horecaPattern = `^(${HORECA_DIVISIONS.join('|')})`
-    const { data: prospectRows, error: pErr } = await supabase
-      .from('ceidg_prospects')
-      .select(
+    const orFilter = `pkd_main.match.${horecaPattern},pkd_all.cs.{${HORECA_DIVISIONS.map((d) => `"${d}"`).join(',')}}`
+    const prospectFetch = await fetchAllPaginated<ProspectRow>(
+      supabase,
+      'ceidg_prospects',
+      'id, name, nip, vat_status, gus_status, data_rozpoczecia, krs_legal_form, krs_management_board, pkd_main, pkd_all, wojewodztwo, ua_founders_signal',
+      orFilter,
+    )
+    if (prospectFetch.error) {
+      // Fallback: pull всіх + filter app-side (in case .or syntax не fits)
+      const allFetch = await fetchAllPaginated<ProspectRow>(
+        supabase,
+        'ceidg_prospects',
         'id, name, nip, vat_status, gus_status, data_rozpoczecia, krs_legal_form, krs_management_board, pkd_main, pkd_all, wojewodztwo, ua_founders_signal',
       )
-      .or(
-        `pkd_main.match.${horecaPattern},pkd_all.cs.{${HORECA_DIVISIONS.map((d) => `"${d}"`).join(',')}}`,
-      )
-    if (pErr) {
-      // Fallback: pull всіх + filter app-side (in case .or syntax не fits)
-      const { data: allRows, error: pErr2 } = await supabase
-        .from('ceidg_prospects')
-        .select(
-          'id, name, nip, vat_status, gus_status, data_rozpoczecia, krs_legal_form, krs_management_board, pkd_main, pkd_all, wojewodztwo, ua_founders_signal',
-        )
-      if (pErr2) summary.errors.push(`prospects fetch fallback: ${pErr2.message}`)
-      const filtered = ((allRows ?? []) as ProspectRow[]).filter((p) => {
+      if (allFetch.error)
+        summary.errors.push(`prospects fetch fallback: ${allFetch.error}`)
+      const filtered = allFetch.data.filter((p) => {
         const main = p.pkd_main ?? ''
         const allArr = p.pkd_all ?? []
         return (
@@ -506,7 +543,7 @@ export async function bulkRecomputeAll(
         else summary.pairs_inserted += chunk.length
       }
     } else {
-      const rows = (prospectRows ?? []) as ProspectRow[]
+      const rows = prospectFetch.data
       summary.prospects_processed = rows.length
 
       const ids = rows.map((p) => p.id)
