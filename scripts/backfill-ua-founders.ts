@@ -9,9 +9,11 @@
 //
 // Sources:
 //   - clients: crbr_beneficiaries (verified UA citizenship/residency) +
-//     decision_maker_name + persons via person_company_links
+//     persons via person_company_links (active relations: data_do IS NULL)
+//     NOTE: clients table NIE має decision_maker_name (тільки ceidg_prospects).
+//     Phase A.1 fix (09.05.2026 evening) — removed bad SELECT.
 //   - ceidg_prospects: decision_maker_name + owner_name + persons via
-//     person_company_links (CRBR не covers JDG)
+//     person_company_links (CRBR не covers JDG sole-proprietors)
 //
 // Per Vadym Q5: detected=true тільки для 'verified' + 'high' confidence.
 // 'medium'/'low' stored з detected=false для debugging.
@@ -62,30 +64,51 @@ interface CrbrRow {
   obywatelstwa: string[]
 }
 
-interface PersonLinkRow {
-  persons: { imie: string; nazwisko: string } | null
+/** Supabase JS returns nested resources як array навіть якщо FK is single.
+ *  Flexible shape — support both для safety + cast through unknown. */
+interface PersonLinkRowRaw {
+  persons:
+    | { imie: string; nazwisko: string }
+    | Array<{ imie: string; nazwisko: string }>
+    | null
 }
 
 async function fetchPersonNames(
   table: 'client_id' | 'prospect_id',
   entityId: string,
 ): Promise<string[]> {
+  // Active relations only — data_do IS NULL означає роль не закінчена.
+  // jest_decyzyjny не filter'имо — heuristic не вимагає decision-maker
+  // status (просто any linked person).
   const { data: links } = await supabase
     .from('person_company_links')
     .select('persons(imie, nazwisko)')
     .eq(table, entityId)
-  return ((links ?? []) as PersonLinkRow[])
-    .filter((l) => l.persons)
-    .map((l) => `${l.persons!.imie} ${l.persons!.nazwisko}`)
+    .is('data_do', null)
+
+  const rows = (links ?? []) as unknown as PersonLinkRowRaw[]
+  const names: string[] = []
+  for (const l of rows) {
+    if (!l.persons) continue
+    const obj = Array.isArray(l.persons) ? l.persons[0] : l.persons
+    if (obj?.imie && obj?.nazwisko) {
+      names.push(`${obj.imie} ${obj.nazwisko}`)
+    }
+  }
+  return names
 }
 
 async function backfillClients(): Promise<Stats> {
   const stats = emptyStats()
   console.log('📋 Fetching clients...')
 
+  // clients table NIE має decision_maker_name (per Phase A.1 fix).
+  // People-name heuristic sources для clients:
+  //   1. crbr_beneficiaries (verified UA citizenship/residency)
+  //   2. persons via person_company_links (heuristic-only)
   const { data: clients, error } = await supabase
     .from('clients')
-    .select('id, title, decision_maker_name')
+    .select('id, title')
 
   if (error) {
     console.error('❌ clients fetch failed:', error.message)
@@ -99,23 +122,20 @@ async function backfillClients(): Promise<Stats> {
   stats.total = clients.length
   console.log(`  → ${stats.total} clients to process\n`)
 
-  for (const c of clients as Array<{
-    id: string
-    title: string
-    decision_maker_name: string | null
-  }>) {
+  for (const c of clients as Array<{ id: string; title: string }>) {
     try {
-      // CRBR beneficiaries
+      // CRBR beneficiaries (verified UA citizenship/residency)
       const { data: crbr } = await supabase
         .from('crbr_beneficiaries')
         .select('imie, nazwisko, kraj_rezydencji, obywatelstwa')
         .eq('client_id', c.id)
 
+      // Persons via person_company_links (active relations, heuristic)
       const personNames = await fetchPersonNames('client_id', c.id)
 
       const signal = buildUaFoundersSignal({
         crbrBeneficiaries: (crbr ?? []) as CrbrRow[],
-        decisionMakerName: c.decision_maker_name,
+        // decisionMakerName омітнутий — clients не має цієї колонки
         personNames,
       })
 
