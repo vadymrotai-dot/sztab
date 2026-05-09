@@ -17,6 +17,9 @@ export interface S2ABonuses {
   branches: number
   bo_pl: number
   pkd_pivot: number
+  /** Phase B (10.05.2026) — UA founder boost +10 коли target.s2a_signals
+   *  має ua_founder_detected=true (read from ua_founders_signal->>detected). */
+  ua_founder_boost: number
 }
 
 export interface S2AResult {
@@ -37,7 +40,13 @@ export function computeS2ASignals(target: MatchTarget): S2AResult {
     suspended: 0,
     stale_filing: 0,
   }
-  const bonuses: S2ABonuses = { revenue: 0, branches: 0, bo_pl: 0, pkd_pivot: 0 }
+  const bonuses: S2ABonuses = {
+    revenue: 0,
+    branches: 0,
+    bo_pl: 0,
+    pkd_pivot: 0,
+    ua_founder_boost: 0,
+  }
 
   // Penalties
   if (sig.bankruptcy_flag) {
@@ -91,6 +100,15 @@ export function computeS2ASignals(target: MatchTarget): S2AResult {
   if (sig.pkd_changed_recently) {
     bonuses.pkd_pivot = 5
     reasons.push('+5 pkd pivot last 6mo')
+  }
+
+  // Phase B (10.05.2026) — UA founder boost. detected=true тільки для
+  // verified (CRBR-confirmed UA citizenship/residency) + high (UK first +
+  // UK surname без PL signal) per Phase A Q5. Transparent у bonuses JSONB
+  // (subscore_breakdown) + reason_codes — AI rescore reads context.
+  if (sig.ua_founder_detected) {
+    bonuses.ua_founder_boost = 10
+    reasons.push('+10 ua_founder_match')
   }
 
   return { penalties, bonuses, reasons }

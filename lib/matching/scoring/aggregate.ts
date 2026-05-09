@@ -134,7 +134,11 @@ export function aggregateMatch(
     s2a.penalties.suspended +
     s2a.penalties.stale_filing
   const bonusesSum =
-    s2a.bonuses.revenue + s2a.bonuses.branches + s2a.bonuses.bo_pl + s2a.bonuses.pkd_pivot
+    s2a.bonuses.revenue +
+    s2a.bonuses.branches +
+    s2a.bonuses.bo_pl +
+    s2a.bonuses.pkd_pivot +
+    s2a.bonuses.ua_founder_boost
 
   // 8. Aggregate
   const subTotal =

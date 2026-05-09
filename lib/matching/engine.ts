@@ -60,6 +60,9 @@ interface ClientRow {
   latest_revenue_pln?: number | string | null
   /** Joined: EXISTS crbr_beneficiaries з kraj_rezydencji='PL' */
   has_bo_pl?: boolean | null
+  /** Phase B (10.05.2026) — UA founder signal cache (jsonb).
+   *  Read field detected:boolean → +10 boost у aggregateMatch. */
+  ua_founders_signal?: { detected?: boolean } | null
 }
 
 interface ProspectRow {
@@ -74,6 +77,8 @@ interface ProspectRow {
   pkd_main: string | null
   pkd_all: string[] | null
   wojewodztwo: string | null
+  /** Phase B (10.05.2026) — UA founder signal cache. */
+  ua_founders_signal?: { detected?: boolean } | null
 }
 
 function clientToTarget(row: ClientRow): MatchTarget {
@@ -115,6 +120,8 @@ function clientToTarget(row: ClientRow): MatchTarget {
       latest_revenue_pln: Number.isFinite(revenuePln as number) ? (revenuePln as number) : null,
       has_bo_pl: row.has_bo_pl ?? false,
       pkd_changed_recently: false,
+      // Phase B (10.05.2026) — UA founder boost trigger.
+      ua_founder_detected: row.ua_founders_signal?.detected ?? false,
     },
   }
 }
@@ -143,6 +150,13 @@ function prospectToTarget(row: ProspectRow): MatchTarget {
     voivodeship: row.wojewodztwo,
     chain_name: null,
     loyalty_tier: null,
+    // Phase B (10.05.2026) — UA founder boost trigger через s2a_signals.
+    // Prospects не мають інших rejestr.io signals (не KRS-enriched), тому
+    // решта поля default false/null/0. Це не shutdownит computeS2ASignals —
+    // sig.X access поля з ?? safe defaults.
+    s2a_signals: {
+      ua_founder_detected: row.ua_founders_signal?.detected ?? false,
+    },
   }
 }
 
@@ -248,7 +262,7 @@ export async function computeMatchesForClient(
   const { data, error: cErr } = await supabase
     .from('clients')
     .select(
-      'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile, bankruptcy_flag, liquidation_flag, restructuring_flag, suspended_at, branch_offices_count, last_filing_date',
+      'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile, bankruptcy_flag, liquidation_flag, restructuring_flag, suspended_at, branch_offices_count, last_filing_date, ua_founders_signal',
     )
     .eq('id', clientId)
     .single()
@@ -280,7 +294,7 @@ export async function computeMatchesForProspect(
   const { data, error } = await supabase
     .from('ceidg_prospects')
     .select(
-      'id, name, nip, vat_status, gus_status, data_rozpoczecia, krs_legal_form, krs_management_board, pkd_main, pkd_all, wojewodztwo',
+      'id, name, nip, vat_status, gus_status, data_rozpoczecia, krs_legal_form, krs_management_board, pkd_main, pkd_all, wojewodztwo, ua_founders_signal',
     )
     .eq('id', prospectId)
     .single()
@@ -338,7 +352,7 @@ export async function computeMatchesForProduct(
   const { data: clientRows } = await supabase
     .from('clients')
     .select(
-      'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile, bankruptcy_flag, liquidation_flag, restructuring_flag, suspended_at, branch_offices_count, last_filing_date',
+      'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile, bankruptcy_flag, liquidation_flag, restructuring_flag, suspended_at, branch_offices_count, last_filing_date, ua_founders_signal',
     )
   const clientRowsArr = (clientRows ?? []) as ClientRow[]
   const clientInserts: MatchUpsertRow[] = []
@@ -355,7 +369,7 @@ export async function computeMatchesForProduct(
   const { data: prospectRows } = await supabase
     .from('ceidg_prospects')
     .select(
-      'id, name, nip, vat_status, gus_status, data_rozpoczecia, krs_legal_form, krs_management_board, pkd_main, pkd_all, wojewodztwo',
+      'id, name, nip, vat_status, gus_status, data_rozpoczecia, krs_legal_form, krs_management_board, pkd_main, pkd_all, wojewodztwo, ua_founders_signal',
     )
   const prospectRowsArr = (prospectRows ?? []) as ProspectRow[]
   const prospectInserts: MatchUpsertRow[] = []
@@ -408,7 +422,7 @@ export async function bulkRecomputeAll(
     const { data: clientRows, error: cErr } = await supabase
       .from('clients')
       .select(
-        'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile, bankruptcy_flag, liquidation_flag, restructuring_flag, suspended_at, branch_offices_count, last_filing_date',
+        'id, title, nip, vat_status, gus_status, registered_date, krs_legal_form, krs_management_board, pkd_2025_codes, pkd_2007_codes, region, business_profile, bankruptcy_flag, liquidation_flag, restructuring_flag, suspended_at, branch_offices_count, last_filing_date, ua_founders_signal',
       )
     if (cErr) summary.errors.push(`clients fetch: ${cErr.message}`)
     const rows = (clientRows ?? []) as ClientRow[]
@@ -448,7 +462,7 @@ export async function bulkRecomputeAll(
     const { data: prospectRows, error: pErr } = await supabase
       .from('ceidg_prospects')
       .select(
-        'id, name, nip, vat_status, gus_status, data_rozpoczecia, krs_legal_form, krs_management_board, pkd_main, pkd_all, wojewodztwo',
+        'id, name, nip, vat_status, gus_status, data_rozpoczecia, krs_legal_form, krs_management_board, pkd_main, pkd_all, wojewodztwo, ua_founders_signal',
       )
       .or(
         `pkd_main.match.${horecaPattern},pkd_all.cs.{${HORECA_DIVISIONS.map((d) => `"${d}"`).join(',')}}`,
@@ -458,7 +472,7 @@ export async function bulkRecomputeAll(
       const { data: allRows, error: pErr2 } = await supabase
         .from('ceidg_prospects')
         .select(
-          'id, name, nip, vat_status, gus_status, data_rozpoczecia, krs_legal_form, krs_management_board, pkd_main, pkd_all, wojewodztwo',
+          'id, name, nip, vat_status, gus_status, data_rozpoczecia, krs_legal_form, krs_management_board, pkd_main, pkd_all, wojewodztwo, ua_founders_signal',
         )
       if (pErr2) summary.errors.push(`prospects fetch fallback: ${pErr2.message}`)
       const filtered = ((allRows ?? []) as ProspectRow[]).filter((p) => {

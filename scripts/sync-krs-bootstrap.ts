@@ -54,8 +54,6 @@ import {
 // ────────────────────────────────────────────────────────────
 
 const SUPABASE_URL = 'https://pxovjyxsktxdbovmybxz.supabase.co'
-const STATE_FILE = path.resolve(process.cwd(), '.krs-progress.json')
-const STATE_TMP = STATE_FILE + '.tmp'
 
 // Per Strategy Shift 03.05.2026: NO status filter. Mode B = WSZYSTKIE.
 // Beremy всі: AKTYWNA / WYKREŚLONA / W LIKWIDACJI / W UPADŁOŚCI / W ZAWIESZENIU.
@@ -64,18 +62,29 @@ const STATE_TMP = STATE_FILE + '.tmp'
 // CEIDG використовує format без крапок '4639Z' — для DB writes ми
 // strip dots through PKD_CEIDG_STYLE щоб ceidg_prospects.pkd_main був
 // consistent з existing CEIDG rows.
-const FILTERS: KrsSearchFilters = {
-  przewazajacy_pkd: '46.39.Z',
-  terc_wojewodztwo: '14', // mazowieckie
-}
+//
+// Phase B parallel sync (10.05.2026) — додано CLI args --pkd і --woj
+// щоб Vadym міг паралельно sync 12 PKD×woj combinations через окремі
+// PowerShell вікна. Per-filter state file ensures resume не corrupts
+// progress between combinations.
+const DEFAULT_PKD = '46.39.Z'
+const DEFAULT_WOJ = '14' // Mazowieckie
 const LIMIT = 50
 
+// Module-level mutable bindings — assigned у main() з CLI args.
+// Default values match Phase 2.8 historical config (305 firms на Mazowieckie).
+let STATE_FILE = path.resolve(process.cwd(), '.krs-progress.json')
+let STATE_TMP = STATE_FILE + '.tmp'
+let FILTERS: KrsSearchFilters = {
+  przewazajacy_pkd: DEFAULT_PKD,
+  terc_wojewodztwo: DEFAULT_WOJ,
+}
 /**
  * Strip крапок з KRS PKD format → CEIDG-style без крапок для DB write
  * consistency з existing CEIDG rows.
  *   '46.39.Z' → '4639Z'
  */
-const PKD_CEIDG_STYLE = FILTERS.przewazajacy_pkd?.replace(/\./g, '') ?? ''
+let PKD_CEIDG_STYLE = DEFAULT_PKD.replace(/\./g, '')
 
 // ────────────────────────────────────────────────────────────
 // TERC → wojewodztwo decode (UPPERCASE per ceidg_prospects 014 convention)
@@ -143,6 +152,10 @@ interface CliFlags {
   maxPages: number | null
   reset: boolean
   basePath: string
+  /** Phase B parallel sync — KRS canonical PKD з крапками '46.31.Z'. */
+  pkd: string
+  /** Phase B parallel sync — TERC woj code 2-digit (e.g. '14'=Mazowieckie). */
+  wojCode: string
 }
 
 function parseCli(): CliFlags {
@@ -151,6 +164,8 @@ function parseCli(): CliFlags {
   let maxPages: number | null = null
   let reset = false
   let basePath: string = DEFAULT_SEARCH_BASE_PATH
+  let pkd: string = DEFAULT_PKD
+  let wojCode: string = DEFAULT_WOJ
   for (const arg of args) {
     if (arg === '--dry-run') dryRun = true
     else if (arg === '--reset') reset = true
@@ -168,12 +183,43 @@ function parseCli(): CliFlags {
         console.error(`❌ Empty --base-path`)
         process.exit(1)
       }
+    } else if (arg.startsWith('--pkd=')) {
+      const p = arg.split('=')[1] ?? ''
+      // KRS canonical format = N.NN.X (e.g. 46.31.Z, 46.38.Z, 46.39.Z)
+      if (!/^\d{2}\.\d{2}\.[A-Z]$/.test(p)) {
+        console.error(
+          `❌ Invalid --pkd: "${p}" (expected canonical N.NN.X, np. 46.39.Z)`,
+        )
+        process.exit(1)
+      }
+      pkd = p
+    } else if (arg.startsWith('--woj=')) {
+      const w = arg.split('=')[1] ?? ''
+      // TERC 2-digit code (02..32 even numbers per Polish administrative split)
+      if (!/^\d{2}$/.test(w)) {
+        console.error(
+          `❌ Invalid --woj: "${w}" (expected 2-digit TERC, np. 14=Mazowieckie)`,
+        )
+        process.exit(1)
+      }
+      wojCode = w
     } else {
       console.error(`❌ Unknown arg: ${arg}`)
       process.exit(1)
     }
   }
-  return { dryRun, maxPages, reset, basePath }
+  return { dryRun, maxPages, reset, basePath, pkd, wojCode }
+}
+
+// Per-filter state file щоб паралельні sync (different PKD×woj у окремих
+// PowerShell windows) не corrupt'ed each other's progress. Filename
+// pattern: .krs-progress-<pkd-no-dots>-<woj>.json
+function stateFileFor(pkd: string, wojCode: string): string {
+  const pkdNoDots = pkd.replace(/\./g, '')
+  return path.resolve(
+    process.cwd(),
+    `.krs-progress-${pkdNoDots}-${wojCode}.json`,
+  )
 }
 
 // ────────────────────────────────────────────────────────────
@@ -369,7 +415,20 @@ async function main() {
     process.exit(1)
   }
 
-  console.log('\n══════ KRS bootstrap sync (Phase 2.8) ══════')
+  // Apply CLI args до module-level bindings (paralel sync support).
+  STATE_FILE = stateFileFor(flags.pkd, flags.wojCode)
+  STATE_TMP = STATE_FILE + '.tmp'
+  FILTERS = {
+    przewazajacy_pkd: flags.pkd,
+    terc_wojewodztwo: flags.wojCode,
+  }
+  PKD_CEIDG_STYLE = flags.pkd.replace(/\./g, '')
+
+  const wojLabel = decodeTerc(flags.wojCode) ?? `woj-${flags.wojCode}`
+
+  console.log('\n══════ KRS bootstrap sync (Phase 2.8 + Phase B parallel) ══════')
+  console.log('  PKD:        ', flags.pkd, `(→ DB style: ${PKD_CEIDG_STYLE})`)
+  console.log('  woj:        ', flags.wojCode, `(${wojLabel})`)
   console.log('  filters:    ', JSON.stringify(FILTERS))
   console.log('  base path:  ', flags.basePath)
   console.log('  limit:      ', LIMIT)
@@ -380,7 +439,7 @@ async function main() {
 
   if (flags.reset) {
     await deleteState()
-    console.log('  ↺ state reset (deleted .krs-progress.json)\n')
+    console.log(`  ↺ state reset (deleted ${path.basename(STATE_FILE)})\n`)
   }
 
   // ── Load or init state ──

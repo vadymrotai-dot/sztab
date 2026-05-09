@@ -33,7 +33,9 @@ export interface MatchTarget {
     special_traits_pl?: string[]
   } | null
   /** Sprint S2A Phase 3 — red flags + bonuses signals (z rejestr.io v2 +
-   *  financial_statements + crbr_beneficiaries). */
+   *  financial_statements + crbr_beneficiaries).
+   *  Phase B (10.05.2026) — added ua_founder_detected from
+   *  ua_founders_signal->>detected (true → +10 boost у s2a-signals). */
   s2a_signals?: {
     bankruptcy_flag?: boolean
     liquidation_flag?: boolean
@@ -44,6 +46,9 @@ export interface MatchTarget {
     latest_revenue_pln?: number | null
     has_bo_pl?: boolean
     pkd_changed_recently?: boolean
+    /** Phase B (10.05.2026) — UA founder boost trigger. Read from
+     *  clients/ceidg_prospects.ua_founders_signal->>detected. */
+    ua_founder_detected?: boolean
   } | null
 }
 
@@ -96,6 +101,9 @@ export interface ScoreBreakdownS2A {
     branches: number
     bo_pl: number
     pkd_pivot: number
+    /** Phase B (10.05.2026) — UA founder boost +10 коли ua_founders_signal
+     *  з clients/ceidg_prospects has detected=true. Transparent у JSONB. */
+    ua_founder_boost: number
   }
   reasons: string[]
 }
