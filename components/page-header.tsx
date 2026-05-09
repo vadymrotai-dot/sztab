@@ -1,5 +1,7 @@
 'use client'
 
+import { Fragment } from 'react'
+
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -25,16 +27,18 @@ export function PageHeader({ title, breadcrumbs, actions }: PageHeaderProps) {
       <Breadcrumb>
         <BreadcrumbList>
           {breadcrumbs?.map((crumb, index) => (
-            <BreadcrumbItem key={index}>
-              {crumb.href ? (
-                <BreadcrumbLink href={crumb.href}>{crumb.label}</BreadcrumbLink>
-              ) : index === breadcrumbs.length - 1 ? (
-                <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
-              ) : (
-                crumb.label
-              )}
+            <Fragment key={index}>
+              <BreadcrumbItem>
+                {crumb.href ? (
+                  <BreadcrumbLink href={crumb.href}>{crumb.label}</BreadcrumbLink>
+                ) : index === breadcrumbs.length - 1 ? (
+                  <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                ) : (
+                  crumb.label
+                )}
+              </BreadcrumbItem>
               {index < breadcrumbs.length - 1 && <BreadcrumbSeparator />}
-            </BreadcrumbItem>
+            </Fragment>
           )) || (
             <BreadcrumbItem>
               <BreadcrumbPage>{title}</BreadcrumbPage>
