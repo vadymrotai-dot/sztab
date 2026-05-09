@@ -373,3 +373,167 @@ export async function executeBatch(
 }
 
 export const APIFY_BATCH_BUDGET_DEFAULT = COST_BUDGET_USD_DEFAULT
+export const APIFY_BATCH_COST_PER_NIP_USD = COST_PER_NIP_ESTIMATE
+
+// ─── Phase 2 Krok 1.E — cohort-scoped plan builder ────────────────
+// (09.05.2026) Bootstraps з cohort_members polymorphic FK замість matches
+// pool. Returns same ApifyBatchPlan shape — executeBatch reused as-is.
+//
+// Source resolution per subject_type:
+//   • 'prospect' → JOIN ceidg_prospects (nip, name, miejscowosc)
+//   • 'client'   → JOIN clients (nip, title, city)
+//
+// NIP dedup: two cohort members з тим самим NIP (unlikely але можливо
+// якщо хтось added prospect AND його ceidg→client converted version) →
+// single Apify call, write до обох target_ids per executeBatch contract.
+//
+// NIE caps unique_nips here — caller (route handler) enforces hard cap
+// 50 з explicit 400 error per Vadym Q3=REJECT decision.
+
+export interface CohortBatchPlanOptions {
+  budget_usd?: number
+}
+
+export async function buildCohortBatchPlan(
+  supabase: SupabaseClient,
+  cohortId: string,
+  _opts: CohortBatchPlanOptions = {},
+): Promise<ApifyBatchPlan> {
+  // Step 1 — fetch all members of this cohort
+  const { data: members, error: memErr } = await supabase
+    .from('cohort_members')
+    .select('cohort_id, subject_type, subject_id')
+    .eq('cohort_id', cohortId)
+
+  if (memErr) throw new Error(`fetch cohort members: ${memErr.message}`)
+
+  const memberRows = (members ?? []) as Array<{
+    cohort_id: string
+    subject_type: 'prospect' | 'client'
+    subject_id: string
+  }>
+
+  if (memberRows.length === 0) {
+    return {
+      unique_nips: 0,
+      total_target_rows: 0,
+      estimated_cost_usd: 0,
+      items: [],
+      skipped_no_nip: 0,
+    }
+  }
+
+  const prospectIds = Array.from(
+    new Set(
+      memberRows
+        .filter((m) => m.subject_type === 'prospect')
+        .map((m) => m.subject_id),
+    ),
+  )
+  const clientIds = Array.from(
+    new Set(
+      memberRows
+        .filter((m) => m.subject_type === 'client')
+        .map((m) => m.subject_id),
+    ),
+  )
+
+  // Step 2 — JOIN snapshot tables (parallel)
+  const [prospectsRes, clientsRes] = await Promise.all([
+    prospectIds.length > 0
+      ? supabase
+          .from('ceidg_prospects')
+          .select('id, name, nip, miejscowosc, wojewodztwo')
+          .in('id', prospectIds)
+      : Promise.resolve({ data: [] }),
+    clientIds.length > 0
+      ? supabase
+          .from('clients')
+          .select('id, title, nip, city, region')
+          .in('id', clientIds)
+      : Promise.resolve({ data: [] }),
+  ])
+
+  // Step 3 — build candidate list (nip + name + city + target tuple)
+  interface Candidate {
+    nip: string | null
+    name: string
+    city: string | null
+    target_type: 'client' | 'prospect'
+    target_id: string
+  }
+  const candidates: Candidate[] = []
+
+  for (const p of (prospectsRes.data ?? []) as Array<{
+    id: string
+    name: string
+    nip: string | null
+    miejscowosc: string | null
+    wojewodztwo: string | null
+  }>) {
+    candidates.push({
+      nip: p.nip,
+      name: p.name ?? '',
+      city: p.miejscowosc ?? p.wojewodztwo,
+      target_type: 'prospect',
+      target_id: p.id,
+    })
+  }
+  for (const c of (clientsRes.data ?? []) as Array<{
+    id: string
+    title: string
+    nip: string | null
+    city: string | null
+    region: string | null
+  }>) {
+    candidates.push({
+      nip: c.nip,
+      name: c.title ?? '',
+      city: c.city ?? c.region,
+      target_type: 'client',
+      target_id: c.id,
+    })
+  }
+
+  // Step 4 — dedup by NIP, append target_ids list per shared NIP
+  const seenNips = new Map<string, ApifyBatchPlanItem>()
+  let skippedNoNip = 0
+
+  for (const cand of candidates) {
+    if (!cand.nip || !cand.nip.replace(/\D/g, '')) {
+      skippedNoNip++
+      continue
+    }
+    const cleanNip = cand.nip.replace(/\D/g, '')
+    let item = seenNips.get(cleanNip)
+    if (!item) {
+      item = {
+        nip: cleanNip,
+        name: cand.name,
+        city: cand.city,
+        target_ids: [],
+        best_combined_score: 0, // unused для cohort-scoped plan
+      }
+      seenNips.set(cleanNip, item)
+    }
+    if (
+      !item.target_ids.some(
+        (t) => t.target_type === cand.target_type && t.target_id === cand.target_id,
+      )
+    ) {
+      item.target_ids.push({ target_type: cand.target_type, target_id: cand.target_id })
+    }
+  }
+
+  const items = Array.from(seenNips.values())
+  const totalRows = items.reduce((sum, it) => sum + it.target_ids.length, 0)
+  const estimatedCost = Math.round(items.length * COST_PER_NIP_ESTIMATE * 10000) / 10000
+
+  return {
+    unique_nips: items.length,
+    total_target_rows: totalRows,
+    estimated_cost_usd: estimatedCost,
+    items,
+    skipped_no_nip: skippedNoNip,
+  }
+}

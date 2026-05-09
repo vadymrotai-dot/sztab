@@ -26,6 +26,8 @@ import {
   type ProspectMemberRow,
   type ClientMemberRow,
 } from './_components/cohort-members-client'
+import { CohortEnrichButton } from './_components/cohort-enrich-button'
+import { buildCohortBatchPlan } from '@/lib/enrichment/apify-batch'
 import type { CohortMemberStatus } from '@/lib/actions/cohorts'
 
 export const dynamic = 'force-dynamic'
@@ -250,6 +252,17 @@ export default async function CohortDetailPage({
     }
   })
 
+  // Phase 2 Krok 1.E — eligible NIP count для bulk Apify enrichment button.
+  // Server-side via buildCohortBatchPlan (single source of truth з route
+  // handler logic). Failure here is non-fatal (button shows 0 + disabled).
+  let enrichEligibleCount = 0
+  try {
+    const enrichPlan = await buildCohortBatchPlan(supabase, id)
+    enrichEligibleCount = enrichPlan.unique_nips
+  } catch {
+    enrichEligibleCount = 0
+  }
+
   return (
     <div className="flex flex-col">
       <PageHeader
@@ -277,6 +290,15 @@ export default async function CohortDetailPage({
             </span>
           )}
         </p>
+      </div>
+
+      {/* Enrich Apify button — Phase 2 Krok 1.E (09.05.2026).
+          Між description (вище) і filter chips (нижче) per Vadym Q2. */}
+      <div className="flex flex-wrap items-center gap-2 px-6 pt-2">
+        <CohortEnrichButton
+          cohortId={id}
+          eligibleCount={enrichEligibleCount}
+        />
       </div>
 
       {/* Filter chips — Phase 2 Krok 1.D1 */}
