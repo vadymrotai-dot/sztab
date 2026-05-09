@@ -78,7 +78,7 @@ export function aggregateMatch(
     total: 0,
     base: { pkd: 0, activity: 0, size: 0, geo: 0, recency: 0, niche: 0 },
     penalties: { bankruptcy: 0, liquidation: 0, restructuring: 0, suspended: 0, stale_filing: 0 },
-    bonuses: { revenue: 0, branches: 0, bo_pl: 0, pkd_pivot: 0 },
+    bonuses: { revenue: 0, branches: 0, bo_pl: 0, pkd_pivot: 0, ua_founder_boost: 0 },
     reasons: [] as string[],
   }
 

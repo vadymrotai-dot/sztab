@@ -35,6 +35,9 @@ scripts/cowork/zsrir-*.xlsx
 # KRS bootstrap state
 .krs-progress.json
 .krs-progress.json.tmp
+# Phase B paralel sync — per-PKD-woj state files
+.krs-progress-*.json
+.krs-progress-*.json.tmp
 
 # tsc diagnostic logs
 tsc-*.txt
