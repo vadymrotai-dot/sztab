@@ -44,6 +44,15 @@ interface MatchRow {
   sales_snippet: unknown
   ai_reasoning: string | null
   expires_at: string
+  /** Phase 2 Krok 1.E S-CORE.3.B Phase A — UA founders cache.
+   *  detected=true → 🇺🇦 inline flag поряд з nazwa. INFO-ONLY у Phase A. */
+  ua_founders_signal?: {
+    detected: boolean
+    confidence: 'verified' | 'high' | 'medium' | 'low' | null
+    source: 'crbr' | 'heuristic' | null
+    names?: string[]
+    signals?: string[]
+  } | null
 }
 
 interface TopMatchesResponse {
@@ -87,11 +96,17 @@ function targetHref(row: MatchRow): string {
 
 // ─── Component ───────────────────────────────────────────────────
 
+type UaFilter = 'verified' | 'likely' | null
+
 export function ProductMatchesSection({ productId }: Props) {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<TopMatchesResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [contactingId, setContactingId] = useState<string | null>(null)
+  // Phase 2 Krok 1.E S-CORE.3.B Phase A — UA filter (client-side, OPT-IN).
+  // Default OFF (null = Wszyscy). Phase A obмежено client-side filter (NOT
+  // URL-persisted) — server-side filter requires page.tsx refactor (defer).
+  const [uaFilter, setUaFilter] = useState<UaFilter>(null)
 
   async function fetchMatches() {
     setLoading(true)
@@ -267,7 +282,58 @@ export function ProductMatchesSection({ productId }: Props) {
         </Button>
       </CardHeader>
       <CardContent className="space-y-2">
-        {data.matches.map((row) => {
+        {/* Phase 2 Krok 1.E S-CORE.3.B Phase A — UA filter chips (OPT-IN).
+            Client-side filter; default Wszyscy. Per Vadym Q5 — 'likely'=detected,
+            'verified'=CRBR-confirmed. INFO-ONLY на default sort. */}
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-muted-foreground">🇺🇦 UA-власники:</span>
+          <Button
+            size="sm"
+            variant={uaFilter === null ? 'default' : 'outline'}
+            className="h-6 px-2 text-[11px]"
+            onClick={() => setUaFilter(null)}
+          >
+            Wszyscy
+          </Button>
+          <Button
+            size="sm"
+            variant={uaFilter === 'likely' ? 'default' : 'outline'}
+            className="h-6 px-2 text-[11px]"
+            onClick={() => setUaFilter('likely')}
+          >
+            Likely
+          </Button>
+          <Button
+            size="sm"
+            variant={uaFilter === 'verified' ? 'default' : 'outline'}
+            className="h-6 px-2 text-[11px]"
+            onClick={() => setUaFilter('verified')}
+          >
+            Verified
+          </Button>
+          {uaFilter !== null && (
+            <span className="ml-2 text-muted-foreground">
+              ({
+                data.matches.filter((m) =>
+                  uaFilter === 'verified'
+                    ? m.ua_founders_signal?.source === 'crbr'
+                    : m.ua_founders_signal?.detected === true,
+                ).length
+              }{' '}
+              z {data.matches.length})
+            </span>
+          )}
+        </div>
+
+        {data.matches
+          .filter((row) => {
+            if (uaFilter === null) return true
+            if (uaFilter === 'verified')
+              return row.ua_founders_signal?.source === 'crbr'
+            // 'likely' = detected=true (verified+high confidence per Q5)
+            return row.ua_founders_signal?.detected === true
+          })
+          .map((row) => {
           const snippet = extractSnippetPreview(row.sales_snippet)
           const aiBadge = row.ai_score !== null
           const isProspect = row.target_type === 'prospect'
@@ -292,6 +358,22 @@ export function ProductMatchesSection({ productId }: Props) {
                       >
                         PROSPEKT
                       </Badge>
+                    )}
+                    {/* Phase 2 Krok 1.E S-CORE.3.B Phase A — UA founder flag */}
+                    {row.ua_founders_signal?.detected && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded border border-blue-300 bg-blue-50 px-1.5 text-[10px] font-medium text-blue-700"
+                        title={
+                          row.ua_founders_signal.source === 'crbr'
+                            ? `UA-власники (verified з CRBR): ${(row.ua_founders_signal.names ?? []).join(', ')}`
+                            : `UA-likely (heuristic): ${(row.ua_founders_signal.names ?? []).join(', ')}`
+                        }
+                      >
+                        🇺🇦{' '}
+                        {row.ua_founders_signal.confidence === 'verified'
+                          ? 'verified'
+                          : 'likely'}
+                      </span>
                     )}
                     {row.city && (
                       <span className="text-[11px] text-[#888]">{row.city}</span>

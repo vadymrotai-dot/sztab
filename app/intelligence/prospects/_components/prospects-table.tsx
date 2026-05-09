@@ -98,6 +98,17 @@ export interface ProspectRow {
   krs_management_board?: import('@/app/(dashboard)/_shared/krs-section').KrsBoardMember[] | null
   krs_pkd_with_descriptions?: import('@/app/(dashboard)/_shared/krs-section').KrsPkdEntry[] | null
   krs_last_checked?: string | null
+  /** Phase 2 Krok 1.E (S-CORE.3.B Phase A) — Ukrainian-founder signal.
+   *  Computed by lib/intelligence/ukrainian-detect.ts, cached jsonb.
+   *  detected=true тільки для verified (CRBR) + high (UK first+surname без PL).
+   *  Display: 🇺🇦 inline flag поряд з nazwa якщо detected=true. INFO-ONLY. */
+  ua_founders_signal?: {
+    detected: boolean
+    confidence: 'verified' | 'high' | 'medium' | 'low' | null
+    source: 'crbr' | 'heuristic' | null
+    names?: string[]
+    signals?: string[]
+  } | null
 }
 
 type Channel = 'sklep' | 'restaurant' | 'catering' | 'cafe' | 'multi'
@@ -619,7 +630,27 @@ export function ProspectsTable({
                         aria-label={`Zaznacz ${p.name}`}
                       />
                     </TableCell>
-                    <TableCell className="font-medium">{p.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <span className="inline-flex items-center gap-1.5">
+                        {p.name}
+                        {p.ua_founders_signal?.detected && (
+                          <span
+                            className="inline-flex items-center rounded bg-blue-50 px-1 text-[10px] font-medium text-blue-700"
+                            title={
+                              p.ua_founders_signal.source === 'crbr'
+                                ? `UA-власники (verified з CRBR): ${(p.ua_founders_signal.names ?? []).join(', ')}`
+                                : `UA-likely (heuristic): ${(p.ua_founders_signal.names ?? []).join(', ')}`
+                            }
+                            aria-label="Ukrainian founders signal"
+                          >
+                            🇺🇦{' '}
+                            {p.ua_founders_signal.confidence === 'verified'
+                              ? 'verified'
+                              : 'likely'}
+                          </span>
+                        )}
+                      </span>
+                    </TableCell>
                     {/* Phase 2 Krok 1.A — Źródło Badge */}
                     <TableCell>
                       <Badge

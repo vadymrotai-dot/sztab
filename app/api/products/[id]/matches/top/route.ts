@@ -31,6 +31,14 @@ export const maxDuration = 30
 
 // ─── Response shape ────────────────────────────────────────────
 
+export interface UaFoundersSignalPublic {
+  detected: boolean
+  confidence: 'verified' | 'high' | 'medium' | 'low' | null
+  source: 'crbr' | 'heuristic' | null
+  names?: string[]
+  signals?: string[]
+}
+
 export interface MatchRowPublic {
   id: string
   target_type: 'client' | 'prospect'
@@ -45,6 +53,8 @@ export interface MatchRowPublic {
   sales_snippet: unknown
   ai_reasoning: string | null
   expires_at: string
+  /** Phase 2 Krok 1.E S-CORE.3.B Phase A — cached UA-founder signal. */
+  ua_founders_signal: UaFoundersSignalPublic | null
 }
 
 export interface TopMatchesResponse {
@@ -127,8 +137,8 @@ async function handleTopMatches(
       sales_snippet,
       ai_reasoning,
       expires_at,
-      clients:client_id ( id, title, city, industry, vat_status, segment ),
-      ceidg_prospects:prospect_id ( id, name, miejscowosc, pkd_main, status )
+      clients:client_id ( id, title, city, industry, vat_status, segment, ua_founders_signal ),
+      ceidg_prospects:prospect_id ( id, name, miejscowosc, pkd_main, status, ua_founders_signal )
     `,
     )
     .eq('product_id', id)
@@ -163,6 +173,7 @@ async function handleTopMatches(
           industry: string | null
           vat_status: string | null
           segment: string | null
+          ua_founders_signal: UaFoundersSignalPublic | null
         }
       | Array<{
           id: string
@@ -171,6 +182,7 @@ async function handleTopMatches(
           industry: string | null
           vat_status: string | null
           segment: string | null
+          ua_founders_signal: UaFoundersSignalPublic | null
         }>
       | null
     ceidg_prospects:
@@ -180,6 +192,7 @@ async function handleTopMatches(
           miejscowosc: string | null
           pkd_main: string | null
           status: string
+          ua_founders_signal: UaFoundersSignalPublic | null
         }
       | Array<{
           id: string
@@ -187,6 +200,7 @@ async function handleTopMatches(
           miejscowosc: string | null
           pkd_main: string | null
           status: string
+          ua_founders_signal: UaFoundersSignalPublic | null
         }>
       | null
   }
@@ -223,6 +237,7 @@ async function handleTopMatches(
         sales_snippet,
         ai_reasoning,
         expires_at,
+        ua_founders_signal: clientObj.ua_founders_signal ?? null,
       })
     } else if (prospectObj && row.prospect_id) {
       fresh.push({
@@ -239,6 +254,7 @@ async function handleTopMatches(
         sales_snippet,
         ai_reasoning,
         expires_at,
+        ua_founders_signal: prospectObj.ua_founders_signal ?? null,
       })
     }
     // Якщо ні clientObj ні prospectObj — XOR violation (shouldn't happen per

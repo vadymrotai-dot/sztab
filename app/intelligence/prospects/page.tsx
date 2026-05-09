@@ -51,6 +51,15 @@ function parsePage(raw: string | undefined): number {
   return n
 }
 
+// ─── UA filter (Phase 2 Krok 1.E S-CORE.3.B Phase A — opt-in) ────
+
+type UaFilter = 'verified' | 'likely' | null
+
+function parseUaFilter(raw: string | undefined): UaFilter {
+  if (raw === 'verified' || raw === 'likely') return raw
+  return null
+}
+
 // ─── Type param parsing ─────────────────────────────────────────
 
 function parseTypeParam(raw: string | undefined): Set<TypeId> | null {
@@ -101,16 +110,18 @@ function selectedToTypeStr(selected: Set<TypeId> | null): string | null {
   return ordered.length > 0 ? ordered.join(',') : null
 }
 
-/** Canonical URL builder. Drops params at default (size=50, page=1, type=all). */
+/** Canonical URL builder. Drops params at default (size=50, page=1, type=all, ua=null). */
 function buildHref(opts: {
   type?: string | null
   page?: number
   size?: PageSize
+  ua?: UaFilter
 }): string {
   const sp = new URLSearchParams()
   if (opts.type) sp.set('type', opts.type)
   if (opts.page && opts.page > 1) sp.set('page', String(opts.page))
   if (opts.size && opts.size !== DEFAULT_SIZE) sp.set('size', String(opts.size))
+  if (opts.ua) sp.set('ua_filter', opts.ua)
   const s = sp.toString()
   return s ? `/intelligence/prospects?${s}` : '/intelligence/prospects'
 }
@@ -123,6 +134,7 @@ function chipHref(
   typeId: TypeId,
   selected: Set<TypeId> | null,
   size: PageSize,
+  ua: UaFilter,
 ): string {
   const next = selected ? new Set(selected) : new Set<TypeId>(ALL_TYPES)
   if (next.has(typeId)) {
@@ -131,23 +143,39 @@ function chipHref(
     next.add(typeId)
   }
   const typeStr = selectedToTypeStr(next)
-  return buildHref({ type: typeStr, size })
+  return buildHref({ type: typeStr, size, ua })
 }
 
-/** Set explicit page; preserves type + size. */
+/** Set explicit page; preserves type + size + ua. */
 function pageHref(
   target: number,
   selected: Set<TypeId> | null,
   size: PageSize,
+  ua: UaFilter,
 ): string {
   const typeStr = selectedToTypeStr(selected)
-  return buildHref({ type: typeStr, page: target, size })
+  return buildHref({ type: typeStr, page: target, size, ua })
 }
 
-/** Set page size; resets page to 1; preserves type. */
-function sizeHref(target: PageSize, selected: Set<TypeId> | null): string {
+/** Set page size; resets page to 1; preserves type + ua. */
+function sizeHref(
+  target: PageSize,
+  selected: Set<TypeId> | null,
+  ua: UaFilter,
+): string {
   const typeStr = selectedToTypeStr(selected)
-  return buildHref({ type: typeStr, size: target })
+  return buildHref({ type: typeStr, size: target, ua })
+}
+
+/** Toggle UA filter — 3-state cycle: null → likely → verified → null.
+ *  Resets page to 1; preserves type + size. Per Vadym Q4 D1 — backend URL param. */
+function uaChipHref(
+  target: UaFilter,
+  selected: Set<TypeId> | null,
+  size: PageSize,
+): string {
+  const typeStr = selectedToTypeStr(selected)
+  return buildHref({ type: typeStr, size, ua: target })
 }
 
 // ─── Page ────────────────────────────────────────────────────────
@@ -155,12 +183,18 @@ function sizeHref(target: PageSize, selected: Set<TypeId> | null): string {
 export default async function ProspectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string; page?: string; size?: string }>
+  searchParams: Promise<{
+    type?: string
+    page?: string
+    size?: string
+    ua_filter?: string
+  }>
 }) {
   const sp = await searchParams
   const selected = parseTypeParam(sp.type)
   const size = parseSize(sp.size)
   let page = parsePage(sp.page)
+  const uaFilter = parseUaFilter(sp.ua_filter)
 
   const supabase = await createClient()
 
@@ -175,6 +209,14 @@ export default async function ProspectsPage({
       if (expr) {
         q = q.or(expr)
       }
+    }
+    // Phase 2 Krok 1.E S-CORE.3.B Phase A — UA filter (opt-in URL param).
+    // 'verified' = CRBR-confirmed (source='crbr'); 'likely' = detected=true
+    // (verified + high confidence). Default OFF (no UA bias).
+    if (uaFilter === 'verified') {
+      q = q.eq('ua_founders_signal->>source', 'crbr')
+    } else if (uaFilter === 'likely') {
+      q = q.eq('ua_founders_signal->>detected', 'true')
     }
     return q
   }
@@ -276,7 +318,7 @@ export default async function ProspectsPage({
               asChild
             >
               <Link
-                href={chipHref(opt.id, selected, size)}
+                href={chipHref(opt.id, selected, size, uaFilter)}
                 className={active ? 'pointer-events-auto' : undefined}
               >
                 {opt.label}
@@ -286,9 +328,37 @@ export default async function ProspectsPage({
         })}
         {!isAllActive && (
           <Button variant="ghost" size="sm" asChild>
-            <Link href={buildHref({ size })}>Reset</Link>
+            <Link href={buildHref({ size, ua: uaFilter })}>Reset</Link>
           </Button>
         )}
+
+        {/* UA founders filter chips — Phase 2 Krok 1.E S-CORE.3.B Phase A.
+            OPT-IN: default OFF (no URL param). 3 states: Wszyscy / Likely / Verified. */}
+        <span className="ml-2 inline-flex items-center gap-1 border-l pl-2 text-xs text-muted-foreground">
+          🇺🇦 UA-власники:
+        </span>
+        <Button
+          asChild
+          size="sm"
+          variant={uaFilter === null ? 'default' : 'outline'}
+        >
+          <Link href={uaChipHref(null, selected, size)}>Wszyscy</Link>
+        </Button>
+        <Button
+          asChild
+          size="sm"
+          variant={uaFilter === 'likely' ? 'default' : 'outline'}
+        >
+          <Link href={uaChipHref('likely', selected, size)}>Likely</Link>
+        </Button>
+        <Button
+          asChild
+          size="sm"
+          variant={uaFilter === 'verified' ? 'default' : 'outline'}
+        >
+          <Link href={uaChipHref('verified', selected, size)}>Verified</Link>
+        </Button>
+
         <span className="ml-auto text-xs text-muted-foreground">
           {counterText}
         </span>
@@ -322,7 +392,7 @@ export default async function ProspectsPage({
               variant={size === s ? 'default' : 'outline'}
               size="sm"
             >
-              <Link href={sizeHref(s, selected)}>{s}</Link>
+              <Link href={sizeHref(s, selected, uaFilter)}>{s}</Link>
             </Button>
           ))}
 
@@ -338,7 +408,7 @@ export default async function ProspectsPage({
             className={cn(prevDisabled && 'pointer-events-none opacity-50')}
           >
             <Link
-              href={prevDisabled ? '#' : pageHref(page - 1, selected, size)}
+              href={prevDisabled ? '#' : pageHref(page - 1, selected, size, uaFilter)}
               aria-disabled={prevDisabled || undefined}
             >
               ← Poprzednia
@@ -355,7 +425,7 @@ export default async function ProspectsPage({
             className={cn(nextDisabled && 'pointer-events-none opacity-50')}
           >
             <Link
-              href={nextDisabled ? '#' : pageHref(page + 1, selected, size)}
+              href={nextDisabled ? '#' : pageHref(page + 1, selected, size, uaFilter)}
               aria-disabled={nextDisabled || undefined}
             >
               Następna →
