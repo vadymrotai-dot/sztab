@@ -3,11 +3,15 @@
 // components/workspace-switcher.tsx
 // Phase 1 Krok 3/5 — clickable workspace switcher для sidebar header.
 // Replaces static SidebarHeader блок у operacje + intelligence sidebars.
+// Phase 2 Krok 1.E (09.05.2026) — додано 'sztab' як 3-й workspace для
+// bridge до legacy CRM core (/pulpit/dzisiaj). Підключено у app-sidebar.tsx
+// (dashboard layout) щоб користувач з /pulpit, /clients, /sprzedaz etc.
+// міг swap workspace через ту саму DropdownMenu.
 //
 // Behavior:
 //   - Trigger: SidebarMenuButton size="lg" з theme-driven icon container,
 //     "Sztab" + workspace badge, tagline, ChevronsUpDownIcon на ml-auto
-//   - DropdownMenuContent: 2 items (Operacje first, Intelligence second)
+//   - DropdownMenuContent: 3 items (Sztab CRM, Operacje, Intelligence)
 //   - Per item: mini icon (size-6) + label badge + tagline + CheckIcon
 //     якщо item.id === current
 //   - onClick: await setWorkspace(target) → router.push(href)
@@ -15,7 +19,7 @@
 // Self-wraps <SidebarHeader> — caller замінює existing header block 1:1.
 //
 // Pattern reference: shadcn sidebar-07 team-switcher example, спрощений
-// до 2 stałe options (no add-team flow).
+// до 3 stałe options (no add-team flow).
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
@@ -35,6 +39,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   ClipboardListIcon,
   BrainIcon,
+  HomeIcon,
   ChevronsUpDownIcon,
   CheckIcon,
 } from 'lucide-react'
@@ -54,6 +59,17 @@ interface WorkspaceMeta {
 }
 
 const WORKSPACE_META: Record<WorkspaceId, WorkspaceMeta> = {
+  sztab: {
+    // Phase 2 Krok 1.E (09.05.2026) — 3-й workspace для bridge до legacy CRM
+    // core. Slate theme — neutral default, distinct від accent operacje/intelligence.
+    iconBg: 'bg-slate-100',
+    iconText: 'text-slate-700',
+    Icon: HomeIcon,
+    badge: 'CRM',
+    badgeBg: 'bg-slate-700',
+    tagline: 'Personal CRM',
+    href: '/pulpit/dzisiaj',
+  },
   operacje: {
     iconBg: 'bg-amber-100',
     iconText: 'text-amber-700',
@@ -74,7 +90,7 @@ const WORKSPACE_META: Record<WorkspaceId, WorkspaceMeta> = {
   },
 }
 
-const WORKSPACE_ORDER: WorkspaceId[] = ['operacje', 'intelligence']
+const WORKSPACE_ORDER: WorkspaceId[] = ['sztab', 'operacje', 'intelligence']
 
 // ─── Props ──────────────────────────────────────────────────────
 

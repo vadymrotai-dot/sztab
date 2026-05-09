@@ -11,7 +11,6 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarHeader,
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuButton,
@@ -22,6 +21,10 @@ import {
   SidebarSeparator,
   SidebarTrigger,
 } from '@/components/ui/sidebar'
+// Phase 2 Krok 1.E (09.05.2026) — replace static SidebarHeader з shared
+// WorkspaceSwitcher (3-ий workspace 'sztab' added). Bridge до /operacje +
+// /intelligence через ту саму DropdownMenu.
+import { WorkspaceSwitcher } from '@/components/workspace-switcher'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,7 +44,6 @@ import {
   LogOutIcon,
   ChevronUpIcon,
   ChevronRightIcon,
-  CommandIcon,
   SearchIcon,
 } from 'lucide-react'
 
@@ -251,23 +253,10 @@ export function AppSidebar({ user, prospectHotCount = 0, counts = {} }: AppSideb
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
-              <Link href="/pulpit/dzisiaj">
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <CommandIcon className="size-4" />
-                </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">Sztab CRM</span>
-                  <span className="truncate text-xs text-muted-foreground">Personal CRM</span>
-                </div>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
+      {/* Phase 2 Krok 1.E (09.05.2026) — static SidebarHeader replaced з
+          WorkspaceSwitcher; current="sztab" pins цей workspace. Self-wraps
+          <SidebarHeader> internally. */}
+      <WorkspaceSwitcher current="sztab" userEmail={user.email ?? undefined} />
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
