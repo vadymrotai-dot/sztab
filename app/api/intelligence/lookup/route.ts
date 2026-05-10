@@ -33,7 +33,11 @@ import { upsertField, upsertFields } from '@/lib/profile/merge'
 import { findExistingContact } from '@/lib/enrichment/contact-preflight'
 import { enrichContactsApify } from '@/lib/enrichment/apify'
 import { searchCompanyOnline } from '@/lib/enrichment/web-search'
+import { enrichMenuPyszne } from '@/lib/enrichment/pyszne'
+import { enrichMenuWolt } from '@/lib/enrichment/wolt'
+import { enrichKrsFullnames, isAnonymizedPerson } from '@/lib/enrichment/krs-fullnames'
 import { analyzeBusinessProfile } from '@/lib/ai/business-analysis'
+import { getHorecaCategory } from '@/lib/pkd/mapping-2007-2025'
 import { startEnrichmentRun, finishEnrichmentRun } from '@/lib/profile/enrichment-log'
 import { computeMatchesForClient } from '@/lib/matching/engine'
 import { rescoreClientTop10 } from '@/lib/matching/ai-rescore'
@@ -452,7 +456,15 @@ export async function POST(req: Request) {
   const pending: string[] = ['BZP', 'persons']
   if (krsNumber) pending.push('rejestrio_v2')
   if (tavilyWillRun) pending.push('tavily')
-  if (params.apify_api_token) pending.push('Apify_GMaps')
+  if (params.apify_api_token) {
+    pending.push('Apify_GMaps')
+    // Sprint S6D Day 2 — gastronomia menu scrape + krs-fullnames conditional
+    // sources. Surface як pending тільки якщо apify_api_token present (umożliwa
+    // run); внутрішня logika decide skip/run за client_type у runPhaseB.
+    pending.push('pyszne_menu')
+    pending.push('wolt_menu')
+    pending.push('regdata_krs_fullnames')
+  }
   if (params.anthropic_api_key) {
     pending.push('AI_business_analysis')
     // Sprint S6A Step 2 — final Protocol 13 layer: AI rescore TOP-10 matches
@@ -685,6 +697,291 @@ async function runPhaseB({
       source: 'Apify_GMaps',
       status: 'skipped',
       note: 'apify_api_token missing у params',
+    })
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // STEP 5.5/5.6 — Sprint S6D Day 2 conditional sources за client_type
+  // ═══════════════════════════════════════════════════════════════════
+  //
+  // Two-track architecture (v5):
+  //   - gastronomia → menu scrape (Pyszne + Wolt) → ingredients pipeline
+  //   - hurtownia/sklep_detal/sieci_handlowe → krs-fullnames (deanonymize KRS)
+  //
+  // Gating logic uses business_profile.client_type якщо classified, else
+  // falls back до PKD-based heuristic (lib/pkd/getHorecaCategory).
+  //
+  // NOTE: AI Business Analysis runs у STEP 6.5 (нижче) — на момент Day 2
+  // execution, business_profile.client_type вже buв (а) backfilled через
+  // keyword script, або (б) додано через попередній Phase B run, або (в)
+  // null (нові клієнти). PKD fallback handles випадок (в).
+
+  // Load client business_profile + pkd_main для gating decisions.
+  const { data: clientGate } = await supabase
+    .from('clients')
+    .select('title, city, region, business_profile, pkd_codes, pkd_2007_codes')
+    .eq('id', clientId)
+    .maybeSingle()
+  const clientGateRow = clientGate as {
+    title: string
+    city: string | null
+    region: string | null
+    business_profile: { client_type?: string } | null
+    pkd_codes: string[] | null
+    pkd_2007_codes: string[] | null
+  } | null
+  const clientType = clientGateRow?.business_profile?.client_type ?? null
+  const pkdMain =
+    clientGateRow?.pkd_2007_codes?.[0] ?? clientGateRow?.pkd_codes?.[0] ?? null
+  const horecaCategory = pkdMain ? getHorecaCategory(pkdMain) : 'other'
+
+  const isGastronomia =
+    clientType === 'gastronomia' ||
+    (!clientType && horecaCategory === 'restaurant')
+  const isHurtowniaLike =
+    clientType === 'hurtownia' ||
+    clientType === 'sklep_detal' ||
+    clientType === 'sieci_handlowe' ||
+    (!clientType && horecaCategory === 'wholesale')
+
+  // ─── STEP 5.5: Pyszne + Wolt menu scrape (gastronomia only) ───
+  if (params.apify_api_token && isGastronomia && clientGateRow) {
+    // Pyszne
+    const pyszneRunId = await startEnrichmentRun(supabase, {
+      target_type: 'company',
+      target_id: clientId,
+      source: 'pyszne_menu',
+    })
+    try {
+      const result = await enrichMenuPyszne(params.apify_api_token, {
+        name: clientGateRow.title,
+        city: clientGateRow.city,
+        voivodeship: clientGateRow.region,
+      })
+      await supabase.from('contact_enrichment').upsert(
+        {
+          target_type: 'client',
+          target_id: clientId,
+          source: 'pyszne_menu',
+          website: result.pyszne_url,
+          raw_payload: {
+            restaurant_name: result.restaurant_name,
+            dishes: result.dishes,
+            apify_raw: result.raw_payload,
+          },
+          status: result.status,
+          error_message: result.error_message ?? null,
+          cost_usd: result.cost_usd,
+          enriched_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
+        },
+        { onConflict: 'target_type,target_id,source' },
+      )
+      response.sources_completed.push({
+        source: 'pyszne_menu',
+        status: result.status === 'success' ? 'success' : 'partial',
+        note: `${result.dishes.length} dań, $${result.cost_usd.toFixed(4)}`,
+      })
+      await finishEnrichmentRun(supabase, pyszneRunId, {
+        status: result.status === 'success' ? 'success' : 'partial',
+        raw_payload: result.raw_payload,
+        cost_usd: result.cost_usd,
+        error_message: result.error_message,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      response.errors.push(`Pyszne: ${msg}`)
+      response.sources_completed.push({ source: 'pyszne_menu', status: 'error', error: msg })
+      await finishEnrichmentRun(supabase, pyszneRunId, { status: 'error', error_message: msg })
+    }
+
+    // Wolt (parallel-friendly але keep sequential для simplicity у MVP)
+    const woltRunId = await startEnrichmentRun(supabase, {
+      target_type: 'company',
+      target_id: clientId,
+      source: 'wolt_menu',
+    })
+    try {
+      const result = await enrichMenuWolt(params.apify_api_token, {
+        name: clientGateRow.title,
+        city: clientGateRow.city,
+      })
+      await supabase.from('contact_enrichment').upsert(
+        {
+          target_type: 'client',
+          target_id: clientId,
+          source: 'wolt_menu',
+          website: result.wolt_url,
+          gmaps_rating: result.rating,
+          raw_payload: {
+            restaurant_name: result.restaurant_name,
+            dishes: result.dishes,
+            rating: result.rating,
+            apify_raw: result.raw_payload,
+          },
+          status: result.status,
+          error_message: result.error_message ?? null,
+          cost_usd: result.cost_usd,
+          enriched_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
+        },
+        { onConflict: 'target_type,target_id,source' },
+      )
+      response.sources_completed.push({
+        source: 'wolt_menu',
+        status: result.status === 'success' ? 'success' : 'partial',
+        note: `${result.dishes.length} dań, $${result.cost_usd.toFixed(4)}`,
+      })
+      await finishEnrichmentRun(supabase, woltRunId, {
+        status: result.status === 'success' ? 'success' : 'partial',
+        raw_payload: result.raw_payload,
+        cost_usd: result.cost_usd,
+        error_message: result.error_message,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      response.errors.push(`Wolt: ${msg}`)
+      response.sources_completed.push({ source: 'wolt_menu', status: 'error', error: msg })
+      await finishEnrichmentRun(supabase, woltRunId, { status: 'error', error_message: msg })
+    }
+  } else {
+    response.sources_completed.push({
+      source: 'pyszne_menu',
+      status: 'skipped',
+      note: !params.apify_api_token
+        ? 'apify_api_token missing'
+        : !isGastronomia
+          ? `client_type=${clientType ?? '(unknown)'} — не gastronomia`
+          : 'no client metadata',
+    })
+    response.sources_completed.push({
+      source: 'wolt_menu',
+      status: 'skipped',
+      note: !params.apify_api_token
+        ? 'apify_api_token missing'
+        : !isGastronomia
+          ? `client_type=${clientType ?? '(unknown)'} — не gastronomia`
+          : 'no client metadata',
+    })
+  }
+
+  // ─── STEP 5.6: KRS fullnames deanonymization ───
+  // Trigger якщо: (a) client_type у hurtownia/sklep_detal/sieci_handlowe AND
+  //               (b) існує хоча б 1 anonymized person у DB.
+  // Бо even gastronomia може mати anonymized PREZES — але scope обмежено
+  // ціллю Vadym v5 spec до B2B-types.
+  if (params.apify_api_token && isHurtowniaLike) {
+    // Check для anonymized persons на цьому клієнті.
+    const { data: anonPersons } = await supabase
+      .from('person_company_links')
+      .select('id, person_id, rola, persons:persons!inner(imie, nazwisko)')
+      .eq('client_id', clientId)
+      .is('data_do', null)
+    type LinkRow = {
+      id: string
+      person_id: string
+      rola: string
+      persons:
+        | { imie: string; nazwisko: string }
+        | { imie: string; nazwisko: string }[]
+        | null
+    }
+    const linkRows = ((anonPersons ?? []) as unknown) as LinkRow[]
+    const anonLinks = linkRows.filter((l) => {
+      const p = Array.isArray(l.persons) ? l.persons[0] : l.persons
+      return p && isAnonymizedPerson(p.imie, p.nazwisko)
+    })
+
+    if (anonLinks.length === 0) {
+      response.sources_completed.push({
+        source: 'regdata_krs_fullnames',
+        status: 'skipped',
+        note: 'no anonymized persons (zarząd uже з real names)',
+      })
+    } else {
+      const krsRunId = await startEnrichmentRun(supabase, {
+        target_type: 'company',
+        target_id: clientId,
+        source: 'regdata_krs_fullnames',
+      })
+      try {
+        const result = await enrichKrsFullnames(params.apify_api_token, {
+          nip,
+          krs: krsNumber,
+        })
+        let updated = 0
+        if (result.status === 'success' && result.persons.length > 0) {
+          // Match anonymized person by role → update names. Conservative:
+          // якщо exactly 1 actor person matches role, AND exactly 1 anon
+          // у DB має тот же role → swap.
+          for (const anon of anonLinks) {
+            const anonRole = anon.rola.toUpperCase().trim()
+            const actorMatches = result.persons.filter(
+              (p) => p.rola.toUpperCase().trim() === anonRole,
+            )
+            if (actorMatches.length === 1) {
+              const real = actorMatches[0]
+              if (real.imie && real.nazwisko) {
+                const { error } = await supabase
+                  .from('persons')
+                  .update({
+                    imie: real.imie,
+                    nazwisko: real.nazwisko,
+                    source: 'regdata_krs_fullnames',
+                  })
+                  .eq('id', anon.person_id)
+                if (!error) updated += 1
+              }
+            }
+          }
+        }
+        // Audit trail row у contact_enrichment
+        await supabase.from('contact_enrichment').upsert(
+          {
+            target_type: 'client',
+            target_id: clientId,
+            source: 'regdata_krs_fullnames',
+            raw_payload: {
+              actor_persons: result.persons,
+              anon_links_count: anonLinks.length,
+              persons_updated: updated,
+              apify_raw: result.raw_payload,
+            },
+            status: result.status,
+            error_message: result.error_message ?? null,
+            cost_usd: result.cost_usd,
+            enriched_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + 365 * 86400000).toISOString(),
+          },
+          { onConflict: 'target_type,target_id,source' },
+        )
+        response.sources_completed.push({
+          source: 'regdata_krs_fullnames',
+          status: updated > 0 ? 'success' : 'partial',
+          note: `${updated}/${anonLinks.length} persons deanonymized, $${result.cost_usd.toFixed(4)}`,
+        })
+        await finishEnrichmentRun(supabase, krsRunId, {
+          status: updated > 0 ? 'success' : 'partial',
+          raw_payload: { ...(result.raw_payload as object), persons_updated: updated },
+          cost_usd: result.cost_usd,
+          error_message: result.error_message,
+        })
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        response.errors.push(`krs-fullnames: ${msg}`)
+        response.sources_completed.push({ source: 'regdata_krs_fullnames', status: 'error', error: msg })
+        await finishEnrichmentRun(supabase, krsRunId, { status: 'error', error_message: msg })
+      }
+    }
+  } else {
+    response.sources_completed.push({
+      source: 'regdata_krs_fullnames',
+      status: 'skipped',
+      note: !params.apify_api_token
+        ? 'apify_api_token missing'
+        : !isHurtowniaLike
+          ? `client_type=${clientType ?? '(unknown)'} — не hurtownia/sklep`
+          : 'gating skipped',
     })
   }
 
