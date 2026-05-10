@@ -1,6 +1,15 @@
 // components/clients/persons-section-v2.tsx
 // Sprint S2B Phase 2E — Osoby section z real names z source='rejestrio_v2'
 // + CRBR beneficjenci sub-section + person network counter.
+// Sprint S6B-UI-A (11.05.2026) — додано 🇺🇦 flag коли CRBR beneficjent
+// має UA citizenship або residency. Visibility для UA-власники edge.
+
+const UA_CITIZENSHIP_RE = /\b(UA|UKR|UKRAIN[A-Z]+)\b/i
+
+function isUaBeneficiary(b: { kraj_rezydencji: string | null; obywatelstwa: string[] }): boolean {
+  if (b.kraj_rezydencji && UA_CITIZENSHIP_RE.test(b.kraj_rezydencji)) return true
+  return b.obywatelstwa.some((c) => UA_CITIZENSHIP_RE.test(c))
+}
 
 interface PersonLink {
   imie: string
@@ -84,22 +93,28 @@ export function PersonsSectionV2({ persons, crbr }: Props) {
             Beneficjenci rzeczywiści (CRBR)
           </h3>
           <ul className="divide-y divide-[#F0EDE5]">
-            {crbr.map((b, i) => (
-              <li key={i} className="flex items-center gap-3 py-2">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#F59E0B]/10 text-[12px] font-medium text-[#92400E]">
-                  {initials(b.imie ?? '', b.nazwisko ?? '')}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium">
-                    {b.imie} {b.nazwisko}
+            {crbr.map((b, i) => {
+              const isUa = isUaBeneficiary(b)
+              return (
+                <li key={i} className="flex items-center gap-3 py-2">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#F59E0B]/10 text-[12px] font-medium text-[#92400E]">
+                    {initials(b.imie ?? '', b.nazwisko ?? '')}
                   </div>
-                  <div className="text-[12px] text-[#888]">
-                    {b.kraj_rezydencji && `Rezydencja: ${b.kraj_rezydencji}`}
-                    {b.obywatelstwa.length > 0 && ` · Obywatelstwo: ${b.obywatelstwa.join(', ')}`}
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium flex items-center gap-1.5">
+                      {isUa && <span aria-label="Ukrainian beneficiary">🇺🇦</span>}
+                      <span>
+                        {b.imie} {b.nazwisko}
+                      </span>
+                    </div>
+                    <div className="text-[12px] text-[#888]">
+                      {b.kraj_rezydencji && `Rezydencja: ${b.kraj_rezydencji}`}
+                      {b.obywatelstwa.length > 0 && ` · Obywatelstwo: ${b.obywatelstwa.join(', ')}`}
+                    </div>
                   </div>
-                </div>
-              </li>
-            ))}
+                </li>
+              )
+            })}
           </ul>
         </div>
       )}

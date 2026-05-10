@@ -53,6 +53,8 @@ export default async function ClientDetailPage({
     { data: branches },
     { data: topMatch },
     { data: pkdMain },
+    // Sprint S6B-UI-A — Apify Google Maps data для SignalsSection card
+    { data: apifyEnrichment },
   ] = await Promise.all([
     supabase.from('clients').select('*').eq('id', id).single(),
     supabase.from('contacts').select('*').eq('client_id', id).order('created_at', { ascending: false }),
@@ -103,6 +105,15 @@ export default async function ClientDetailPage({
       .eq('field_key', 'pkd_main')
       .is('superseded_at', null)
       .limit(1)
+      .maybeSingle(),
+    // Sprint S6B-UI-A — Apify Google Maps card data (Phase B STEP 5).
+    // contact_enrichment row з gmaps_rating, reviews_count, gmaps_url, phone.
+    supabase
+      .from('contact_enrichment')
+      .select('status, gmaps_rating, gmaps_reviews_count, gmaps_url, phone')
+      .eq('target_id', id)
+      .eq('target_type', 'client')
+      .eq('source', 'apify_gmaps')
       .maybeSingle(),
   ])
 
@@ -230,16 +241,46 @@ export default async function ClientDetailPage({
   const bankAccount = c.vat_bank_accounts?.[0] ?? null
 
   const profileMeta = `${c.krs_legal_form ?? '—'} · ${[c.city, c.region].filter(Boolean).join(', ') || '—'}`
+  // Sprint S6B-UI-A — JDG NIE skladają sprawozdań finansowych. Якщо
+  // legal_form indicates sole-prop OR krs_number missing → no misleading
+  // "Brak danych" — explicit "JDG nie składa sprawozdań".
+  const isJdg =
+    !c.krs_number ||
+    /JDG|JEDNOOSOBOW|JEDNOSOBOW/i.test(c.krs_legal_form ?? '')
   const fsMeta =
     fs.length > 0
       ? `${fs.length} lat KRS · ostatni rok ${fs[0]?.okres_data_koniec.slice(0, 4)}`
-      : 'Brak danych'
+      : isJdg
+        ? 'JDG nie składa sprawozdań'
+        : 'Brak danych'
   const personsMeta = `${personsForSection.length} zarząd · ${crbrEntries.length} BO`
   const signalsMeta =
     (c.bankruptcy_flag || c.liquidation_flag || c.restructuring_flag
       ? '⚠️ Red flags · '
       : '✓ Aktywna · ') + `${bzpCount} BZP`
   const matchesMeta = topMatchScore !== null ? `TOP score ${topMatchScore}` : 'Brak dopasowań'
+  // Sprint S6B-UI-A — dynamic meta з business_profile JSONB замість
+  // hardcoded "Czudowa Marka — buyer strength".
+  const bp = (c.business_profile as {
+    business_format?: string
+    buyer_strength_for_chm?: number
+  } | null) ?? null
+  const FORMAT_PL: Record<string, string> = {
+    single_store: 'Pojedynczy sklep',
+    chain: 'Sieć sklepów',
+    franchise: 'Franczyza',
+    online: 'Sklep online',
+    B2B_distributor: 'Dystrybutor B2B',
+    gastronomy: 'Gastronomia',
+    manufacturer: 'Producent',
+    service: 'Usługi',
+    other: 'Inne',
+  }
+  const aiMeta = bp?.business_format
+    ? `${FORMAT_PL[bp.business_format] ?? bp.business_format} — siła kupującego ${
+        bp.buyer_strength_for_chm ?? '?'
+      }/100`
+    : 'Brak analizy — uruchom "Analiza klienta"'
   const contactSourcesCount = [emailValue, phoneValue, websiteValue].filter(Boolean).length
 
   return (
@@ -318,6 +359,7 @@ export default async function ClientDetailPage({
           title="Osoby"
           meta={personsMeta}
           action={<KrsRefreshButton clientId={id} enabled={Boolean(c.nip)} />}
+          defaultOpen={true}
         >
           <PersonsSectionV2 persons={personsForSection} crbr={crbrEntries} />
         </AccordionSection>
@@ -327,6 +369,7 @@ export default async function ClientDetailPage({
           title="Sygnały"
           meta={signalsMeta}
           action={<SectionActionLink label="Sprawdź BZP" href={`/intelligence/lookup?nip=${c.nip ?? ''}`} />}
+          defaultOpen={true}
         >
           <SignalsSection
             lastFilingDate={c.last_filing_date}
@@ -335,13 +378,29 @@ export default async function ClientDetailPage({
             restructuringFlag={Boolean(c.restructuring_flag)}
             suspendedAt={c.suspended_at}
             bzpCount={bzpCount}
+            bzpRecent={(bzpTenders ?? []).slice(0, 3) as Array<{
+              ordering_party: string | null
+              award_date: string | null
+            }>}
+            apify={
+              apifyEnrichment
+                ? (apifyEnrichment as {
+                    status: string | null
+                    gmaps_rating: number | null
+                    gmaps_reviews_count: number | null
+                    gmaps_url: string | null
+                    phone: string | null
+                  })
+                : null
+            }
           />
         </AccordionSection>
 
         <AccordionSection
           id="analiza-ai"
           title="Analiza biznesowa (AI)"
-          meta="Czudowa Marka — buyer strength"
+          meta={aiMeta}
+          defaultOpen={true}
         >
           <BusinessProfileSection clientId={id} profile={(c.business_profile as never) ?? null} />
         </AccordionSection>

@@ -1,5 +1,21 @@
 // components/clients/signals-section.tsx
 // Sprint S2B Phase 2E — Sygnały: last_filing freshness + red flags + BZP.
+// Sprint S6B-UI-A (11.05.2026) — додано Apify Google Maps card +
+// last 3 BZP tenders details. contact_enrichment data вже у DB
+// (Phase B Apify_GMaps source) але не was rendered у UI.
+
+interface ApifyGmapsData {
+  status: string | null
+  gmaps_rating: number | null
+  gmaps_reviews_count: number | null
+  gmaps_url: string | null
+  phone: string | null
+}
+
+interface BzpTender {
+  ordering_party: string | null
+  award_date: string | null
+}
 
 interface Props {
   lastFilingDate: string | null
@@ -8,6 +24,10 @@ interface Props {
   restructuringFlag: boolean
   suspendedAt: string | null
   bzpCount: number
+  /** Last 3 BZP tenders для inline display below count. */
+  bzpRecent?: BzpTender[]
+  /** contact_enrichment row з source='apify_gmaps' — null коли Phase B skipped Apify. */
+  apify?: ApifyGmapsData | null
 }
 
 function freshnessBadge(date: string | null): { label: string; cls: string } {
@@ -20,6 +40,12 @@ function freshnessBadge(date: string | null): { label: string; cls: string } {
   return { label: `Nieaktualne (${date})`, cls: 'bg-[#FEE2E2] text-[#991B1B]' }
 }
 
+function renderStars(rating: number): string {
+  // 4.7 → "★★★★★" з муnich offset for visualization (full 5-star rendering)
+  const full = Math.round(rating)
+  return '★'.repeat(full) + '☆'.repeat(Math.max(0, 5 - full))
+}
+
 export function SignalsSection({
   lastFilingDate,
   bankruptcyFlag,
@@ -27,6 +53,8 @@ export function SignalsSection({
   restructuringFlag,
   suspendedAt,
   bzpCount,
+  bzpRecent = [],
+  apify = null,
 }: Props) {
   const filing = freshnessBadge(lastFilingDate)
   const flags: { label: string; show: boolean }[] = [
@@ -73,6 +101,64 @@ export function SignalsSection({
             : 'Brak wygranych — typowe dla małych firm detalicznych'}
         </span>
       </div>
+
+      {/* Last 3 BZP tenders details — Sprint S6B-UI-A */}
+      {bzpRecent.length > 0 && (
+        <ul className="ml-4 list-disc space-y-0.5 text-[11px] text-[#666]">
+          {bzpRecent.slice(0, 3).map((t, i) => (
+            <li key={i}>
+              {t.award_date ? new Date(t.award_date).toLocaleDateString('pl-PL') : '—'}
+              {' · '}
+              <span className="font-medium">{t.ordering_party ?? 'Nieznany zamawiający'}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Apify Google Maps card — Sprint S6B-UI-A.
+          contact_enrichment.source='apify_gmaps' з Phase B STEP 5. */}
+      {apify && (
+        <div className="rounded border border-[#E5E1D8] bg-white p-3">
+          <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-wider text-[#888]">
+            <span>📍</span>
+            <span>Google Maps</span>
+          </div>
+          {apify.status === 'success' || apify.status === 'partial' ? (
+            <div className="space-y-1.5 text-[12px]">
+              {apify.gmaps_rating !== null && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-amber-600">{renderStars(apify.gmaps_rating)}</span>
+                  <span className="font-medium">{apify.gmaps_rating.toFixed(1)} / 5</span>
+                  {apify.gmaps_reviews_count !== null && (
+                    <span className="text-[#666]">({apify.gmaps_reviews_count} opinii)</span>
+                  )}
+                </div>
+              )}
+              {apify.phone && (
+                <div className="text-[#555]">
+                  📞 <span className="font-mono">{apify.phone}</span>
+                </div>
+              )}
+              {apify.gmaps_url && (
+                <a
+                  href={apify.gmaps_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block text-[#4F46E5] hover:underline"
+                >
+                  Otwórz w Google Maps ↗
+                </a>
+              )}
+            </div>
+          ) : (
+            <div className="text-[12px] text-[#888]">
+              {apify.status === 'no_match'
+                ? 'Nie znaleziono w Google Maps'
+                : `Apify: ${apify.status ?? 'brak danych'}`}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
