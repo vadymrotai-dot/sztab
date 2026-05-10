@@ -8,6 +8,31 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { callAI, AI_MODELS, extractJSON } from '@/lib/ai-providers'
+import { getHorecaFitScore, getHorecaCategory } from '@/lib/pkd/mapping-2007-2025'
+
+/** Sprint S6D Day 1 (11.05.2026) — top-level client type для two-track
+ *  architecture (gastronomia vs hurtownia). Drives conditional UI на
+ *  /clients/{id} + product matching logic.
+ *
+ *  - gastronomia    → automatic menu+ingredients pipeline (Pyszne/Wolt)
+ *  - hurtownia      → manual asortyment import (Excel/PDF/photo cennika)
+ *  - sklep_detal    → similar до hurtownia але smaller scale (1-5 lokalizacji)
+ *  - catering       → instytucjonalny / kontraktowy / imprezowy
+ *  - hotel          → focus на F&B
+ *  - instytucja     → szpitale, szkoły, DPS-y (institutional catering)
+ *  - production     → producenci spożywczy
+ *  - sieci_handlowe → retail chains >5 lokalizacji (Biedronka, Lewiatan)
+ *  - inne           → fallback when nothing fits */
+export type ClientType =
+  | 'gastronomia'
+  | 'hurtownia'
+  | 'sklep_detal'
+  | 'catering'
+  | 'hotel'
+  | 'instytucja'
+  | 'production'
+  | 'sieci_handlowe'
+  | 'inne'
 
 export interface BusinessProfile {
   business_format:
@@ -30,6 +55,35 @@ export interface BusinessProfile {
   model_used: string
   analyzed_at: string
   input_sources: string[]
+  /** Sprint S6D Day 1 — top-level type (drives /clients/{id} two-track UI).
+   *  Optional у TS interface для backwards compat — existing rows у DB
+   *  можуть не мати цього field (populated через backfill script). */
+  client_type?: ClientType
+  /** Sub-type free text — np. 'kebabnia' (gastronomia), 'spożywcza_b2b'
+   *  (hurtownia), 'cash_carry' (hurtownia). Convention only, no enum. */
+  client_subtype?: string
+  /** 0-100 AI confidence у classification. <70 → UI shows ⚠ warning,
+   *  Vadym manual review queue. Manual override sets to 100. */
+  classification_confidence?: number
+  /** AI reasoning у polish — 1-2 zdania uzasadnienia decyzji. */
+  classification_reasoning_pl?: string
+}
+
+/** Mapping business_format → derived client_type (legacy backfill). Used
+ *  when AI didn't set client_type explicitly (older business_profile rows). */
+export const BUSINESS_FORMAT_TO_CLIENT_TYPE: Record<
+  BusinessProfile['business_format'],
+  ClientType
+> = {
+  gastronomy: 'gastronomia',
+  B2B_distributor: 'hurtownia',
+  manufacturer: 'production',
+  chain: 'sieci_handlowe',
+  franchise: 'sieci_handlowe',
+  single_store: 'sklep_detal',
+  online: 'sklep_detal',
+  service: 'inne',
+  other: 'inne',
 }
 
 const SYSTEM_PROMPT = `Jesteś analitykiem biznesowym B2B w Polsce. Otrzymujesz zebrane z otwartych źródeł dane o firmie. Twoje zadanie: opisać JEJ MODEL BIZNESOWY i ZACHOWANIE KUPIECKIE.
@@ -68,6 +122,67 @@ HISZPAŃSKIE/WŁOSKIE/ETNICZNE produkty, etc.) — to JEST SPECJALIZACJA firmy.
 - NIE pisać "uniwersalny bez specjalizacji" gdy główny PKD = specifik kategoria
 - Generic PKDs typu "sprzedaż detaliczna pozostałych" → traktuj jako uniwersalny
 
+⭐ KLASYFIKACJA TYPU KLIENTA (Sprint S6D Day 1):
+Po określeniu business_format, dodaj klasyfikację top-level (drives UI dwóch
+ścieżek: gastronomia=automatic menu scrape, hurtownia=manual asortyment import).
+
+client_type — wybierz JEDEN z:
+- gastronomia (restauracja, kebabnia, bar mleczny, jadłodajnia, kawiarnia,
+  fast food, hotel restauracja jako dział, catering imprezowy)
+- hurtownia (B2B distributor — sprzedaje do HoReCa lub do sklepów detal.;
+  np. SOLERA, Makro, Selgros, Inter-Mar, sieciowi distrybutorzy spożywczy)
+- sklep_detal (delikatesy, sklep mięsny/rybny/spożywczy z 1-5 lokalizacjami,
+  sklep online detaliczny)
+- catering (kontraktowy / instytucjonalny / imprezowy — większy niż 1 placówka
+  obsługa, ale nie restauracja)
+- hotel (hotele, pensjonaty, agroturystyki, hostele — focus on F&B)
+- instytucja (szpital, szkoła, dom pomocy społ., urząd, wojsko)
+- production (producent spożywczy — mięsny, rybny, mleczarnia, piekarnia
+  przemysłowa, fabryka)
+- sieci_handlowe (retail chain >5 lokalizacji — Biedronka, Lidl, Kaufland,
+  Lewiatan, Żabka, Carrefour, Auchan)
+- inne (fallback gdy nic nie pasuje — np. transport, IT, logistyka)
+
+DECISION RULES (priorytet od góry):
+1. PKD 4631Z, 4632Z, 4634A, 4638Z, 4639Z (hurt) → hurtownia
+2. PKD 5611Z, 5612Z, 5621Z, 5630Z (gastronomia) → gastronomia
+3. PKD 5510Z, 5520Z, 5590Z (zakwaterowanie) → hotel
+4. PKD 4711Z, 4721Z, 4722Z, 4723Z, 4724Z, 4729Z (retail) → sklep_detal jeśli
+   1-5 lokalizacji, sieci_handlowe jeśli >5
+5. PKD 8610Z, 8730Z, 8510Z, 8520Z (zdrowie/edukacja) → instytucja
+6. PKD 1011Z, 1012Z, 1020Z (produkcja spożywcza) → production
+7. PKD 5629Z (catering pozostały — stołówki, kontrakty) → catering
+8. Sprawdź nazwę firmy:
+   - Zawiera "Hurtownia" / "Cash & Carry" / "Magazyn" → hurtownia
+   - Zawiera "Restauracja" / "Pizzeria" / "Kebab" / "Bar" → gastronomia
+   - Zawiera "Hotel" / "Pensjonat" → hotel
+   - Zawiera "Sklep" + 1 lokalizacja → sklep_detal
+9. Sprawdź dane Tavily/web summary:
+   - Opis "B2B distribution" / "obsługa HoReCa" → hurtownia
+   - Menu na website → gastronomia
+   - "Sieć sklepów" + lokalizacje → sieci_handlowe lub sklep_detal
+
+client_subtype — string (free text, np.):
+- gastronomia: 'restauracja', 'kebabnia', 'bar_mleczny', 'kawiarnia',
+  'fast_food', 'jadłodajnia', 'pizzeria', 'sushi_bar'
+- hurtownia: 'spożywcza_b2b', 'rybna', 'mięsna', 'alkoholowa', 'napoje',
+  'świeże_warzywa', 'cash_carry'
+- sklep_detal: 'delikatesy', 'mięsny', 'rybny', 'pieczywo', 'online'
+- hotel: 'hotel_5gw', 'hotel_4gw', 'hotel_3gw', 'pensjonat', 'agroturystyka'
+- inne: '' (pusty string)
+
+classification_confidence — 0-100:
+- 90+: jednoznaczna (PKD jasno wskazuje + nazwa potwierdza + opis web zgodny)
+- 70-89: wysoka (większość sygnałów pasuje, drobne wątpliwości)
+- 50-69: średnia (część sygnałów sprzeczna — np. PKD wskazuje gastronomia
+  ale nazwa "Hurtownia"; user-facing UI pokaże ⚠ warning)
+- <50: niska (mało danych — często fresh prospects bez Tavily/Apify; UI
+  pokaże ⚠ warning, Vadym sam nadpisuje)
+
+classification_reasoning_pl: krótki tekst 1-2 zdania UZASADNIENIA. NIE pisz
+"to gastronomia bo to gastronomia". Przykład: "PKD główny 5611Z restauracje +
+nazwa 'Restauracja Włoska Continental' + Tavily potwierdza menu online".
+
 OUTPUT: czysty JSON, bez preambuły, bez markdown. Dokładnie ten shape:
 {
   "business_format": "...",
@@ -77,7 +192,11 @@ OUTPUT: czysty JSON, bez preambuły, bez markdown. Dokładnie ten shape:
   "special_traits_pl": [...],
   "business_summary_pl": "<2-3 zdania>",
   "buyer_strength_for_chm": <0-100>,
-  "buyer_reasoning_pl": "<1-2 zdania>"
+  "buyer_reasoning_pl": "<1-2 zdania>",
+  "client_type": "gastronomia | hurtownia | sklep_detal | catering | hotel | instytucja | production | sieci_handlowe | inne",
+  "client_subtype": "<np. 'kebabnia' lub pusty>",
+  "classification_confidence": <0-100>,
+  "classification_reasoning_pl": "<1-2 zdania>"
 }`
 
 interface CompanyContext {
@@ -292,13 +411,25 @@ function buildUserPrompt(ctx: CompanyContext): string {
     )
     for (const p of sorted.slice(0, 10)) {
       const marker = p.isMain ? ' (GŁÓWNE)' : ''
-      lines.push(`- ${p.kod}: ${p.opis ?? '(brak opisu)'}${marker}`)
+      const fitScore = getHorecaFitScore(p.kod)
+      const fitCategory = getHorecaCategory(p.kod)
+      const fitNote =
+        fitScore > 0 ? ` [HoReCa fit: ${fitScore}/10, kategoria: ${fitCategory}]` : ''
+      lines.push(`- ${p.kod}: ${p.opis ?? '(brak opisu)'}${marker}${fitNote}`)
     }
     lines.push('')
   } else if (ctx.pkd_codes.length > 0) {
     lines.push(
       `PKD: ${ctx.pkd_codes.slice(0, 10).join(', ')}${ctx.pkd_main ? ` (główne: ${ctx.pkd_main})` : ''}`,
     )
+    // Sprint S6D Day 1 — HoReCa fit hint для PKD-only fallback path.
+    if (ctx.pkd_main) {
+      const fitScore = getHorecaFitScore(ctx.pkd_main)
+      const fitCategory = getHorecaCategory(ctx.pkd_main)
+      if (fitScore > 0) {
+        lines.push(`HoReCa fit (z PKD głównego): ${fitScore}/10, kategoria: ${fitCategory}`)
+      }
+    }
     lines.push('')
   }
 
@@ -384,8 +515,21 @@ export async function analyzeBusinessProfile(
   const tokens = ai.tokensUsed ?? 2500
   const cost = Math.round(((tokens * 0.5 * 1.0 + tokens * 0.5 * 5.0) / 1_000_000) * 10000) / 10000
 
+  // Sprint S6D Day 1 — derive client_type fallback з business_format
+  // якщо AI skipped поле (defensive — старі prompts perhaps).
+  const businessFormat = (parsed.business_format ?? 'other') as BusinessProfile['business_format']
+  const aiClientType = parsed.client_type as ClientType | undefined
+  const validClientTypes: ClientType[] = [
+    'gastronomia', 'hurtownia', 'sklep_detal', 'catering',
+    'hotel', 'instytucja', 'production', 'sieci_handlowe', 'inne',
+  ]
+  const finalClientType: ClientType =
+    aiClientType && validClientTypes.includes(aiClientType)
+      ? aiClientType
+      : BUSINESS_FORMAT_TO_CLIENT_TYPE[businessFormat] ?? 'inne'
+
   const profile: BusinessProfile = {
-    business_format: (parsed.business_format ?? 'other') as BusinessProfile['business_format'],
+    business_format: businessFormat,
     estimated_locations: parsed.estimated_locations ?? null,
     product_categories_pl: Array.isArray(parsed.product_categories_pl) ? parsed.product_categories_pl : [],
     target_demographics_pl: Array.isArray(parsed.target_demographics_pl) ? parsed.target_demographics_pl : [],
@@ -396,6 +540,21 @@ export async function analyzeBusinessProfile(
     model_used: 'claude-haiku-4-5',
     analyzed_at: new Date().toISOString(),
     input_sources: inputSources,
+    // Sprint S6D Day 1 — classification fields (optional у interface,
+    // fallback з business_format mapping якщо AI didn't fill).
+    client_type: finalClientType,
+    client_subtype:
+      typeof parsed.client_subtype === 'string' ? parsed.client_subtype : '',
+    classification_confidence: Math.max(
+      0,
+      Math.min(100, Math.round(parsed.classification_confidence ?? (aiClientType ? 75 : 60))),
+    ),
+    classification_reasoning_pl:
+      typeof parsed.classification_reasoning_pl === 'string'
+        ? parsed.classification_reasoning_pl
+        : aiClientType
+          ? ''
+          : `Derived from business_format='${businessFormat}' (AI nie wypełnił client_type — backwards compat fallback)`,
   }
 
   // Persist

@@ -15,6 +15,8 @@ import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { CLIENT_TYPE_META } from '@/lib/clients/client-type-meta'
+import type { ClientType } from '@/lib/ai/business-analysis'
 
 import { ProspectsTable, type ProspectRow } from './_components/prospects-table'
 import type { CohortOption } from './_components/bulk-action-bar'
@@ -57,6 +59,31 @@ type UaFilter = 'verified' | 'likely' | null
 
 function parseUaFilter(raw: string | undefined): UaFilter {
   if (raw === 'verified' || raw === 'likely') return raw
+  return null
+}
+
+// ─── Client type filter (Sprint S6D Day 1 — opt-in) ────────────
+// Filter via JSONB path business_profile->>client_type. 'unknown' = NULL
+// (client not yet classified by AI). Default null = no filter (all types).
+
+const CLIENT_TYPES: readonly ClientType[] = [
+  'gastronomia',
+  'hurtownia',
+  'sklep_detal',
+  'catering',
+  'hotel',
+  'instytucja',
+  'production',
+  'sieci_handlowe',
+  'inne',
+] as const
+
+type ClientTypeFilter = ClientType | 'unknown' | null
+
+function parseClientTypeFilter(raw: string | undefined): ClientTypeFilter {
+  if (!raw) return null
+  if (raw === 'unknown') return 'unknown'
+  if ((CLIENT_TYPES as readonly string[]).includes(raw)) return raw as ClientType
   return null
 }
 
@@ -110,18 +137,20 @@ function selectedToTypeStr(selected: Set<TypeId> | null): string | null {
   return ordered.length > 0 ? ordered.join(',') : null
 }
 
-/** Canonical URL builder. Drops params at default (size=50, page=1, type=all, ua=null). */
+/** Canonical URL builder. Drops params at default (size=50, page=1, type=all, ua=null, client_type=null). */
 function buildHref(opts: {
   type?: string | null
   page?: number
   size?: PageSize
   ua?: UaFilter
+  clientType?: ClientTypeFilter
 }): string {
   const sp = new URLSearchParams()
   if (opts.type) sp.set('type', opts.type)
   if (opts.page && opts.page > 1) sp.set('page', String(opts.page))
   if (opts.size && opts.size !== DEFAULT_SIZE) sp.set('size', String(opts.size))
   if (opts.ua) sp.set('ua_filter', opts.ua)
+  if (opts.clientType) sp.set('client_type', opts.clientType)
   const s = sp.toString()
   return s ? `/intelligence/prospects?${s}` : '/intelligence/prospects'
 }
@@ -135,6 +164,7 @@ function chipHref(
   selected: Set<TypeId> | null,
   size: PageSize,
   ua: UaFilter,
+  clientType: ClientTypeFilter,
 ): string {
   const next = selected ? new Set(selected) : new Set<TypeId>(ALL_TYPES)
   if (next.has(typeId)) {
@@ -143,28 +173,30 @@ function chipHref(
     next.add(typeId)
   }
   const typeStr = selectedToTypeStr(next)
-  return buildHref({ type: typeStr, size, ua })
+  return buildHref({ type: typeStr, size, ua, clientType })
 }
 
-/** Set explicit page; preserves type + size + ua. */
+/** Set explicit page; preserves type + size + ua + clientType. */
 function pageHref(
   target: number,
   selected: Set<TypeId> | null,
   size: PageSize,
   ua: UaFilter,
+  clientType: ClientTypeFilter,
 ): string {
   const typeStr = selectedToTypeStr(selected)
-  return buildHref({ type: typeStr, page: target, size, ua })
+  return buildHref({ type: typeStr, page: target, size, ua, clientType })
 }
 
-/** Set page size; resets page to 1; preserves type + ua. */
+/** Set page size; resets page to 1; preserves type + ua + clientType. */
 function sizeHref(
   target: PageSize,
   selected: Set<TypeId> | null,
   ua: UaFilter,
+  clientType: ClientTypeFilter,
 ): string {
   const typeStr = selectedToTypeStr(selected)
-  return buildHref({ type: typeStr, size: target, ua })
+  return buildHref({ type: typeStr, size: target, ua, clientType })
 }
 
 /** Toggle UA filter — 3-state cycle: null → likely → verified → null.
@@ -173,9 +205,22 @@ function uaChipHref(
   target: UaFilter,
   selected: Set<TypeId> | null,
   size: PageSize,
+  clientType: ClientTypeFilter,
 ): string {
   const typeStr = selectedToTypeStr(selected)
-  return buildHref({ type: typeStr, size, ua: target })
+  return buildHref({ type: typeStr, size, ua: target, clientType })
+}
+
+/** Set client_type filter (Sprint S6D Day 1). Resets page to 1; preserves
+ *  type + size + ua. Single-value (DropdownMenu UI), не chip toggle. */
+function clientTypeHref(
+  target: ClientTypeFilter,
+  selected: Set<TypeId> | null,
+  size: PageSize,
+  ua: UaFilter,
+): string {
+  const typeStr = selectedToTypeStr(selected)
+  return buildHref({ type: typeStr, size, ua, clientType: target })
 }
 
 // ─── Page ────────────────────────────────────────────────────────
@@ -188,6 +233,7 @@ export default async function ProspectsPage({
     page?: string
     size?: string
     ua_filter?: string
+    client_type?: string
   }>
 }) {
   const sp = await searchParams
@@ -195,6 +241,7 @@ export default async function ProspectsPage({
   const size = parseSize(sp.size)
   let page = parsePage(sp.page)
   const uaFilter = parseUaFilter(sp.ua_filter)
+  const clientTypeFilter = parseClientTypeFilter(sp.client_type)
 
   const supabase = await createClient()
 
@@ -217,6 +264,14 @@ export default async function ProspectsPage({
       q = q.eq('ua_founders_signal->>source', 'crbr')
     } else if (uaFilter === 'likely') {
       q = q.eq('ua_founders_signal->>detected', 'true')
+    }
+    // Sprint S6D Day 1 — client_type filter (opt-in URL param). Default
+    // OFF (no filter). 'unknown' filters до not-yet-classified rows
+    // (business_profile NULL or business_profile->>'client_type' NULL).
+    if (clientTypeFilter === 'unknown') {
+      q = q.is('business_profile->>client_type', null)
+    } else if (clientTypeFilter) {
+      q = q.eq('business_profile->>client_type', clientTypeFilter)
     }
     return q
   }
@@ -318,7 +373,7 @@ export default async function ProspectsPage({
               asChild
             >
               <Link
-                href={chipHref(opt.id, selected, size, uaFilter)}
+                href={chipHref(opt.id, selected, size, uaFilter, clientTypeFilter)}
                 className={active ? 'pointer-events-auto' : undefined}
               >
                 {opt.label}
@@ -328,7 +383,9 @@ export default async function ProspectsPage({
         })}
         {!isAllActive && (
           <Button variant="ghost" size="sm" asChild>
-            <Link href={buildHref({ size, ua: uaFilter })}>Reset</Link>
+            <Link href={buildHref({ size, ua: uaFilter, clientType: clientTypeFilter })}>
+              Reset
+            </Link>
           </Button>
         )}
 
@@ -342,21 +399,63 @@ export default async function ProspectsPage({
           size="sm"
           variant={uaFilter === null ? 'default' : 'outline'}
         >
-          <Link href={uaChipHref(null, selected, size)}>Wszyscy</Link>
+          <Link href={uaChipHref(null, selected, size, clientTypeFilter)}>Wszyscy</Link>
         </Button>
         <Button
           asChild
           size="sm"
           variant={uaFilter === 'likely' ? 'default' : 'outline'}
         >
-          <Link href={uaChipHref('likely', selected, size)}>Likely</Link>
+          <Link href={uaChipHref('likely', selected, size, clientTypeFilter)}>Likely</Link>
         </Button>
         <Button
           asChild
           size="sm"
           variant={uaFilter === 'verified' ? 'default' : 'outline'}
         >
-          <Link href={uaChipHref('verified', selected, size)}>Verified</Link>
+          <Link href={uaChipHref('verified', selected, size, clientTypeFilter)}>Verified</Link>
+        </Button>
+
+        {/* Client type filter chips — Sprint S6D Day 1.
+            6 chips dominant + "Nieznany" (not yet AI-classified). Pełne 9
+            типів available via /clients/{id} manual override dropdown. */}
+        <span className="ml-2 inline-flex items-center gap-1 border-l pl-2 text-xs text-muted-foreground">
+          Тип:
+        </span>
+        <Button
+          asChild
+          size="sm"
+          variant={clientTypeFilter === null ? 'default' : 'outline'}
+        >
+          <Link href={clientTypeHref(null, selected, size, uaFilter)}>Wszyscy</Link>
+        </Button>
+        {(['gastronomia', 'hurtownia', 'sklep_detal', 'hotel'] as const).map((t) => {
+          const meta = CLIENT_TYPE_META[t]
+          const active = clientTypeFilter === t
+          return (
+            <Button
+              key={t}
+              asChild
+              size="sm"
+              variant={active ? 'default' : 'outline'}
+              title={meta.label_pl}
+            >
+              <Link href={clientTypeHref(t, selected, size, uaFilter)}>
+                <span className="mr-1">{meta.emoji}</span>
+                {meta.label_pl}
+              </Link>
+            </Button>
+          )
+        })}
+        <Button
+          asChild
+          size="sm"
+          variant={clientTypeFilter === 'unknown' ? 'default' : 'outline'}
+          title="Klient bez przypisanego typu (uruchom Analiza klienta)"
+        >
+          <Link href={clientTypeHref('unknown', selected, size, uaFilter)}>
+            ❓ Nieznany
+          </Link>
         </Button>
 
         <span className="ml-auto text-xs text-muted-foreground">
@@ -392,7 +491,7 @@ export default async function ProspectsPage({
               variant={size === s ? 'default' : 'outline'}
               size="sm"
             >
-              <Link href={sizeHref(s, selected, uaFilter)}>{s}</Link>
+              <Link href={sizeHref(s, selected, uaFilter, clientTypeFilter)}>{s}</Link>
             </Button>
           ))}
 
@@ -408,7 +507,7 @@ export default async function ProspectsPage({
             className={cn(prevDisabled && 'pointer-events-none opacity-50')}
           >
             <Link
-              href={prevDisabled ? '#' : pageHref(page - 1, selected, size, uaFilter)}
+              href={prevDisabled ? '#' : pageHref(page - 1, selected, size, uaFilter, clientTypeFilter)}
               aria-disabled={prevDisabled || undefined}
             >
               ← Poprzednia
@@ -425,7 +524,7 @@ export default async function ProspectsPage({
             className={cn(nextDisabled && 'pointer-events-none opacity-50')}
           >
             <Link
-              href={nextDisabled ? '#' : pageHref(page + 1, selected, size, uaFilter)}
+              href={nextDisabled ? '#' : pageHref(page + 1, selected, size, uaFilter, clientTypeFilter)}
               aria-disabled={nextDisabled || undefined}
             >
               Następna →

@@ -1556,4 +1556,70 @@ regression виявляється на 50%-завершеному коді → �
 
 ---
 
-**END OF PROTOCOLS (36 total).**
+## Протокол 37 — NIKOLI bash cp/mv/rm на existing files (11.05.2026)
+
+⚠️ **КРИТИЧНО.** Cowork sandbox **NIKOLI** не виконує `cp`, `mv`, `rm` на 
+existing files через bash. Це призводить до **CORRUPTION host files**.
+
+### Технічна причина — virtiofs write-back pattern
+Cowork sandbox має `/sessions/.../mnt/sztab` як **virtiofs mount** з 
+host's `C:\Users\vadym\Projects\sztab`. Cache layer показує **truncated 
+views** existуючих файлів (Protocol 16 phantom). Коли bash виконує:
+```bash
+cp file.ts file.ts.flush && mv file.ts.flush file.ts
+```
+Linux kernel читає cached truncated content з virtiofs → пише його 
+**назад** через mount → host file отримує truncated bytes. **Disk 
+content gone, only git може recover.**
+
+### 11.05.2026 incident
+Cowork attempted "cache flush" via `cp+mv` на 15 files щоб обійти phantom 
+truncation у tsc. **Результат:** 704 lines deleted across 15 source 
+files. Vadym recovered все через `git checkout HEAD --` тому що було 
+committed. Якби це були uncommitted M files — **lost forever**.
+
+Files corrupted: `lib/matching/{types,scoring/aggregate,scoring/s2a-signals,engine}.ts`, 
+`lib/ai/business-analysis.ts`, `lib/enrichment/{apify,web-search}.ts`, 
+`lib/workspace/switch.ts`, `components/{app-sidebar,clients/persons-section-v2,clients/signals-section,produkty/product-matches-section,workspace-switcher}.tsx`, 
+`scripts/{backfill-ua-founders,sync-krs-bootstrap}.ts`.
+
+### Заборонено через bash:
+- `cp existing_file new_path`
+- `mv existing_file new_name`
+- `rm existing_file`
+- Будь-який shell pattern що modifies existing tracked files
+
+### Дозволено через bash:
+- `cat`, `head`, `tail`, `wc`, `ls`, `find`, `grep` — read-only OK
+- `mkdir` — нові directories
+- Шлях до tooling (`npx`, `node`, ts compilation, smoke test scripts)
+
+### Дозволено через Cowork tools:
+- **Write tool** — нові files (не overwrite existing)
+- **Edit tool** — str_replace на existing files (operates через host filesystem)
+- **Read tool** — full file content (різний code path від bash)
+
+### Symptom of write-back corruption
+- TS errors на line N+1 у файлі довжиною N (e.g. line 104 error у файлі 
+  103 рядки)
+- File ends mid-statement / mid-comment
+- `git diff` показує deletions на files Cowork "не торкався"
+
+### Правильна реакція коли tsc показує weird errors
+1. **STOP** — не намагайся auto-fix sandbox-side
+2. Use **Read tool** на 1-2 affected files — verify host content intact
+3. Якщо Read tool показує full content — це virtiofs cache phantom, 
+   bash sandbox unreliable. **Report to Vadym, ask run tsc у PowerShell**
+4. Якщо Read tool теж показує truncated — file actually corrupted, 
+   need `git checkout HEAD -- <file>` recovery (Vadym executes per Protocol 14)
+
+### Чим це важливо
+Sztab repo має 700+ files. Auto-recovery можливе **тільки** з git. 
+Vadym uncommitted M work за день sprint roboty = реальна data loss 
+risk. Один помилковий `cp+mv` через virtiofs може deleteти годину Vadym 
+work. Cowork **NIKOLI не виправдовує** виконання cp/mv/rm на existing 
+files, навіть для "cache flush" intent.
+
+---
+
+**END OF PROTOCOLS (37 total).**

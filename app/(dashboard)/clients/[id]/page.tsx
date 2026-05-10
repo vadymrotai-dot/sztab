@@ -23,6 +23,8 @@ import { PersonsSectionV2 } from '@/components/clients/persons-section-v2'
 import { SignalsSection } from '@/components/clients/signals-section'
 import { ContactSectionV2 } from '@/components/clients/contact-section-v2'
 import { ClientDetailActions } from '@/components/clients/client-detail-actions'
+import { ClientTypeBadge } from '@/components/clients/client-type-badge'
+import type { ClientType } from '@/lib/ai/business-analysis'
 import { SectionActionLink } from '@/components/clients/section-action-link'
 import { KrsRefreshButton } from '@/components/clients/krs-refresh-button'
 
@@ -300,11 +302,25 @@ export default async function ClientDetailPage({
       />
 
       <div className="flex flex-1 flex-col gap-3 p-6">
-        {/* Hero row — status + NIP + KRS, secondary identity */}
+        {/* Hero row — status + client_type + NIP + KRS, secondary identity.
+            Sprint S6D Day 1 — додано ClientTypeBadge для two-track UI gating
+            (gastronomia/hurtownia conditional sections planned Day 6+). */}
         <div className="flex flex-wrap items-center gap-3 px-1">
           <Badge variant="secondary" className={`text-white ${statusColor[c.status] ?? 'bg-gray-400'}`}>
             {c.status}
           </Badge>
+          <ClientTypeBadge
+            clientId={id}
+            clientType={
+              ((c.business_profile as {
+                client_type?: ClientType
+              } | null)?.client_type) as ClientType | undefined
+            }
+            classificationConfidence={
+              (c.business_profile as { classification_confidence?: number } | null)
+                ?.classification_confidence
+            }
+          />
           {c.nip && <span className="text-[12px] text-[#888] font-mono">NIP {c.nip}</span>}
           {c.krs_number && (
             <span className="text-[12px] text-[#888] font-mono">KRS {c.krs_number}</span>
