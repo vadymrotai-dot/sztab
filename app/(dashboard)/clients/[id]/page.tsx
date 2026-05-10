@@ -25,6 +25,8 @@ import { ContactSectionV2 } from '@/components/clients/contact-section-v2'
 import { ClientDetailActions } from '@/components/clients/client-detail-actions'
 import { ClientTypeBadge } from '@/components/clients/client-type-badge'
 import { MenuSection, type MenuDish, type MenuCoverage, type MenuDishesSource } from '@/components/clients/menu-section'
+import { PredictionsSection } from '@/components/clients/predictions-section'
+import { aggregateMonthlyIngredients } from '@/lib/predictions/aggregate-ingredients'
 import type { ClientType } from '@/lib/ai/business-analysis'
 import { SectionActionLink } from '@/components/clients/section-action-link'
 import { KrsRefreshButton } from '@/components/clients/krs-refresh-button'
@@ -365,6 +367,36 @@ export default async function ClientDetailPage({
     }
   }
 
+  // Sprint S6D Day 4 — fetch aggregated ingredient prediction (lazy, only
+  // when gastronomia + Anthropic key configured). Runs AI calls per dish
+  // server-side; cache hits y dish_ingredient_mappings keep cost low after
+  // warm-up. Якщо anthropicKey missing OR not gastronomia → null prediction.
+  let aggregatedPrediction: Awaited<
+    ReturnType<typeof aggregateMonthlyIngredients>
+  >['prediction'] = null
+  if (isGastronomia) {
+    try {
+      const { data: paramsRow } = await supabase
+        .from('params')
+        .select('anthropic_api_key')
+        .limit(1)
+        .maybeSingle()
+      const anthropicKey =
+        (paramsRow as { anthropic_api_key?: string } | null)?.anthropic_api_key ?? ''
+      if (anthropicKey) {
+        const { prediction } = await aggregateMonthlyIngredients(
+          supabase,
+          id,
+          anthropicKey,
+        )
+        aggregatedPrediction = prediction
+      }
+    } catch (err) {
+      // Non-fatal — log + render empty
+      console.error('[predictions] aggregation failed:', err)
+    }
+  }
+
   return (
     <div className="flex flex-col bg-[#FAFAF7] min-h-screen">
       <PageHeader
@@ -445,6 +477,55 @@ export default async function ClientDetailPage({
               lastUpdated={menuLastUpdated}
               upMenuDetected={Boolean(upMenuBlockedRow)}
             />
+          </AccordionSection>
+        )}
+
+        {/* Sprint S6D Day 4 — Monthly ingredient prediction (Tier 1 formula).
+            Always renders для gastronomia — fallback empty state якщо
+            aggregation returned null (e.g. anthropic_api_key missing).
+            Server-side aggregation runs AI per dish (cached у dish_ingredient_mappings). */}
+        {isGastronomia && (
+          <AccordionSection
+            id="predictions"
+            title="Prognoza miesięcznej potrzeby"
+            meta={
+              aggregatedPrediction
+                ? aggregatedPrediction.coverage_tier === 'full_menu'
+                  ? `${aggregatedPrediction.ingredients.length} składników z pełnego menu`
+                  : aggregatedPrediction.coverage_tier === 'popular_only'
+                    ? `${aggregatedPrediction.ingredients.length} składników z popularnych`
+                    : `${aggregatedPrediction.ingredients.length} składników wg podtypu`
+                : 'Niedostępne'
+            }
+            defaultOpen={true}
+          >
+            {aggregatedPrediction ? (
+              <PredictionsSection
+                predictionId={aggregatedPrediction.prediction_id ?? null}
+                coverage={aggregatedPrediction.coverage_tier}
+                predictionConfidence={aggregatedPrediction.prediction_confidence}
+                dishesCount={aggregatedPrediction.dishes_count}
+                dishesSource={aggregatedPrediction.dishes_source}
+                volume={aggregatedPrediction.volume}
+                ingredients={aggregatedPrediction.ingredients}
+                reviewsCount={
+                  (apifyEnrichment as { gmaps_reviews_count?: number | null } | null)
+                    ?.gmaps_reviews_count ?? 0
+                }
+              />
+            ) : (
+              <div className="rounded border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+                <p className="font-medium">Prognoza niedostępna</p>
+                <p className="mt-1 text-xs">
+                  Możliwe przyczyny: brak <code>anthropic_api_key</code> w params,
+                  brak business_profile.client_type=&apos;gastronomia&apos; w DB
+                  (sprawdź badge), lub agregacja zwróciła błąd (sprawdź logs serwera).
+                </p>
+                <p className="mt-2 text-xs text-amber-800">
+                  Uruchom &quot;Pełna re-analiza&quot; aby odświeżyć źródła danych.
+                </p>
+              </div>
+            )}
           </AccordionSection>
         )}
 
