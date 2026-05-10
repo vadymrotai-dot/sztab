@@ -581,6 +581,10 @@ export function ProspectsTable({
                     onSort={setSort}
                   />
                 </TableHead>
+                {/* Sprint S6C STEP 2 — NIP column для disambiguation
+                    (e.g. 2 SOLERA Sp.z o.o. — Warszawska + Wrocławska).
+                    Hidden on mobile через hidden md:table-cell. */}
+                <TableHead className="hidden md:table-cell">NIP</TableHead>
                 {/* Phase 2 Krok 1.A — Źródło column (CEIDG/KRS classification) */}
                 <TableHead>Źródło</TableHead>
                 <TableHead>Właściciel</TableHead>
@@ -650,6 +654,10 @@ export function ProspectsTable({
                           </span>
                         )}
                       </span>
+                    </TableCell>
+                    {/* Sprint S6C STEP 2 — NIP cell для disambiguation */}
+                    <TableCell className="hidden md:table-cell font-mono text-xs text-muted-foreground">
+                      {p.nip ?? '—'}
                     </TableCell>
                     {/* Phase 2 Krok 1.A — Źródło Badge */}
                     <TableCell>

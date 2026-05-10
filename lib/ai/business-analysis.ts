@@ -58,6 +58,16 @@ Wysokie buyer_strength_for_chm (80-95) — jeśli firma:
 Niskie (10-40) — branża nie food, nieadekwatne PKD, online-only sklep z
 nieadekwatnym asortymentem.
 
+🔥 SPECJALIZACJA Z PKD GŁÓWNEGO (Sprint S6C):
+Jeśli PKD główny chronię specyficzną kategorię produktową (RYBY/SKORUPIAKI,
+MIĘSO, ALKOHOL, NAPOJE, MLEKO, NABIAŁ, ZBOŻA, PIECZYWO, OWOCE/WARZYWA,
+HISZPAŃSKIE/WŁOSKIE/ETNICZNE produkty, etc.) — to JEST SPECJALIZACJA firmy.
+- W special_traits_pl MUSI znaleźć się "Specjalizacja: {kategoria}"
+  (np. "Specjalizacja: ryby i owoce morza")
+- W business_summary_pl mention specialization explicit
+- NIE pisać "uniwersalny bez specjalizacji" gdy główny PKD = specifik kategoria
+- Generic PKDs typu "sprzedaż detaliczna pozostałych" → traktuj jako uniwersalny
+
 OUTPUT: czysty JSON, bez preambuły, bez markdown. Dokładnie ten shape:
 {
   "business_format": "...",
@@ -78,6 +88,10 @@ interface CompanyContext {
   registered_date: string | null
   pkd_codes: string[]
   pkd_main: string | null
+  /** Sprint S6C STEP 2 (11.05.2026) — PKD з опискою для specialization
+   *  detection. Source: clients.krs_pkd_with_descriptions JSONB (migration 021).
+   *  Fallback: empty array — prompt uses pkd_codes only. */
+  pkd_with_descriptions: Array<{ kod: string; opis: string | null; isMain: boolean }>
   city: string | null
   vat_status: string | null
   zarząd: Array<{ imie: string; nazwisko: string; rola: string }>
@@ -102,9 +116,11 @@ async function gatherContext(
 ): Promise<{ context: CompanyContext; inputSources: string[] }> {
   const inputSources: Set<string> = new Set()
 
+  // Sprint S6C STEP 2 — додано krs_pkd_with_descriptions для specialization
+  // detection у AI prompt.
   const { data: client } = await supabase
     .from('clients')
-    .select('title, nip, krs_legal_form, krs_number, registered_date, city, vat_status, krs_management_board')
+    .select('title, nip, krs_legal_form, krs_number, registered_date, city, vat_status, krs_management_board, krs_pkd_with_descriptions')
     .eq('id', clientId)
     .single()
   const c = (client ?? {}) as {
@@ -116,6 +132,7 @@ async function gatherContext(
     city?: string | null
     vat_status?: string | null
     krs_management_board?: Array<{ name?: string; surname?: string; functionName?: string; funkcjaWOrganie?: string }> | null
+    krs_pkd_with_descriptions?: Array<{ kod: string; opis: string | null; isMain: boolean }> | null
   }
 
   // Profile fields для PKD codes / website
@@ -232,6 +249,9 @@ async function gatherContext(
     registered_date: c.registered_date ?? null,
     pkd_codes: pkdCodes,
     pkd_main: pkdMain,
+    pkd_with_descriptions: Array.isArray(c.krs_pkd_with_descriptions)
+      ? c.krs_pkd_with_descriptions
+      : [],
     city: c.city ?? null,
     vat_status: c.vat_status ?? null,
     zarząd,
@@ -261,8 +281,24 @@ function buildUserPrompt(ctx: CompanyContext): string {
   if (ctx.city) lines.push(`- Miasto: ${ctx.city}`)
   lines.push('')
 
-  if (ctx.pkd_codes.length > 0) {
-    lines.push(`PKD: ${ctx.pkd_codes.slice(0, 10).join(', ')}${ctx.pkd_main ? ` (główne: ${ctx.pkd_main})` : ''}`)
+  // Sprint S6C STEP 2 — PKD з опискою для specialization detection.
+  // Якщо krs_pkd_with_descriptions populated (rejestrio sync) — render
+  // detailed list. Fallback: codes only.
+  if (ctx.pkd_with_descriptions.length > 0) {
+    lines.push(`KODY PKD (działalność gospodarcza):`)
+    // Main first, then 9 більше
+    const sorted = [...ctx.pkd_with_descriptions].sort(
+      (a, b) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0),
+    )
+    for (const p of sorted.slice(0, 10)) {
+      const marker = p.isMain ? ' (GŁÓWNE)' : ''
+      lines.push(`- ${p.kod}: ${p.opis ?? '(brak opisu)'}${marker}`)
+    }
+    lines.push('')
+  } else if (ctx.pkd_codes.length > 0) {
+    lines.push(
+      `PKD: ${ctx.pkd_codes.slice(0, 10).join(', ')}${ctx.pkd_main ? ` (główne: ${ctx.pkd_main})` : ''}`,
+    )
     lines.push('')
   }
 

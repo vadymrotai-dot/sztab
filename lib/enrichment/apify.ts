@@ -78,6 +78,11 @@ export interface ApifyTarget {
   city?: string | null
   voivodeship?: string | null
   nip?: string | null
+  /** Sprint S6C STEP 2 (11.05.2026) — known phone number from clients/CEIDG.
+   *  Якщо present, pickBestMatch overrides name-similarity threshold коли
+   *  Apify item phone normalized matches. SOLERA edge: name "SOLERA Wilcza"
+   *  на Google ≠ DB title "SOLERA SP. Z O.O." але phone identical → accept. */
+  phone?: string | null
 }
 
 export interface ApifyEnrichResult {
@@ -170,12 +175,51 @@ async function callApify(
   throw lastError instanceof Error ? lastError : new Error(String(lastError))
 }
 
-function pickBestMatch(items: ApifyPlace[], targetName: string): ApifyPlace | null {
+/** Sprint S6C STEP 2 (11.05.2026) — normalize phone для match override.
+ *  Strips +, spaces, dashes, parentheses, leading 48 country code. Keeps digits. */
+function normalizePhone(p: string | null | undefined): string {
+  if (!p) return ''
+  const digits = p.replace(/\D/g, '')
+  // Strip Polish country code 48 prefix якщо present
+  if (digits.startsWith('48') && digits.length >= 11) return digits.slice(2)
+  return digits
+}
+
+interface PickResult {
+  match: ApifyPlace
+  override: 'phone_match' | null
+  name_similarity: number
+}
+
+function pickBestMatch(
+  items: ApifyPlace[],
+  targetName: string,
+  targetPhone: string | null = null,
+): PickResult | null {
   if (items.length === 0) return null
+
+  // Sprint S6C STEP 2 — phone-match override. Якщо target має known phone
+  // AND any Apify item phone normalize matches → accept regardless of name
+  // similarity. SOLERA edge case (Google "SOLERA Wilcza" ≠ DB title але
+  // phone +48 22 866 41 61 ідентичний).
+  const targetPhoneN = normalizePhone(targetPhone)
+  if (targetPhoneN.length >= 7) {
+    for (const item of items) {
+      const itemPhoneN = normalizePhone(item.phone ?? item.phoneUnformatted ?? null)
+      if (itemPhoneN.length >= 7 && itemPhoneN === targetPhoneN) {
+        return {
+          match: item,
+          override: 'phone_match',
+          name_similarity: similarity(targetName, item.title ?? ''),
+        }
+      }
+    }
+  }
+
   if (items.length === 1) {
-    // Single result — accept якщо хоча б weak similarity
+    // Single result — accept якщо хоча б weak similarity (existing permissive)
     const sim = similarity(targetName, items[0].title ?? '')
-    return sim >= 0.3 ? items[0] : items[0] // permissive — single result
+    return { match: items[0], override: null, name_similarity: sim }
   }
   // Multiple → pick highest similarity
   let best: ApifyPlace | null = null
@@ -187,7 +231,10 @@ function pickBestMatch(items: ApifyPlace[], targetName: string): ApifyPlace | nu
       best = item
     }
   }
-  return bestSim >= NAME_SIMILARITY_THRESHOLD ? best : null
+  if (best && bestSim >= NAME_SIMILARITY_THRESHOLD) {
+    return { match: best, override: null, name_similarity: bestSim }
+  }
+  return null
 }
 
 // ─── Public entry ───
@@ -219,14 +266,15 @@ export async function enrichContactsApify(
     return zeroResult('no_match', cost, undefined, { query, items: [] })
   }
 
-  const best = pickBestMatch(items, target.name)
-  if (!best) {
+  const picked = pickBestMatch(items, target.name, target.phone ?? null)
+  if (!picked) {
     return zeroResult('no_match', cost, 'no result above similarity threshold', {
       query,
       items,
     })
   }
 
+  const best = picked.match
   const phone = best.phone ?? best.phoneUnformatted ?? null
   const email = best.emails && best.emails.length > 0 ? best.emails[0] : null
   const website = best.website ?? null
@@ -236,7 +284,17 @@ export async function enrichContactsApify(
     typeof best.reviewsCount === 'number' ? best.reviewsCount : null
 
   const hasContact = Boolean(phone || email || website)
-  const status: ApifyEnrichResult['status'] = hasContact ? 'success' : 'partial'
+  // Sprint S6C STEP 2 — якщо phone-match override triggered + name різниться
+  // (similarity < 0.5), mark як 'partial' з note. Preserves valid contact
+  // data навіть коли Google адрес ≠ DB адрес (різні locations of same NIP).
+  let status: ApifyEnrichResult['status']
+  let errorMessage: string | undefined
+  if (picked.override === 'phone_match' && picked.name_similarity < NAME_SIMILARITY_THRESHOLD) {
+    status = hasContact ? 'partial' : 'partial'
+    errorMessage = `phone match override (name similarity ${picked.name_similarity.toFixed(2)} < ${NAME_SIMILARITY_THRESHOLD})`
+  } else {
+    status = hasContact ? 'success' : 'partial'
+  }
 
   return {
     status,
@@ -246,8 +304,15 @@ export async function enrichContactsApify(
     gmaps_url,
     gmaps_rating,
     gmaps_reviews_count,
-    raw_payload: { query, best, all_results_count: items.length },
+    raw_payload: {
+      query,
+      best,
+      all_results_count: items.length,
+      pick_override: picked.override,
+      name_similarity: picked.name_similarity,
+    },
     cost_usd: Math.round(cost * 10000) / 10000,
+    error_message: errorMessage,
   }
 }
 

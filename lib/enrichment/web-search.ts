@@ -82,6 +82,12 @@ export interface WebSearchResult {
   news_mentions: NewsMention[]
   raw_results: TavilyResult[]
   search_cost_usd: number
+  /** Sprint S6C STEP 2 (11.05.2026) — surface API errors to caller.
+   *  null = всі queries succeeded; string = aggregate error message. */
+  error: string | null
+  /** Status decision: 'success' = items found; 'partial' = HTTP 200 але
+   *  0 items; 'error' = всі queries failed (network/auth/quota). */
+  status: 'success' | 'partial' | 'error'
 }
 
 interface TavilyResult {
@@ -98,11 +104,18 @@ interface TavilyResponse {
   results: TavilyResult[]
 }
 
+interface TavilyCallResult {
+  success: boolean
+  response: TavilyResponse | null
+  error: string | null
+  http_status: number
+}
+
 async function tavilySearch(
   apiKey: string,
   query: string,
   maxResults = 8,
-): Promise<TavilyResponse | null> {
+): Promise<TavilyCallResult> {
   let res: Response
   try {
     res = await fetch(`${TAVILY_BASE}/search`, {
@@ -114,23 +127,34 @@ async function tavilySearch(
         search_depth: 'basic',
         max_results: maxResults,
         include_answer: false,
-        // Sprint S2A Phase 2: prefer PL-domain results (tavily 0.5+ supports
-        // country param). Filters out global aggregators like gowork.pl
-        // (.pl domain but not company-specific).
-        country: 'pl',
+        // Sprint S6C STEP 2 (11.05.2026) — REMOVED country: 'pl' parameter.
+        // Probe з 11.05 показав HTTP 400 "Invalid country. Must be a valid
+        // country name from list of supported countries". Tavily expects
+        // full English country names (наприклад "Poland", не ISO codes).
+        // Omitting parameter — uses Tavily defaults (global з PL-relevance
+        // ranking, perfectly OK for our use case оскільки query encoder
+        // includes Polish-specific terms like NIP/sklep/firma).
       }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
   } catch (err) {
-    console.error('[Tavily] network error:', err instanceof Error ? err.message : err)
-    return null
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('[Tavily] network error:', msg)
+    return { success: false, response: null, error: `network: ${msg}`, http_status: 0 }
   }
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    console.error(`[Tavily] HTTP ${res.status}: ${body.slice(0, 200)}`)
-    return null
+    const errMsg = `HTTP ${res.status}: ${body.slice(0, 200)}`
+    console.error(`[Tavily] ${errMsg}`)
+    return { success: false, response: null, error: errMsg, http_status: res.status }
   }
-  return (await res.json()) as TavilyResponse
+  try {
+    const json = (await res.json()) as TavilyResponse
+    return { success: true, response: json, error: null, http_status: res.status }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { success: false, response: null, error: `parse: ${msg}`, http_status: res.status }
+  }
 }
 
 function categorizeUrl(
@@ -206,29 +230,71 @@ export async function searchCompanyOnline(
     news_mentions: [],
     raw_results: [],
     search_cost_usd: 0,
+    error: null,
+    status: 'partial',
   }
 
   if (!apiKey) {
     console.warn('[web-search] TAVILY_API_KEY missing — returning empty')
+    out.error = 'TAVILY_API_KEY missing'
+    out.status = 'error'
     return out
   }
-  if (!nazwa) return out
+  if (!nazwa) {
+    out.error = 'name empty'
+    out.status = 'error'
+    return out
+  }
 
-  // Two queries: official з NIP + business-context
+  // Sprint S6C STEP 2: short-name fallback. Strip "SP. Z O.O." suffix —
+  // Tavily indexing prefers natural names. NIP query plus short variant.
+  const shortName = nazwa
+    .replace(
+      /\s+SP[ÓO]ŁKA\s+Z\s+OGRANICZON[AĄ]\s+ODPOWIEDZIALNOŚCI[AĄ]?$/i,
+      '',
+    )
+    .replace(/\s+SP\.?\s*Z\s*O\.?\s*O\.?$/i, '')
+    .replace(/\s+S\.?\s*A\.?$/i, '')
+    .trim()
+
+  // Two queries: short name + business-context, NIP-only fallback
   const queries = [
-    `"${nazwa}" ${nip}`,
-    `"${nazwa}" sklep OR sieć OR firma`,
+    `"${shortName}" sklep OR sieć OR firma OR hurtownia`,
+    `"${shortName}" ${nip}`,
   ]
   let allResults: TavilyResult[] = []
+  const errors: string[] = []
+  let anySucceeded = false
   for (const q of queries) {
-    const resp = await tavilySearch(apiKey, q, 6)
-    if (resp?.results) {
-      allResults = allResults.concat(resp.results)
+    const result = await tavilySearch(apiKey, q, 6)
+    if (result.success && result.response) {
+      anySucceeded = true
+      allResults = allResults.concat(result.response.results ?? [])
       out.search_cost_usd += COST_PER_BASIC_SEARCH_USD
+    } else if (result.error) {
+      errors.push(`q="${q.slice(0, 40)}…": ${result.error}`)
     }
   }
   out.raw_results = allResults
-  if (allResults.length === 0) return out
+
+  // Sprint S6C STEP 2: surface errors + status decision.
+  // - All queries failed → status='error' з aggregate message
+  // - Some succeeded але 0 items → status='partial' (Tavily не indexed)
+  // - Items returned → status='success'
+  if (!anySucceeded) {
+    out.error = errors.join(' | ')
+    out.status = 'error'
+    return out
+  }
+  if (allResults.length === 0) {
+    out.error =
+      errors.length > 0
+        ? `Some queries failed: ${errors.join(' | ')}`
+        : 'Tavily returned 0 results across all queries'
+    out.status = 'partial'
+    return out
+  }
+  out.status = 'success'
 
   const ownDomain = guessOwnDomain(nazwa, allResults)
 
