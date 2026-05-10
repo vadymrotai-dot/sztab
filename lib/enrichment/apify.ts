@@ -1,16 +1,30 @@
 // lib/enrichment/apify.ts
 // Sprint H — Apify Google Maps contact enrichment.
+// Sprint S6D Day 3 (12.05.2026) — REVERTED актор з compass/google-maps-extractor
+// назад до compass/crawler-google-places. Reason: extractor мав timeout issues
+// (Day 2 REVISION smoke test показав 240s+ runs за Vercel ceiling 120s). Old
+// actor stable з ~30-45s typical run.
 //
-// Actor: compass/crawler-google-places ($0.007/result, simple JSON shape).
+// Plus enabled `scrapePlaceDetailPage: true` що exposes ще fields:
+// reviewsDistribution, popularTimes, **orderBy** (food delivery providers
+// — може містити menu hints), peopleAlsoSearch, reviewsTags, hotel fields.
+//
+// Day 2 REVISION's `menu_dishes` extraction logic preserved — defensive
+// parsing tries multiple key names (menu/menuItems/popularDishes/dishes).
+// Якщо crawler-google-places returns popular dishes у raw_payload — extracted.
+// Якщо ні — empty array (acceptable; full menu via website-menu.ts WWW path).
+//
+// Actor: compass/crawler-google-places (back to Sprint H original).
 // Endpoint: https://api.apify.com/v2/acts/compass~crawler-google-places/
 //   run-sync-get-dataset-items?token={APIFY_API_TOKEN}
 //
 // Behavior:
 //   1. Build search query "{name} {city|voivodeship} Polska"
-//   2. POST { searchStringsArray, maxCrawledPlaces: 3, language: "pl" }
+//   2. POST { searchStringsArray, maxCrawledPlaces: 3, scrapePlaceDetailPage: true }
 //   3. Pick best match via Levenshtein name similarity (≥0.5 ratio)
 //   4. Extract phone / email / website / gmaps URL / rating / reviewsCount
-//   5. Return ApifyEnrichResult з status/cost/raw_payload
+//      + menu_dishes (popular dishes якщо actor returns)
+//   5. Return ApifyEnrichResult з status/cost/raw_payload + menu_dishes
 //
 // Rate limit: in-memory token bucket 30 calls/min.
 // Retry: 3 attempts на 5xx з exp backoff (1s, 2s, 4s).
@@ -85,6 +99,17 @@ export interface ApifyTarget {
   phone?: string | null
 }
 
+/** Sprint S6D Day 2 REVISION (12.05.2026) — menu dish extracted з Google
+ *  Maps detail page. Google Maps typically rendert top 3-5 popular dishes,
+ *  не повний menu. Use як supplementary signal; full menu via WWW fetch
+ *  (lib/enrichment/website-menu.ts) as primary source. */
+export interface ApifyMenuDish {
+  name_pl: string
+  price_pln: number | null
+  description: string | null
+  image_url: string | null
+}
+
 export interface ApifyEnrichResult {
   status: 'success' | 'no_match' | 'partial' | 'error'
   phone: string | null
@@ -93,12 +118,28 @@ export interface ApifyEnrichResult {
   gmaps_url: string | null
   gmaps_rating: number | null
   gmaps_reviews_count: number | null
+  /** Sprint S6D Day 2 REVISION — menu dishes з Google Maps profile.
+   *  Empty array якщо actor не повертає menu (common for non-restaurants).
+   *  3-5 dishes typical (Google rendert "popular" subset). Full menu — WWW
+   *  fallback. */
+  menu_dishes: ApifyMenuDish[]
   raw_payload: unknown
   cost_usd: number
   error_message?: string
 }
 
-// ─── Apify actor response (compass crawler) ───
+// ─── Apify actor response (compass google-maps-extractor) ───
+// Defensive: actor output shape varies per version. Include known + likely
+// menu field names. Real shape verified post-smoke-test.
+interface ApifyMenuItemRaw {
+  name?: string
+  title?: string
+  price?: number | string | null
+  priceText?: string
+  description?: string
+  imageUrl?: string
+  image?: string
+}
 interface ApifyPlace {
   title?: string
   address?: string
@@ -113,6 +154,12 @@ interface ApifyPlace {
   street?: string
   city?: string
   postalCode?: string
+  // Sprint S6D Day 2 — menu fields per compass/google-maps-extractor docs.
+  // Multiple key candidates бо actor schema undocumented для menus.
+  menu?: ApifyMenuItemRaw[]
+  menuItems?: ApifyMenuItemRaw[]
+  popularDishes?: ApifyMenuItemRaw[]
+  dishes?: ApifyMenuItemRaw[]
 }
 
 function buildQuery(target: ApifyTarget): string {
@@ -132,6 +179,12 @@ async function callApify(
   // даний smaller actor instance — швидше, плюс avoids "memory-limit-exceeded"
   // 402 коли мaємo abandoned runs ще consuming slots after client timeouts.
   const url = `${APIFY_BASE}/acts/${ACTOR_ID}/run-sync-get-dataset-items?token=${apiKey}&memory=1024`
+  // Sprint S6D Day 3 — back to original crawler-google-places input shape.
+  // Added `scrapePlaceDetailPage: true` що enables: reviewsDistribution,
+  // imageCategories, popularTimes, openingHours, peopleAlsoSearch, reviewsTags,
+  // updatesFromCustomers, questionsAndAnswers, tableReservationLinks, orderBy,
+  // ownerUpdates, hotel fields. Якщо actor returns menu items у raw payload
+  // — picked up via defensive extractMenuDishes helper.
   const body = {
     searchStringsArray: [searchQuery],
     maxCrawledPlaces: 3,
@@ -139,6 +192,7 @@ async function callApify(
     countryCode: 'pl',
     deeperCityScrape: false,
     skipClosedPlaces: false,
+    scrapePlaceDetailPage: true,
   }
 
   let lastError: unknown
@@ -283,6 +337,10 @@ export async function enrichContactsApify(
   const gmaps_reviews_count =
     typeof best.reviewsCount === 'number' ? best.reviewsCount : null
 
+  // Sprint S6D Day 2 REVISION — extract menu dishes (gmaps_extractor може
+  // expose top 3-5 popular dishes). Defensive: try multiple known field names.
+  const menu_dishes = extractMenuDishes(best)
+
   const hasContact = Boolean(phone || email || website)
   // Sprint S6C STEP 2 — якщо phone-match override triggered + name різниться
   // (similarity < 0.5), mark як 'partial' з note. Preserves valid contact
@@ -304,16 +362,47 @@ export async function enrichContactsApify(
     gmaps_url,
     gmaps_rating,
     gmaps_reviews_count,
+    menu_dishes,
     raw_payload: {
       query,
       best,
       all_results_count: items.length,
       pick_override: picked.override,
       name_similarity: picked.name_similarity,
+      menu_dishes_count: menu_dishes.length,
     },
     cost_usd: Math.round(cost * 10000) / 10000,
     error_message: errorMessage,
   }
+}
+
+/** Sprint S6D Day 2 REVISION — best-effort price parse (PL format
+ *  "12,50 zł" → 12.50). */
+function parsePricePln(raw: number | string | null | undefined): number | null {
+  if (raw == null) return null
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null
+  const cleaned = raw.replace(/[^\d,.\-]/g, '').replace(',', '.')
+  const n = parseFloat(cleaned)
+  return Number.isFinite(n) ? n : null
+}
+
+/** Defensive menu extraction — actor schema for menus undocumented.
+ *  Try multiple known field names. Returns empty array якщо no menu present. */
+function extractMenuDishes(place: ApifyPlace): ApifyMenuDish[] {
+  const candidates =
+    place.menu ?? place.menuItems ?? place.popularDishes ?? place.dishes ?? []
+  const out: ApifyMenuDish[] = []
+  for (const it of candidates) {
+    const name = it.name ?? it.title ?? ''
+    if (!name.trim()) continue
+    out.push({
+      name_pl: name.trim(),
+      price_pln: parsePricePln(it.price ?? it.priceText ?? null),
+      description: it.description ?? null,
+      image_url: it.imageUrl ?? it.image ?? null,
+    })
+  }
+  return out
 }
 
 function zeroResult(
@@ -330,6 +419,7 @@ function zeroResult(
     gmaps_url: null,
     gmaps_rating: null,
     gmaps_reviews_count: null,
+    menu_dishes: [],
     raw_payload: raw ?? null,
     cost_usd: Math.round(cost * 10000) / 10000,
     error_message: error,

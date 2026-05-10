@@ -90,31 +90,59 @@ interface ApifyPersonRecord {
 interface ApifyKrsFullnamesPayload {
   nip?: string
   krs?: string
+  // Sprint S6D Day 2 REVISION (12.05.2026) — added 3 nових arrays що actor
+  // returns per company structure type. Без них — Liudmyla Khomenko (SOLERA
+  // PREZES ZARZĄDU) не з'являлась у persons table бо actor returned її у
+  // boardMembers, не persons/zarzad/members.
   persons?: ApifyPersonRecord[]
   zarzad?: ApifyPersonRecord[]
   members?: ApifyPersonRecord[]
+  boardMembers?: ApifyPersonRecord[]
+  shareholders?: ApifyPersonRecord[]
+  supervisoryBoard?: ApifyPersonRecord[]
 }
 
-function normalizeRole(raw: string | undefined): string {
-  if (!raw) return 'CZŁONEK ZARZĄDU'
+/** Normalize explicit role string. Якщо raw absent — falls back to default
+ *  rola від array source (boardMembers default 'CZŁONEK ZARZĄDU',
+ *  shareholders default 'WSPÓLNIK', etc.). */
+function normalizeRole(raw: string | undefined, defaultRole: string): string {
+  if (!raw) return defaultRole
   return raw.trim().toUpperCase()
 }
 
 function normalizePersons(payload: ApifyKrsFullnamesPayload): KrsFullnamesPerson[] {
-  const candidates =
-    payload.persons ?? payload.zarzad ?? payload.members ?? []
   const out: KrsFullnamesPerson[] = []
-  for (const p of candidates) {
-    const imie = p.imie ?? p.firstName ?? p.given_name ?? ''
-    const nazwisko = p.nazwisko ?? p.lastName ?? p.surname ?? p.family_name ?? ''
-    if (!imie.trim() && !nazwisko.trim()) continue
-    out.push({
-      imie: imie.trim(),
-      nazwisko: nazwisko.trim(),
-      rola: normalizeRole(p.rola ?? p.role ?? p.function ?? p.funkcja),
-      index: typeof p.index === 'number' ? p.index : null,
-    })
+
+  // Sprint S6D Day 2 REVISION — defensive multi-source array collection.
+  // Actor може return різні arrays залежно від company structure
+  // (sp.z o.o. → zarzad+wspólnicy, S.A. → boardMembers+supervisoryBoard,
+  // PSA → boardMembers+shareholders). Each array має own role default.
+  const collect = (
+    arr: ApifyPersonRecord[] | undefined,
+    defaultRole: string,
+  ): void => {
+    if (!arr) return
+    for (const p of arr) {
+      const imie = p.imie ?? p.firstName ?? p.given_name ?? ''
+      const nazwisko = p.nazwisko ?? p.lastName ?? p.surname ?? p.family_name ?? ''
+      if (!imie.trim() && !nazwisko.trim()) continue
+      const explicitRole = p.rola ?? p.role ?? p.function ?? p.funkcja
+      out.push({
+        imie: imie.trim(),
+        nazwisko: nazwisko.trim(),
+        rola: normalizeRole(explicitRole, defaultRole),
+        index: typeof p.index === 'number' ? p.index : null,
+      })
+    }
   }
+
+  collect(payload.persons, 'CZŁONEK ZARZĄDU')
+  collect(payload.zarzad, 'CZŁONEK ZARZĄDU')
+  collect(payload.members, 'CZŁONEK ZARZĄDU')
+  collect(payload.boardMembers, 'CZŁONEK ZARZĄDU')
+  collect(payload.shareholders, 'WSPÓLNIK')
+  collect(payload.supervisoryBoard, 'CZŁONEK RADY NADZORCZEJ')
+
   return out
 }
 

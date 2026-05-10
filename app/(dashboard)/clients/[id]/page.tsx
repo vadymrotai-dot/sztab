@@ -24,6 +24,7 @@ import { SignalsSection } from '@/components/clients/signals-section'
 import { ContactSectionV2 } from '@/components/clients/contact-section-v2'
 import { ClientDetailActions } from '@/components/clients/client-detail-actions'
 import { ClientTypeBadge } from '@/components/clients/client-type-badge'
+import { MenuSection, type MenuDish, type MenuCoverage, type MenuDishesSource } from '@/components/clients/menu-section'
 import type { ClientType } from '@/lib/ai/business-analysis'
 import { SectionActionLink } from '@/components/clients/section-action-link'
 import { KrsRefreshButton } from '@/components/clients/krs-refresh-button'
@@ -57,6 +58,8 @@ export default async function ClientDetailPage({
     { data: pkdMain },
     // Sprint S6B-UI-A — Apify Google Maps data для SignalsSection card
     { data: apifyEnrichment },
+    // Sprint S6D Day 3 — menu enrichment rows (www_menu / wedo_pdf_menu / blocked)
+    { data: menuRows },
   ] = await Promise.all([
     supabase.from('clients').select('*').eq('id', id).single(),
     supabase.from('contacts').select('*').eq('client_id', id).order('created_at', { ascending: false }),
@@ -112,11 +115,21 @@ export default async function ClientDetailPage({
     // contact_enrichment row з gmaps_rating, reviews_count, gmaps_url, phone.
     supabase
       .from('contact_enrichment')
-      .select('status, gmaps_rating, gmaps_reviews_count, gmaps_url, phone')
+      .select('status, gmaps_rating, gmaps_reviews_count, gmaps_url, phone, raw_payload')
       .eq('target_id', id)
       .eq('target_type', 'client')
       .eq('source', 'apify_gmaps')
       .maybeSingle(),
+    // Sprint S6D Day 3 — fetch menu sources для MenuSection.
+    // Order priority: wedo_pdf_menu (full PDF) > www_menu (full HTML) >
+    //   www_menu_blocked (UpMenu marker) > apify_gmaps (popular subset).
+    // Read all sources, merge у component-side prep below.
+    supabase
+      .from('contact_enrichment')
+      .select('source, status, raw_payload, enriched_at')
+      .eq('target_id', id)
+      .eq('target_type', 'client')
+      .in('source', ['wedo_pdf_menu', 'www_menu', 'www_menu_blocked']),
   ])
 
   if (!client) notFound()
@@ -285,6 +298,73 @@ export default async function ClientDetailPage({
     : 'Brak analizy — uruchom "Analiza klienta"'
   const contactSourcesCount = [emailValue, phoneValue, websiteValue].filter(Boolean).length
 
+  // Sprint S6D Day 3 — menu data prep (для MenuSection component).
+  // Merge sources by priority: wedo_pdf_menu > www_menu > apify_gmaps popular.
+  // UpMenu blocked detected якщо www_menu_blocked row present.
+  const isGastronomia =
+    (c.business_profile as { client_type?: ClientType } | null)?.client_type === 'gastronomia'
+
+  type MenuRow = {
+    source: string
+    status: string | null
+    raw_payload: { dishes?: MenuDish[] } | null
+    enriched_at: string | null
+  }
+  const menuRowsTyped = ((menuRows ?? []) as unknown) as MenuRow[]
+  const wedoRow = menuRowsTyped.find((r) => r.source === 'wedo_pdf_menu' && r.status !== 'partial' && (r.raw_payload?.dishes?.length ?? 0) > 0)
+  const wwwRow = menuRowsTyped.find((r) => r.source === 'www_menu' && (r.raw_payload?.dishes?.length ?? 0) > 0)
+  const upMenuBlockedRow = menuRowsTyped.find((r) => r.source === 'www_menu_blocked')
+
+  let menuDishes: MenuDish[] = []
+  let menuCoverage: MenuCoverage = 'none'
+  let menuSource: MenuDishesSource = 'manual'
+  let menuLastUpdated: string | null = null
+
+  if (wedoRow) {
+    menuDishes = wedoRow.raw_payload?.dishes ?? []
+    menuSource = 'wedo_pdf_menu'
+    menuCoverage = menuDishes.length > 10 ? 'full_menu' : 'popular_only'
+    menuLastUpdated = wedoRow.enriched_at
+  } else if (wwwRow) {
+    menuDishes = wwwRow.raw_payload?.dishes ?? []
+    menuSource = 'www_menu'
+    menuCoverage = menuDishes.length > 10 ? 'full_menu' : 'popular_only'
+    menuLastUpdated = wwwRow.enriched_at
+  } else {
+    // Fallback — extract popular dishes з apify_gmaps row (Day 3 КРОК 1
+    // scrapePlaceDetailPage flag enables menu_dishes if actor returns них).
+    // Sprint S6D Day 3 BUGFIX (12.05.2026) — defensive Array.isArray.
+    // Apify може повернути `menu` як object (not array) OR missing entirely.
+    // Direct `.filter` crash → HTTP 500 на /clients/{id}.
+    const gmapsRaw = (apifyEnrichment as { raw_payload?: unknown } | null)?.raw_payload as
+      | { best?: { menu?: unknown } }
+      | null
+    const gmapsMenuRaw = gmapsRaw?.best?.menu
+    const gmapsMenu = Array.isArray(gmapsMenuRaw)
+      ? (gmapsMenuRaw as Array<{ name?: string; price?: number | string; description?: string }>)
+      : []
+    if (gmapsMenu.length > 0) {
+      menuDishes = gmapsMenu
+        .filter((d) => typeof d.name === 'string' && d.name.trim())
+        .map((d) => {
+          const priceParsed =
+            typeof d.price === 'number'
+              ? d.price
+              : typeof d.price === 'string'
+                ? parseFloat(d.price.replace(/[^\d,.\-]/g, '').replace(',', '.'))
+                : null
+          return {
+            name_pl: d.name!.trim(),
+            price_pln: priceParsed && Number.isFinite(priceParsed) ? priceParsed : null,
+            category: null,
+            description: d.description ?? null,
+          }
+        })
+      menuSource = 'gmaps_menu'
+      menuCoverage = 'popular_only'
+    }
+  }
+
   return (
     <div className="flex flex-col bg-[#FAFAF7] min-h-screen">
       <PageHeader
@@ -339,6 +419,34 @@ export default async function ClientDetailPage({
           employeesCount={employeesCount}
           branchOfficesCount={branchOfficesCount}
         />
+
+        {/* Sprint S6D Day 3 — Menu section (тільки для gastronomia клієнтів).
+            Rendered ВИЩЕ Profil accordion бо це core capability per Vadym
+            ("наша перемога коли ми бачимо меню клієнта"). */}
+        {isGastronomia && (
+          <AccordionSection
+            id="menu"
+            title="Menu klienta"
+            meta={
+              menuCoverage === 'full_menu'
+                ? `${menuDishes.length} dań — pełne menu`
+                : menuCoverage === 'popular_only'
+                  ? `${menuDishes.length} dań — tylko popularne`
+                  : upMenuBlockedRow
+                    ? 'UpMenu (iframe — niedostępne)'
+                    : 'Brak menu'
+            }
+            defaultOpen={true}
+          >
+            <MenuSection
+              dishes={menuDishes}
+              coverage={menuCoverage}
+              source={menuSource}
+              lastUpdated={menuLastUpdated}
+              upMenuDetected={Boolean(upMenuBlockedRow)}
+            />
+          </AccordionSection>
+        )}
 
         <AccordionSection title="Profil" meta={profileMeta} defaultOpen={true}>
           <ProfileSectionV2

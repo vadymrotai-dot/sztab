@@ -33,8 +33,14 @@ import { upsertField, upsertFields } from '@/lib/profile/merge'
 import { findExistingContact } from '@/lib/enrichment/contact-preflight'
 import { enrichContactsApify } from '@/lib/enrichment/apify'
 import { searchCompanyOnline } from '@/lib/enrichment/web-search'
-import { enrichMenuPyszne } from '@/lib/enrichment/pyszne'
+// Sprint S6D Day 2 REVISION (12.05.2026) — Pyszne path DEPRECATED.
+// Reason: NO Polish-specific Pyszne actor у Apify Store. Available
+// scrapepilot/just-eat-scraper returns UK Subway data для PL queries.
+// File preserved у lib/enrichment/pyszne.ts (cheap to revive якщо PL
+// actor appears).
+// import { enrichMenuPyszne } from '@/lib/enrichment/pyszne' (deprecated)
 import { enrichMenuWolt } from '@/lib/enrichment/wolt'
+import { extractMenuFromWebsite } from '@/lib/enrichment/website-menu'
 import { enrichKrsFullnames, isAnonymizedPerson } from '@/lib/enrichment/krs-fullnames'
 import { analyzeBusinessProfile } from '@/lib/ai/business-analysis'
 import { getHorecaCategory } from '@/lib/pkd/mapping-2007-2025'
@@ -458,10 +464,10 @@ export async function POST(req: Request) {
   if (tavilyWillRun) pending.push('tavily')
   if (params.apify_api_token) {
     pending.push('Apify_GMaps')
-    // Sprint S6D Day 2 — gastronomia menu scrape + krs-fullnames conditional
-    // sources. Surface як pending тільки якщо apify_api_token present (umożliwa
-    // run); внутрішня logika decide skip/run за client_type у runPhaseB.
-    pending.push('pyszne_menu')
+    // Sprint S6D Day 2 REVISION (12.05.2026) — gastronomia menu scrape +
+    // krs-fullnames conditional sources. pyszne_menu DEPRECATED — no PL
+    // actor у Apify Store. www_menu added — fetches own restaurant website.
+    pending.push('www_menu')
     pending.push('wolt_menu')
     pending.push('regdata_krs_fullnames')
   }
@@ -744,58 +750,120 @@ async function runPhaseB({
     clientType === 'sieci_handlowe' ||
     (!clientType && horecaCategory === 'wholesale')
 
-  // ─── STEP 5.5: Pyszne + Wolt menu scrape (gastronomia only) ───
+  // ─── STEP 5.5: WWW menu fetch + Wolt fallback (gastronomia only) ───
+  // Sprint S6D Day 2 REVISION (12.05.2026):
+  //   - Pyszne path DEPRECATED (no PL actor у Apify Store)
+  //   - GMaps menu — already extracted у STEP 5 above (apify.ts now uses
+  //     compass/google-maps-extractor + parses dishes у menu_dishes field).
+  //     Saves як part of source='apify_gmaps'.
+  //   - WWW menu — primary source для повного menu (own restaurant site)
+  //   - Wolt — fallback якщо restaurant on Wolt platform
   if (params.apify_api_token && isGastronomia && clientGateRow) {
-    // Pyszne
-    const pyszneRunId = await startEnrichmentRun(supabase, {
-      target_type: 'company',
-      target_id: clientId,
-      source: 'pyszne_menu',
-    })
-    try {
-      const result = await enrichMenuPyszne(params.apify_api_token, {
-        name: clientGateRow.title,
-        city: clientGateRow.city,
-        voivodeship: clientGateRow.region,
-      })
-      await supabase.from('contact_enrichment').upsert(
-        {
-          target_type: 'client',
-          target_id: clientId,
-          source: 'pyszne_menu',
-          website: result.pyszne_url,
-          raw_payload: {
-            restaurant_name: result.restaurant_name,
-            dishes: result.dishes,
-            apify_raw: result.raw_payload,
-          },
-          status: result.status,
-          error_message: result.error_message ?? null,
-          cost_usd: result.cost_usd,
-          enriched_at: new Date().toISOString(),
-          expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
-        },
-        { onConflict: 'target_type,target_id,source' },
-      )
-      response.sources_completed.push({
-        source: 'pyszne_menu',
-        status: result.status === 'success' ? 'success' : 'partial',
-        note: `${result.dishes.length} dań, $${result.cost_usd.toFixed(4)}`,
-      })
-      await finishEnrichmentRun(supabase, pyszneRunId, {
-        status: result.status === 'success' ? 'success' : 'partial',
-        raw_payload: result.raw_payload,
-        cost_usd: result.cost_usd,
-        error_message: result.error_message,
-      })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      response.errors.push(`Pyszne: ${msg}`)
-      response.sources_completed.push({ source: 'pyszne_menu', status: 'error', error: msg })
-      await finishEnrichmentRun(supabase, pyszneRunId, { status: 'error', error_message: msg })
+    // STEP 5.5a — WWW menu fetch (primary source for full menu)
+    // Resolve website URL з contact_enrichment.apify_gmaps OR canonical
+    // company_profile_fields.website. Prefer GMaps website якщо present
+    // (актуальніший, перевірений Google Maps).
+    let websiteUrl: string | null = null
+    const { data: gmapsRow } = await supabase
+      .from('contact_enrichment')
+      .select('website')
+      .eq('target_type', 'client')
+      .eq('target_id', clientId)
+      .eq('source', 'apify_gmaps')
+      .maybeSingle()
+    websiteUrl = (gmapsRow as { website?: string | null } | null)?.website ?? null
+    if (!websiteUrl) {
+      const { data: webField } = await supabase
+        .from('company_profile_fields')
+        .select('value_text')
+        .eq('client_id', clientId)
+        .eq('field_key', 'website')
+        .is('superseded_at', null)
+        .maybeSingle()
+      websiteUrl = (webField as { value_text?: string | null } | null)?.value_text ?? null
     }
 
-    // Wolt (parallel-friendly але keep sequential для simplicity у MVP)
+    if (websiteUrl && params.anthropic_api_key) {
+      const wwwRunId = await startEnrichmentRun(supabase, {
+        target_type: 'company',
+        target_id: clientId,
+        source: 'www_menu',
+      })
+      try {
+        // Sprint S6D Day 3 — pass apifyToken для PDF wedo path. Якщо
+        // restaurant has PDF menu, wedo extracts dishes via OCR (~$0.10).
+        // Якщо UpMenu iframe detected — result.source='upmenu_blocked',
+        // dishes=[] (caller fallbacks до GMaps popular dishes).
+        const result = await extractMenuFromWebsite(
+          websiteUrl,
+          params.anthropic_api_key,
+          params.apify_api_token,
+        )
+        // Sprint S6D Day 3 — source reflects extraction path для UI
+        // transparency. 'www_menu' для static_html_ai, 'wedo_pdf_menu'
+        // для pdf_wedo, 'www_menu_blocked' для upmenu_blocked.
+        const dbSource =
+          result.source === 'pdf_wedo'
+            ? 'wedo_pdf_menu'
+            : result.source === 'upmenu_blocked'
+              ? 'www_menu_blocked'
+              : 'www_menu'
+        await supabase.from('contact_enrichment').upsert(
+          {
+            target_type: 'client',
+            target_id: clientId,
+            source: dbSource,
+            website: websiteUrl,
+            raw_payload: {
+              matched_path: result.matched_path,
+              content_type: result.content_type,
+              extraction_source: result.source,
+              dishes: result.dishes,
+              pages_fetched: result.pages_fetched,
+            },
+            status: result.dishes.length > 0 ? 'success' : 'partial',
+            error_message: result.error ?? null,
+            cost_usd: result.cost_usd,
+            enriched_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
+          },
+          { onConflict: 'target_type,target_id,source' },
+        )
+        response.sources_completed.push({
+          source: dbSource,
+          status: result.dishes.length > 0 ? 'success' : 'partial',
+          note: `${result.dishes.length} dań via ${result.source} (${result.matched_path ?? 'no match'}), $${result.cost_usd.toFixed(4)}`,
+        })
+        await finishEnrichmentRun(supabase, wwwRunId, {
+          status: result.dishes.length > 0 ? 'success' : 'partial',
+          raw_payload: result,
+          cost_usd: result.cost_usd,
+          error_message: result.error,
+        })
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        response.errors.push(`www_menu: ${msg}`)
+        response.sources_completed.push({ source: 'www_menu', status: 'error', error: msg })
+        await finishEnrichmentRun(supabase, wwwRunId, { status: 'error', error_message: msg })
+      }
+    } else {
+      response.sources_completed.push({
+        source: 'www_menu',
+        status: 'skipped',
+        note: !websiteUrl
+          ? 'no website URL (run Apify GMaps first)'
+          : 'anthropic_api_key missing',
+      })
+    }
+
+    // STEP 5.5b — DEPRECATED Pyszne (kept як skipped marker для UI)
+    response.sources_completed.push({
+      source: 'pyszne_menu',
+      status: 'skipped',
+      note: 'DEPRECATED: no PL actor у Apify Store',
+    })
+
+    // STEP 5.5c — Wolt (fallback якщо restaurant on Wolt platform)
     const woltRunId = await startEnrichmentRun(supabase, {
       target_type: 'company',
       target_id: clientId,
@@ -845,23 +913,25 @@ async function runPhaseB({
       await finishEnrichmentRun(supabase, woltRunId, { status: 'error', error_message: msg })
     }
   } else {
+    const note = !params.apify_api_token
+      ? 'apify_api_token missing'
+      : !isGastronomia
+        ? `client_type=${clientType ?? '(unknown)'} — не gastronomia`
+        : 'no client metadata'
+    response.sources_completed.push({
+      source: 'www_menu',
+      status: 'skipped',
+      note,
+    })
     response.sources_completed.push({
       source: 'pyszne_menu',
       status: 'skipped',
-      note: !params.apify_api_token
-        ? 'apify_api_token missing'
-        : !isGastronomia
-          ? `client_type=${clientType ?? '(unknown)'} — не gastronomia`
-          : 'no client metadata',
+      note: 'DEPRECATED: no PL actor у Apify Store',
     })
     response.sources_completed.push({
       source: 'wolt_menu',
       status: 'skipped',
-      note: !params.apify_api_token
-        ? 'apify_api_token missing'
-        : !isGastronomia
-          ? `client_type=${clientType ?? '(unknown)'} — не gastronomia`
-          : 'no client metadata',
+      note,
     })
   }
 

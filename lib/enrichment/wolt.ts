@@ -198,7 +198,13 @@ function pickBestMatch(
     }
   }
   if (!best) return null
-  if (items.length === 1 || bestSim >= NAME_SIMILARITY_THRESHOLD) {
+  // Sprint S6D Day 2 REVISION (12.05.2026) — tighten single-result case.
+  // Earlier permissive rule "if items.length === 1 → accept без similarity
+  // check" produced false positives коли Wolt actor returns nearest match
+  // (e.g. McDonald's) для restaurants NOT on Wolt platform. New rule:
+  // require sim >= 0.5 navet для single result. Якщо < 0.5 → null →
+  // status='no_match' з note "Restaurant not on Wolt".
+  if (bestSim >= NAME_SIMILARITY_THRESHOLD) {
     return { match: best, sim: bestSim }
   }
   return null
