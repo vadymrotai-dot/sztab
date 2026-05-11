@@ -47,6 +47,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 import {
   updateCohortMemberStatus,
@@ -62,6 +68,7 @@ import { CohortBulkBar } from './cohort-bulk-bar'
 interface ProspectSnapshot {
   id: string
   name: string
+  nip: string | null
   owner_name: string | null
   source: string | null
   krs_legal_form: string | null
@@ -69,6 +76,16 @@ interface ProspectSnapshot {
   dominant_channel: string | null
   horeca_meta_score: number | string | null
   has_contact: boolean | null
+}
+
+/** Sprint S6D Day 4 — enrichment з contact_enrichment (apify_gmaps),
+ *  joined server-side у page.tsx. */
+export interface ProspectEnrichmentData {
+  status: string | null
+  phone: string | null
+  website: string | null
+  gmaps_rating: number | string | null
+  gmaps_reviews_count: number | null
 }
 
 interface ClientSnapshot {
@@ -89,6 +106,9 @@ export interface ProspectMemberRow {
   status: CohortMemberStatus
   notes: string | null
   snapshot: ProspectSnapshot | null
+  /** Sprint S6D Day 4 — joined contact_enrichment data. Null коли not
+   *  yet enriched OR enrichment failed (no_match/error). */
+  enrichment: ProspectEnrichmentData | null
 }
 
 export interface ClientMemberRow {
@@ -488,7 +508,21 @@ export function CohortMembersClient({
                         )
                       }
 
+                      // Sprint S6D Day 4 — enrichment data joined server-side.
+                      const enr = row.enrichment
+                      const enrSuccess =
+                        enr?.status === 'success' &&
+                        (enr.phone || enr.website || enr.gmaps_rating)
                       const meta = num(p.horeca_meta_score)
+                      const gmapsRating = enr?.gmaps_rating
+                        ? num(enr.gmaps_rating)
+                        : null
+                      // Score column logic (Vadym ETAP 3):
+                      // - JDG з horeca_meta_score > 0 → show оригінальний score
+                      // - sp.z o.o. з gmaps_rating → show "⭐ X.X" + reviews count
+                      // - інакше — '—'
+                      const showOriginalScore = meta > 0
+                      const showGmapsScore = !showOriginalScore && gmapsRating !== null
                       return (
                         <TableRow
                           key={key}
@@ -502,7 +536,17 @@ export function CohortMembersClient({
                             />
                           </TableCell>
                           <TableCell>
-                            <div className="font-medium">{p.name}</div>
+                            {/* Sprint S6D Day 4 ETAP 4 — clickable name → lookup page з prefill NIP */}
+                            {p.nip ? (
+                              <Link
+                                href={`/intelligence/lookup?nip=${p.nip}`}
+                                className="font-medium hover:text-emerald-700 hover:underline"
+                              >
+                                {p.name}
+                              </Link>
+                            ) : (
+                              <div className="font-medium">{p.name}</div>
+                            )}
                             {p.owner_name && (
                               <div className="text-xs text-muted-foreground">
                                 {p.owner_name}
@@ -521,10 +565,56 @@ export function CohortMembersClient({
                             {p.dominant_channel ?? '—'}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {meta.toFixed(1)}
+                            {showOriginalScore ? (
+                              meta.toFixed(1)
+                            ) : showGmapsScore ? (
+                              <span className="text-xs">
+                                ⭐ {gmapsRating!.toFixed(1)}
+                                {enr?.gmaps_reviews_count != null && (
+                                  <span className="ml-1 text-muted-foreground">
+                                    ({enr.gmaps_reviews_count})
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-center">
-                            {p.has_contact ? (
+                            {enrSuccess ? (
+                              <TooltipProvider delayDuration={200}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge
+                                      variant="outline"
+                                      className="cursor-default text-xs text-emerald-700 border-emerald-200"
+                                    >
+                                      ✓
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="left" className="max-w-xs">
+                                    <div className="space-y-1 text-xs">
+                                      {enr.phone && (
+                                        <div>📞 {enr.phone}</div>
+                                      )}
+                                      {enr.website && (
+                                        <div className="break-all">
+                                          🌐 {enr.website}
+                                        </div>
+                                      )}
+                                      {enr.gmaps_rating != null && (
+                                        <div>
+                                          ⭐ {num(enr.gmaps_rating).toFixed(1)}
+                                          {enr.gmaps_reviews_count != null && (
+                                            <> ({enr.gmaps_reviews_count} opinii)</>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : p.has_contact ? (
                               <Badge
                                 variant="outline"
                                 className="text-xs text-emerald-700 border-emerald-200"

@@ -54,6 +54,7 @@ interface MemberRowRaw {
 interface ProspectSnapshot {
   id: string
   name: string
+  nip: string | null
   owner_name: string | null
   source: string | null
   krs_legal_form: string | null
@@ -61,6 +62,19 @@ interface ProspectSnapshot {
   dominant_channel: string | null
   horeca_meta_score: number | string | null
   has_contact: boolean | null
+}
+
+/** Sprint S6D Day 4 BUGFIX (12.05.2026) — enrichment data joined з
+ *  contact_enrichment table для cohort prospect rows.
+ *  - status: 'success' / 'partial' / 'no_match' / 'error'
+ *  - phone / website / gmaps_rating / gmaps_reviews_count populated тільки
+ *    коли status='success' (per apify enrichment contract). */
+export interface ProspectEnrichment {
+  status: string | null
+  phone: string | null
+  website: string | null
+  gmaps_rating: number | string | null
+  gmaps_reviews_count: number | null
 }
 
 interface ClientSnapshot {
@@ -199,15 +213,40 @@ export default async function CohortDetailPage({
   const prospectIds = prospectMembers.map((m) => m.subject_id)
 
   let prospectMap = new Map<string, ProspectSnapshot>()
+  // Sprint S6D Day 4 — enrichment data joined paralelno з prospects snapshot.
+  // 12 success rows з contact_enrichment були invisible у UI бо page query
+  // ne joined this table. Now: рядок показує phone/website/rating у tooltip.
+  let enrichmentMap = new Map<string, ProspectEnrichment>()
   if (prospectIds.length > 0) {
-    const { data: prospects } = await supabase
-      .from('scored_prospects')
-      .select(
-        'id, name, owner_name, source, krs_legal_form, miejscowosc, dominant_channel, horeca_meta_score, has_contact',
-      )
-      .in('id', prospectIds)
+    const [prospectsRes, enrichmentRes] = await Promise.all([
+      supabase
+        .from('scored_prospects')
+        .select(
+          'id, name, nip, owner_name, source, krs_legal_form, miejscowosc, dominant_channel, horeca_meta_score, has_contact',
+        )
+        .in('id', prospectIds),
+      supabase
+        .from('contact_enrichment')
+        .select('target_id, status, phone, website, gmaps_rating, gmaps_reviews_count')
+        .in('target_id', prospectIds)
+        .eq('target_type', 'prospect')
+        .eq('source', 'apify_gmaps'),
+    ])
     prospectMap = new Map(
-      ((prospects ?? []) as ProspectSnapshot[]).map((p) => [p.id, p]),
+      ((prospectsRes.data ?? []) as ProspectSnapshot[]).map((p) => [p.id, p]),
+    )
+    type EnrichRow = ProspectEnrichment & { target_id: string }
+    enrichmentMap = new Map(
+      ((enrichmentRes.data ?? []) as EnrichRow[]).map((r) => [
+        r.target_id,
+        {
+          status: r.status,
+          phone: r.phone,
+          website: r.website,
+          gmaps_rating: r.gmaps_rating,
+          gmaps_reviews_count: r.gmaps_reviews_count,
+        },
+      ]),
     )
   }
 
@@ -236,6 +275,8 @@ export default async function CohortDetailPage({
       status: m.status,
       notes: m.notes,
       snapshot: snap ?? null,
+      // Sprint S6D Day 4 — enrichment з contact_enrichment (apify_gmaps).
+      enrichment: enrichmentMap.get(m.subject_id) ?? null,
     }
   })
 
