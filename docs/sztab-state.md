@@ -2375,3 +2375,45 @@ Per Protocol 27:
 
 Phase 1 розблоковує operational tool path. Понеділок 12.05 обзвони використовуватимуть /operacje/* для tracking + /intelligence/lookup для NIP enrichment. Phase 2 priority Vadym вирішує: order intake AI parser, client pricing matrix, oferta generator, lifecycle tracker, faktury MVP через Fakturownia API.
 
+---
+
+## 2026-05-12 — Sprint Day 5 SHIP + Cohort UI Rebuild
+
+**Status:** 7 commits 11-12.05, Sztab у production state для CzM обзвону 13.05.
+
+### Commits day 11.05.2026
+
+- `0692c73` Day 0 — PKD 2025 mapping migration + SpoonJoy seed
+- `e913dc3` Day 1 — AI client classification з 9 типами + filter chips
+- `eb7d7b9` Day 2 — Pyszne deprecate + Wolt threshold + krs-fullnames Liudmyla integration
+- `aaea82a` Day 2 REVISION + Day 3 — menu extraction architecture (UpMenu detect, wedo PDF, website-menu, migration 065)
+- `150fede` Day 4 — prediction engine (volume calc, dish→ingredients AI cached, 3-tier coverage, predictions UI section)
+
+### Commits day 12.05.2026
+
+- `043f195` Bugfix — PAGE_SIZE 50→1000 у clients-table (UI showed тільки 19% бази)
+- `6df07b1` Cohort UI rebuild — server query JOIN contact_enrichment + Tooltip + clickable rows + GMaps rating fallback + status pill verified
+
+### Major insights 12.05
+
+- Apify free tier $5/міс exhausted at $0.15 remaining → 49 NIPs cohort failed з HTTP 402. Vadym активував Apify Starter $29/міс.
+- /clients pagination cap 50 = hiding 216 of 267 clients
+- Cohort UI = просто visual list без functionality (rows non-clickable, enrichment data invisible, status pill not connected)
+
+### Tech-debt logged
+
+- Cowork code edits для `lib/enrichment/apify.ts` + `apify-batch.ts` (402/401/403 surface + fast-fail) — НЕ збереглися на host через virtiofs cache. Re-apply Day 6.
+- Cohort status pill saves correctly але requires F5 refresh (no optimistic UI). Polish для Day 6.
+- Day 3 docs untracked: `menu-extraction-architecture-research.md`, `menus-r-us-smoke-test.md`, `wedo-scrape-menu-smoke-test.md`.
+
+### CzM completion 13.05 ranок
+
+- Cohort `797d16f3` з 12 enriched prospекtів готовий до обзвону
+- Click row → `/intelligence/lookup?nip=...` auto-prefill
+- Status pill 5 options (Pending / Zadzwoniono / Zainteresowani / Nie zaint. / Callback) saves до `cohort_members.status`
+- Domek Sushi prediction LIVE приклад на `/clients/0da7df94...`
+
+### Failure mode logged (Protocol 38)
+
+- Claude порушив memory #4 6+ разів — задавав Vadym SQL запити які Cowork міг виконати sam. Vadym злий справедливо. Protocol 38 додано щоб не повторювалось.
+

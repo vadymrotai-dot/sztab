@@ -1622,4 +1622,133 @@ files, навіть для "cache flush" intent.
 
 ---
 
-**END OF PROTOCOLS (37 total).**
+## Протокол 38 — Claude task delegation rules (12.05.2026)
+
+**Тригер:** debug / diagnostic / data lookup потреба
+
+**Принцип:** Claude НЕ задає Vadym SQL запити, DevTools інспекції, console
+checks, network analysis. Це ВСЕ виконують Cowork або Claude через свої
+інструменти.
+
+### Хто що робить
+
+| Завдання | Виконавець | Як |
+|---|---|---|
+| SQL diagnostic | Cowork | `pnpm exec tsx scripts/diag-*.ts` з service-role Supabase client (`import '@/lib/env'`) |
+| DOM / console / network analysis | Claude | Chrome MCP `javascript_tool`, `read_console_messages`, `read_network_requests` |
+| File reads | Cowork | Read tool |
+| TSC check | Cowork (local) OR Vadym (host — якщо virtiofs phantom) |
+| Migrations apply | Cowork | `scripts/apply-migration-adapter.mjs` |
+| Git ops | Vadym | Protocol 14 — Vadym only |
+| Credentials / API keys | Vadym | secure |
+| Critical decisions | Vadym | strategy |
+
+### Anti-pattern блокую
+
+- "Запусти цей SQL у Supabase Studio" → Cowork sam через tsx script
+- "Перевір console errors через DevTools" → Claude sam через Chrome MCP
+- "Шли мені error_message з enrichment_log" → Cowork sam SELECT + report
+- "Дізнайся чи anthropic_api_key є у params" → Cowork sam через SELECT
+
+### Виключення (legitimate Vadym ask)
+
+- Поповнити Apify / OpenAI balance — Vadym credentials
+- Затвердження strategic decision (Option A vs B vs C)
+- Git push (Protocol 14)
+- UI verification на host (якщо Cowork sandbox network isolated)
+- TSC якщо virtiofs phantom (Protocol 37)
+
+### Failure mode (12.05.2026)
+
+Я порушив memory #4 ("мінімізація втручання Vadym") 6+ разів за один
+день — постійно задавав SQL Vadym коли Cowork міг виконати sam. Vadym
+злий справедливо: *"ти знову мене посилаєш робити роботу перевірки?"* +
+*"я візіонер і стратег, не оператор"*.
+
+### Recovery
+
+Перш ніж писати "Vadym, виконай..." — STOP. Питання: чи Cowork може це
+зробити через `bash_tool` / `pnpm exec` / Read? Чи Claude може через
+Chrome MCP? Якщо так — НЕ задавати Vadym.
+
+---
+
+## Протокол 39 — Cohort UI must be functional, not visual reference (12.05.2026)
+
+**Тригер:** будь-яка нова list/table сторінка у Sztab (cohorts, prospекti,
+clients, matches)
+
+**Принцип:** Список prospектів / клієнтів — НЕ просто read-only візуальна
+reference. Має бути робочим інструментом обзвону / роботи з клієнтом.
+
+### Обов'язкові elements для list/table сторінки
+
+1. **Row clickable** → відкривати detail page (Link wrapper навколо name)
+2. **Реальні дані видимі** — не "0.0 / —" коли є data, навіть з іншої
+   таблиці (JOIN required)
+3. **Status pill clickable** — change через DropdownMenu, save до DB через
+   server action
+4. **Notes / коментарі inline edit** з explicit Save button (Protocol 34)
+5. **Empty state explicit** ("Brak menu — uruchom Pełna re-analiza")
+   замість silent "0.0 score" коли реально нема data
+
+### Failure mode (12.05.2026 cohort 797d16f3)
+
+Cohort page показав "0.0 score / — kontakt / Pending" для всіх 50
+prospекtів попри 12 успішних enrichment-ів з phone/website/GMaps rating
+у `contact_enrichment`. UI читав тільки `clients.score` (stale 0.0) без
+JOIN на `contact_enrichment`. Plus row non-clickable — Vadym не міг зайти
+у prospекту з cohort. Це КРИТИЧНО блокувало CzM обзвон.
+
+### Fix (commit 6df07b1)
+
+Server query parallel `Promise.all` (scored_prospects + contact_enrichment
+JOIN by `target_id IN prospectIds AND target_type='prospect' AND
+source='apify_gmaps'`). Score fallback GMaps rating для sp.z o.o. без
+horeca_meta_score. Kontakt Tooltip з phone+website+rating. Row Link
+wrapper `href="/intelligence/lookup?nip={p.nip}"`.
+
+---
+
+## Протокол 40 — Apify billing cliff awareness (12.05.2026)
+
+**Тригер:** будь-який Apify-based enrichment workflow
+
+**Принцип:** Apify free tier = $5/міс. Cohort enrichments (49 NIPs ×
+$0.06 fully-enriched = ~$3 per cohort) швидко вичерпують. Перш ніж
+запустити масовий enrichment — verify balance.
+
+### Apify pricing per fully-enriched NIP (10 sources)
+
+- GUS / VAT_BL / WWW / BZP / tavily = free or $0.01
+- Apify GMaps (`compass/crawler-google-places` + `scrapePlaceDetailPage`)
+  = $0.025
+- Apify persons (`regdata/krs-fullnames-scraper`) = $0.005
+- AI business analysis (Haiku) = $0.003
+- AI match rescore = $0.005
+
+**Total ~$0.06 per NIP × 50 NIPs cohort = $3 per batch.**
+
+### Error surface (HTTP 402)
+
+`"not-enough-usage-to-run-paid-actor — remaining usage $X"`. Без
+fast-fail logic — 49 NIPs × 4s retry = ~200s wasted на impossible runs
+з $0 cost (no API ran).
+
+### Fast-fail pattern (commit pending — Cowork code edits не applied на host через virtiofs)
+
+- `lib/enrichment/apify.ts` — explicit HTTP 402/401/403 detection з
+  українським error message
+- `lib/enrichment/apify-batch.ts` — abort batch після 1-го NIP коли
+  billing/auth error detected
+
+### Subscription пороги
+
+- **Free $5/міс** — exhausts на 80-100 fully-enriched NIPs
+- **Starter $29/міс** — covers ~500-700 NIPs (Vadym активував 12.05.2026)
+- **Add-on prepaid** — gdy Starter not enough, $10-15 = додаткові
+  150-200 NIPs
+
+---
+
+**END OF PROTOCOLS (40 total).**
