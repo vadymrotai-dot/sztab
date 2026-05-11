@@ -72,7 +72,13 @@ const DEFAULT_TOOLBAR: ToolbarState = {
   page: 0,
 }
 
-const PAGE_SIZE = 50
+// Sprint S6D Day 4 BUGFIX (12.05.2026) — raised от 50 до 1000.
+// Vadym caught: 267 clients у DB але UI rendered тільки 50 (CRITICAL для
+// CzM call today). Pagination buttons exist у table footer (rendered якщо
+// pageCount > 1), але scrolling до них confused UX. 1000 покриває current
+// scale (267 < 1000) — Vadym бачить все. Re-add proper pagination у Day 5+
+// коли база виросте >800 records.
+const PAGE_SIZE = 1000
 
 interface ClientsTableProps {
   clients: Client[]
