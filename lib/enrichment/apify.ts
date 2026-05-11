@@ -210,6 +210,20 @@ async function callApify(
           continue
         }
         const errBody = await res.text().catch(() => '')
+        // Sprint S6D Day 4 BUGFIX (12.05.2026) — surface billing/auth errors
+        // explicitly. Cohort enrichment failed 35/49 NIPs з HTTP 402 silent
+        // generic "Apify call failed" — Vadym не wiedział, що Apify account
+        // balance exhausted.
+        if (res.status === 402) {
+          throw new Error(
+            `Apify billing exhausted (HTTP 402). Sprawdź konto na https://console.apify.com/billing — doładuj saldo aby kontynuować enrichment. Details: ${errBody.slice(0, 300)}`,
+          )
+        }
+        if (res.status === 401 || res.status === 403) {
+          throw new Error(
+            `Apify token nieprawidłowy lub bez uprawnień (HTTP ${res.status}). Sprawdź params.apify_api_token у /settings. Details: ${errBody.slice(0, 200)}`,
+          )
+        }
         throw new Error(`Apify HTTP ${res.status}: ${errBody.slice(0, 200)}`)
       }
       const items = (await res.json()) as ApifyPlace[]

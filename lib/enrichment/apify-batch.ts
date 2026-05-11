@@ -319,6 +319,28 @@ export async function executeBatch(
     else if (r.status === 'no_match') summary.no_match_nips++
     else summary.error_nips++
 
+    // Sprint S6D Day 4 BUGFIX (12.05.2026) — fast-fail bulk runs якщо
+    // Apify billing exhausted. Без цього 49 NIPs × 4s retry = 196s
+    // wasted щоб всі hit same HTTP 402. Detect на ПЕРШОМУ NIP → break.
+    if (
+      r.status === 'error' &&
+      r.error_message &&
+      /HTTP 402|billing exhausted|Apify token/i.test(r.error_message)
+    ) {
+      summary.per_nip.push({
+        nip: item.nip,
+        name: item.name,
+        status: r.status,
+        targets_written: 0,
+        cost_usd: r.cost_usd,
+        error: r.error_message,
+      })
+      console.warn(
+        `[APIFY_BATCH] FAST-FAIL: Apify billing/auth error на first NIP. Aborting batch.`,
+      )
+      break
+    }
+
     // Write-back contact_enrichment per target_id (write to ВСЕ таргети
     // sharing this NIP). На no_match — write to first target_id only,
     // rest inherit nothing (avoid plodити no_match rows).
