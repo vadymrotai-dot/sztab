@@ -1249,6 +1249,59 @@ async function runRejestrioStep(
   apiKey: string | undefined,
   response: LookupResponse,
 ): Promise<void> {
+  // Sprint S-RANK Bonus (13.05.2026) — cache guard для rejestr.io API.
+  // ROI audit виявив: 12.05 → 19 з 24 rejestrio_v2 calls = duplicate
+  // re-enrich на clients що вже мали krs_management_board у DB + recent
+  // successful enrichment. Це wasted 30% з 50 zł credit (~15 zł / 3 dni).
+  //
+  // Skip rejestrio_v2 IF:
+  //   1. clients.krs_management_board JSONB populated (НЕ NULL і НЕ '[]')
+  //   AND
+  //   2. enrichment_log має status='success' для (target_id=clientId,
+  //      source='rejestrio_v2') у last 30 days
+  //
+  // ELSE fire fresh call (stale OR empty cache).
+  const { data: clientRow } = await supabase
+    .from('clients')
+    .select('krs_management_board')
+    .eq('id', clientId)
+    .maybeSingle()
+  const mgmtBoard = (clientRow as { krs_management_board: unknown } | null)
+    ?.krs_management_board
+  const hasMgmt =
+    mgmtBoard !== null &&
+    mgmtBoard !== undefined &&
+    Array.isArray(mgmtBoard) &&
+    mgmtBoard.length > 0
+
+  if (hasMgmt) {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    const { data: recent } = await supabase
+      .from('enrichment_log')
+      .select('id, run_started_at')
+      .eq('target_id', clientId)
+      .eq('target_type', 'company')
+      .eq('source', 'rejestrio_v2')
+      .eq('status', 'success')
+      .gte('run_started_at', cutoff)
+      .order('run_started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (recent) {
+      const lastRun = (recent as { run_started_at: string }).run_started_at
+      console.log(
+        `[lookup] rejestrio_v2 SKIP cached (<30d) clientId=${clientId} krs=${krsNumber} lastRun=${lastRun}`,
+      )
+      response.sources_completed.push({
+        source: 'rejestrio_v2',
+        status: 'skipped',
+        note: `cached: krs_management_board populated, last success ${lastRun.slice(0, 10)} (<30d)`,
+      })
+      // НЕ створюємо новий enrichment_log entry — це skipping, no API call.
+      return
+    }
+  }
+
   const runId = await startEnrichmentRun(supabase, {
     target_type: 'company',
     target_id: clientId,
