@@ -143,10 +143,30 @@ export function aggregateMatch(
   // 8. Aggregate
   const subTotal =
     pkd.value + activity.value + size.value + geo.value + recency.value + niche.value
-  const finalScore = Math.max(
+  let finalScore = Math.max(
     0,
     Math.min(100, Math.round(subTotal * loyalty.mult + penaltiesSum + bonusesSum)),
   )
+
+  // Sprint S-RANK FIX #2-C (13.05.2026) — AI buyer_strength CAP.
+  // Combined_score = COALESCE(ai_score, algo_score) per migration 027.
+  // АЛЕ якщо AI L6 не запустився (ai_score=null), combined_score fallbacks
+  // до algo_score який не враховує AI judgment. Цей CAP робить L6 binding
+  // навіть для L5-only path: if AI визначив target unfit (strength <30),
+  // hard-cap algo_score at strength value.
+  //
+  // Приклад: BOZ GROUP łożyska industrial, AI strength=5 ("No fit, łożyska
+  // не warzywa") + L5 algo PKD-fit 70 (generic 4639Z hurtownia) →
+  // cap → final 5 (NOT 70). semantic: "AI має final word".
+  //
+  // strength >= 30 → no cap (regular formula). nicheBonus continues to
+  // award +10/+25 для strength ≥40/≥70 (existing behavior preserved).
+  const strength = target.business_profile?.buyer_strength_for_chm
+  const capReasons: string[] = []
+  if (typeof strength === 'number' && strength < 30 && finalScore > strength) {
+    capReasons.push(`buyer_strength_cap:${strength}`)
+    finalScore = strength
+  }
 
   const reason_codes: string[] = [
     ...pkd.reasons,
@@ -157,6 +177,7 @@ export function aggregateMatch(
     ...niche.reasons,
     ...s2a.reasons,
     ...loyalty.reasons,
+    ...capReasons,
   ]
 
   return {
