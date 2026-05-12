@@ -88,6 +88,14 @@ export interface ProspectEnrichmentData {
   gmaps_reviews_count: number | null
 }
 
+/** Sprint S-RANK B-min (13.05.2026) — match aggregation per prospect.
+ *  Joined server-side у page.tsx via matches table (combined_score per prospect). */
+export interface ProspectMatchData {
+  max_score: number | null
+  count: number
+  breakdown: unknown
+}
+
 interface ClientSnapshot {
   id: string
   title: string
@@ -109,6 +117,10 @@ export interface ProspectMemberRow {
   /** Sprint S6D Day 4 — joined contact_enrichment data. Null коли not
    *  yet enriched OR enrichment failed (no_match/error). */
   enrichment: ProspectEnrichmentData | null
+  /** Sprint S-RANK B-min (13.05.2026) — matches.combined_score MAX per prospect.
+   *  Null коли matching algo ne ran для цього prospекта (e.g. hard filter
+   *  excluded: brak PKD, brak krs_legal_form). */
+  match: ProspectMatchData | null
 }
 
 export interface ClientMemberRow {
@@ -544,12 +556,15 @@ export function CohortMembersClient({
                       const gmapsRating = enr?.gmaps_rating
                         ? num(enr.gmaps_rating)
                         : null
-                      // Score column logic (Vadym ETAP 3):
-                      // - JDG з horeca_meta_score > 0 → show оригінальний score
-                      // - sp.z o.o. з gmaps_rating → show "⭐ X.X" + reviews count
-                      // - інакше — '—'
-                      const showOriginalScore = meta > 0
-                      const showGmapsScore = !showOriginalScore && gmapsRating !== null
+                      // Sprint S-RANK B-min (13.05.2026) — score priority:
+                      // 1. row.match.max_score (matches table — algo z 8 modules)
+                      // 2. snapshot.horeca_meta_score (CEIDG sole-prop scoring)
+                      // 3. enrichment.gmaps_rating × 20 (Apify GMaps fallback)
+                      // 4. "—" якщо нічого
+                      const matchScore = row.match?.max_score ?? null
+                      const showMatchScore = matchScore !== null && matchScore > 0
+                      const showOriginalScore = !showMatchScore && meta > 0
+                      const showGmapsScore = !showMatchScore && !showOriginalScore && gmapsRating !== null
                       return (
                         <TableRow
                           key={key}
@@ -592,7 +607,13 @@ export function CohortMembersClient({
                             {p.dominant_channel ?? '—'}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {showOriginalScore ? (
+                            {showMatchScore ? (
+                              <MatchScoreBadge
+                                score={matchScore!}
+                                breakdown={row.match?.breakdown}
+                                productCount={row.match?.count ?? 0}
+                              />
+                            ) : showOriginalScore ? (
                               meta.toFixed(1)
                             ) : showGmapsScore ? (
                               <span className="text-xs">
@@ -990,5 +1011,116 @@ function NotesCell({
     >
       + dodaj notatkę
     </button>
+  )
+}
+
+// ─── MatchScoreBadge — color-coded score з tooltip breakdown ────────
+// Sprint S-RANK B-min (13.05.2026)
+// Color tiers per Vadym spec:
+//   ≥70 = green (emerald) — "dosledni glebiej"
+//   50-69 = yellow (amber) — "może być"
+//   <50 = grey — "low priority"
+// Tooltip shows score_breakdown JSONB (pkd/activity/size/geo/recency/niche
+// + ua_founder_boost bonus + penalties).
+
+interface ScoreBreakdown {
+  total?: number
+  base?: Partial<Record<'pkd' | 'activity' | 'size' | 'geo' | 'recency' | 'niche', number>>
+  bonuses?: Record<string, number>
+  penalties?: Record<string, number>
+  reasons?: string[]
+}
+
+function MatchScoreBadge({
+  score,
+  breakdown,
+  productCount,
+}: {
+  score: number
+  breakdown: unknown
+  productCount: number
+}) {
+  const tierClass =
+    score >= 70
+      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+      : score >= 50
+        ? 'bg-amber-100 text-amber-800 border-amber-300'
+        : 'bg-gray-100 text-gray-700 border-gray-300'
+  const b = (breakdown && typeof breakdown === 'object' ? breakdown : null) as ScoreBreakdown | null
+  const base = b?.base ?? {}
+  const bonuses = b?.bonuses ?? {}
+  const penalties = b?.penalties ?? {}
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge
+            variant="outline"
+            className={cn(
+              'cursor-help text-xs font-semibold tabular-nums',
+              tierClass,
+            )}
+          >
+            {score}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent side="left" className="max-w-xs space-y-1 text-xs">
+          <div className="font-medium">Algo score: {score}/100</div>
+          <div className="text-[10px] text-muted-foreground">
+            best з {productCount} {productCount === 1 ? 'produktu' : 'produktów'}
+          </div>
+          {b && (
+            <>
+              <div className="mt-1.5 border-t pt-1">
+                <div className="font-medium text-[10px] uppercase text-muted-foreground">
+                  Składowe
+                </div>
+                {base.pkd !== undefined && base.pkd > 0 && <div>PKD fit: {base.pkd}</div>}
+                {base.activity !== undefined && base.activity > 0 && (
+                  <div>Aktywność: {base.activity}</div>
+                )}
+                {base.size !== undefined && base.size > 0 && <div>Rozmiar: {base.size}</div>}
+                {base.geo !== undefined && base.geo > 0 && <div>Geografia: {base.geo}</div>}
+                {base.recency !== undefined && base.recency > 0 && (
+                  <div>Świeżość: {base.recency}</div>
+                )}
+                {base.niche !== undefined && base.niche > 0 && (
+                  <div>Niche bonus: {base.niche}</div>
+                )}
+              </div>
+              {Object.entries(bonuses).some(([, v]) => v > 0) && (
+                <div className="mt-1 border-t pt-1">
+                  <div className="font-medium text-[10px] uppercase text-emerald-700">
+                    Bonusy
+                  </div>
+                  {Object.entries(bonuses).map(([k, v]) =>
+                    v > 0 ? (
+                      <div key={k}>
+                        {k}: +{v}
+                      </div>
+                    ) : null,
+                  )}
+                </div>
+              )}
+              {Object.entries(penalties).some(([, v]) => v !== 0) && (
+                <div className="mt-1 border-t pt-1">
+                  <div className="font-medium text-[10px] uppercase text-rose-700">
+                    Penalty
+                  </div>
+                  {Object.entries(penalties).map(([k, v]) =>
+                    v !== 0 ? (
+                      <div key={k}>
+                        {k}: {v}
+                      </div>
+                    ) : null,
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }

@@ -77,6 +77,18 @@ export interface ProspectEnrichment {
   gmaps_reviews_count: number | null
 }
 
+/** Sprint S-RANK B-min (13.05.2026) — match aggregation per prospect.
+ *  max_score = MAX(combined_score) across all products для цього prospect.
+ *  count = total match rows (typically ~34 = всі CzM products).
+ *  breakdown = score_breakdown JSONB з top-scoring product row, structure:
+ *  { total, base: {pkd, activity, size, geo, recency, niche},
+ *    bonuses: {ua_founder_boost, revenue, ...}, penalties: {...}, reasons:[] }. */
+export interface ProspectMatch {
+  max_score: number | null
+  count: number
+  breakdown: unknown
+}
+
 interface ClientSnapshot {
   id: string
   title: string
@@ -217,8 +229,13 @@ export default async function CohortDetailPage({
   // 12 success rows з contact_enrichment були invisible у UI бо page query
   // ne joined this table. Now: рядок показує phone/website/rating у tooltip.
   let enrichmentMap = new Map<string, ProspectEnrichment>()
+  // Sprint S-RANK B-min (13.05.2026) — matches join для score column. Cohort
+  // UI раніше читав scored_prospects.horeca_meta_score (NULL для sp.z o.o.)
+  // → "—" everywhere. Тепер joinимо matches.combined_score (max per prospect)
+  // + score_breakdown JSONB для tooltip render.
+  let matchMap = new Map<string, ProspectMatch>()
   if (prospectIds.length > 0) {
-    const [prospectsRes, enrichmentRes] = await Promise.all([
+    const [prospectsRes, enrichmentRes, matchesRes] = await Promise.all([
       supabase
         .from('scored_prospects')
         .select(
@@ -231,6 +248,15 @@ export default async function CohortDetailPage({
         .in('target_id', prospectIds)
         .eq('target_type', 'prospect')
         .eq('source', 'apify_gmaps'),
+      // Sprint S-RANK B-min — pull combined_score + breakdown для each
+      // prospect_id. Sort у JS: pick row з highest combined_score per
+      // prospect (the algorithm produces 1 row per product, ~34 rows per
+      // prospect — we display the BEST match score).
+      supabase
+        .from('matches')
+        .select('prospect_id, combined_score, score_breakdown')
+        .in('prospect_id', prospectIds)
+        .order('combined_score', { ascending: false, nullsFirst: false }),
     ])
     prospectMap = new Map(
       ((prospectsRes.data ?? []) as ProspectSnapshot[]).map((p) => [p.id, p]),
@@ -248,6 +274,26 @@ export default async function CohortDetailPage({
         },
       ]),
     )
+    // Aggregate matches: count + top-row (best score + breakdown) per prospect.
+    type MatchRow = {
+      prospect_id: string
+      combined_score: number | null
+      score_breakdown: unknown
+    }
+    for (const m of (matchesRes.data ?? []) as MatchRow[]) {
+      const existing = matchMap.get(m.prospect_id)
+      if (!existing) {
+        matchMap.set(m.prospect_id, {
+          max_score: m.combined_score,
+          count: 1,
+          breakdown: m.score_breakdown,
+        })
+      } else {
+        existing.count += 1
+        // matches sorted DESC, тому first row має highest score;
+        // breakdown вже з top row, не overwrite.
+      }
+    }
   }
 
   const clientMembers = (clientMembersRaw ?? []) as MemberRowRaw[]
@@ -277,7 +323,27 @@ export default async function CohortDetailPage({
       snapshot: snap ?? null,
       // Sprint S6D Day 4 — enrichment з contact_enrichment (apify_gmaps).
       enrichment: enrichmentMap.get(m.subject_id) ?? null,
+      // Sprint S-RANK B-min (13.05.2026) — match score + breakdown з matches table.
+      match: matchMap.get(m.subject_id) ?? null,
     }
+  })
+
+  // Sprint S-RANK B-min — sort prospects by match_score DESC NULLS LAST.
+  // Vadym screen workflow: top 5 з score≥70 above fold, "0 matches" prospekты
+  // унизу для manual triage. Within same score, fallback to horeca_meta_score
+  // (CEIDG sole-prop fallback), потім name ASC.
+  prospectRows.sort((a, b) => {
+    const aScore = a.match?.max_score ?? -1
+    const bScore = b.match?.max_score ?? -1
+    if (bScore !== aScore) return bScore - aScore
+    const aMeta = typeof a.snapshot?.horeca_meta_score === 'number'
+      ? a.snapshot.horeca_meta_score
+      : -1
+    const bMeta = typeof b.snapshot?.horeca_meta_score === 'number'
+      ? b.snapshot.horeca_meta_score
+      : -1
+    if (bMeta !== aMeta) return bMeta - aMeta
+    return (a.snapshot?.name ?? '').localeCompare(b.snapshot?.name ?? '', 'pl')
   })
 
   const clientRows: ClientMemberRow[] = clientMembers.map((m) => {
