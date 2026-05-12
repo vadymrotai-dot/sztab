@@ -2417,3 +2417,55 @@ Phase 1 розблоковує operational tool path. Понеділок 12.05 �
 
 - Claude порушив memory #4 6+ разів — задавав Vadym SQL запити які Cowork міг виконати sam. Vadym злий справедливо. Protocol 38 додано щоб не повторювалось.
 
+---
+
+## 2026-05-13 — Audit completed (Sztab vs Ziomek Fish vision)
+
+**Status:** 27 actionable findings ranked P0-P3. Audit report committed: `docs/sztab-audit-2026-05-13.md`.
+
+### Контекст
+
+Vadym о 8:25 ранку запросив deep audit Sztab vs стратегічних цілей post-Pikniko pivot. Cowork + Claude паралельний workflow: Cowork збирав tech-bundle через codebase + DB + git scan, Claude через Chrome MCP виконав live UI walkthrough.
+
+### ETAPи
+
+- **ETAP 1** Audit collection — `outputs/sztab-audit/audit-bundle.md` (701 рядків) + `codebase-overview.md` (518) + `db-schema.md` (57 таблиць) + `git-history.md` (40 commits)
+- **ETAP 2** Synthesis — initial findings inline у bundle
+- **ETAP 3** UX heuristic check — 10 сторінок з 5-criteria Nielsen scoring + Pikniko inventory + TODO inventory
+- **ETAP 4** Ship — `docs/sztab-audit-2026-05-13.md` (committable report, цей entry)
+
+### Key findings (top 5 P0 — ~7h cleanup work)
+
+1. `/sprzedaz?tab=kohorty` показує застарілу `pikniko_handoff_cohorts` — Vadym НЕ бачить cohort 29
+2. `Export Pikniko CSV` на /matches — confusing branding після pivot
+3. **5 placeholder routes 404** у IntelligenceSidebar (discovery/dopasowania/analizy)
+4. Cohort optimistic UI відсутній — Status/Notes save потребує F5
+5. Score column ambiguity у cohort (horeca_meta_score vs gmaps_rating без legend)
+
+### UX scores (avg 6.3/10, range 4-8.5)
+
+- Strong: `/clients/[id]` 8.5/10, `/intelligence/prospects` 8/10, `/pulpit/dzisiaj` 7.5/10
+- Weak: `/intelligence/cohorts/[id]` 4/10, Sidebar 5/10, `/intelligence` hub 5/10
+
+### Pikniko inventory
+
+4 routes + 1 sidebar link + 4 UI refs + 3 cross-refs + 1 DB table.
+Migration scope `pikniko_handoff_cohorts` → `cohorts`: ~6h.
+
+### Strategic alignment
+
+- L1-L6 architecture shipped (DB → CEIDG → schema → enrichment → algo → AI re-score)
+- L7 (AI sales strategy) = placeholder (тільки `lib/matching/sales-snippet.ts` "L7 lite")
+- Two-track v5 (gastronomia/hurtownia) — gastronomia track DONE (menu+predictions), hurtownia track has classification+filter only (manual asortyment import not yet shipped)
+
+### Roadmap (proposed)
+
+- Тиждень 1 (13-17.05): P0 cleanup, ~7h
+- Тиждень 2 (20-24.05): P1 functional gaps, ~24h
+- Тиждень 3 (27-31.05): P2 polish, ~16-20h
+- Тиждень 4 (3-7.06): L7 sales strategy + hurtownia track (potрібен окремий strategy session)
+
+### Conclusion
+
+Sztab — technically sound. НЕ потребує rewrite. Потребує **Pikniko deprecation cycle** + UX polish на recently shipped features. Audit заверена.
+
