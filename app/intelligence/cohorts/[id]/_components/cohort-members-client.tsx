@@ -15,7 +15,7 @@
 // parent state, explicit Save trigger через button/Enter (NIE save-on-blur;
 // blur-as-trigger had race condition між focus loss + React state commit).
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -240,6 +240,34 @@ export function CohortMembersClient({
   const [statusPending, startStatusTransition] = useTransition()
   const [notesPending, startNotesTransition] = useTransition()
 
+  // Sprint S-CLEAN (13.05.2026) — sync optimistic overrides з freshly-loaded
+  // props. Якщо row.status тепер matches optimistic override (server confirmed
+  // через router.refresh()) → drop override silently. Це eliminates flicker
+  // який Vadym caught на Day 5 ("Status pill F5 потрібен").
+  useEffect(() => {
+    setOptimisticStatus((prev) => {
+      if (prev.size === 0) return prev
+      const next = new Map(prev)
+      let changed = false
+      // Drop optimistic entries which match current prop status
+      for (const row of prospects) {
+        const k = memberKey(row)
+        if (next.get(k) === row.status) {
+          next.delete(k)
+          changed = true
+        }
+      }
+      for (const row of clients) {
+        const k = memberKey(row)
+        if (next.get(k) === row.status) {
+          next.delete(k)
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [prospects, clients])
+
   // ─── Selection helpers ────────────────────────────────────────
 
   const toggleOne = (key: string) =>
@@ -314,15 +342,14 @@ export function CohortMembersClient({
           newStatus,
         )
         toast.success(`${displayName} → ${statusLabel(newStatus)}`)
-        // Clear optimistic для цього key (server-fresh data via refresh)
-        setOptimisticStatus((prev) => {
-          const next = new Map(prev)
-          next.delete(key)
-          return next
-        })
+        // Sprint S-CLEAN (13.05.2026) — DO NOT clear optimistic here.
+        // Previous pattern (clear → refresh) caused flicker: clearing Map
+        // re-rendered зі старим row.status BEFORE refresh propagated new
+        // server data. Now: optimistic залишається active aż useEffect
+        // (below) detects що prop status matches override → drops entry.
         router.refresh()
       } catch (e) {
-        // Revert optimistic on error
+        // Revert optimistic on error (immediate, no refresh needed)
         setOptimisticStatus((prev) => {
           const next = new Map(prev)
           next.delete(key)

@@ -53,6 +53,9 @@ interface NavLeaf {
   href: string
   icon: React.ComponentType<{ className?: string }>
   badgeCount?: number
+  /** Sprint S-CLEAN (13.05.2026) — disabled state з tooltip "Wkrótce
+   *  dostępne". Item renders bez <Link> wrapper; click blocked. */
+  disabled?: boolean
 }
 
 interface OperacjeSidebarProps {
@@ -85,6 +88,17 @@ function NavItemRow({
   pathname: string
 }) {
   const isActive = matchesPath(pathname, item.href)
+  // Sprint S-CLEAN (13.05.2026) — disabled state з tooltip "Wkrótce dostępne".
+  if (item.disabled) {
+    return (
+      <SidebarMenuItem>
+        <SidebarMenuButton disabled aria-disabled tooltip="Wkrótce dostępne">
+          <item.icon className="size-4" />
+          <span>{item.name}</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    )
+  }
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={isActive} tooltip={item.name}>
@@ -122,6 +136,8 @@ export function OperacjeSidebar({ user, counts = {} }: OperacjeSidebarProps) {
 
   // 6 placeholder entries (Phase 1). Counts wired у Phase 2 коли є real
   // tables (zamowienia/faktury/wysylki).
+  // Sprint S-CLEAN (13.05.2026) — 4 з 6 routes — placeholder (404).
+  // Wrapped як disabled з tooltip "Wkrótce dostępne". Pulpit + Klienci LIVE.
   const topNav: NavLeaf[] = [
     { name: 'Pulpit', href: '/operacje/pulpit', icon: HomeIcon },
     {
@@ -129,6 +145,7 @@ export function OperacjeSidebar({ user, counts = {} }: OperacjeSidebarProps) {
       href: '/operacje/zamowienia',
       icon: PackageIcon,
       badgeCount: counts.zamowienia,
+      disabled: true, // S-CLEAN — route 404, plan future
     },
     { name: 'Klienci', href: '/operacje/klienci', icon: UsersIcon },
     {
@@ -136,14 +153,21 @@ export function OperacjeSidebar({ user, counts = {} }: OperacjeSidebarProps) {
       href: '/operacje/faktury',
       icon: FileTextIcon,
       badgeCount: counts.faktury,
+      disabled: true, // S-CLEAN — route 404, plan future
     },
     {
       name: 'Wysyłki',
       href: '/operacje/wysylki',
       icon: TruckIcon,
       badgeCount: counts.wysylki,
+      disabled: true, // S-CLEAN — route 404, plan future
     },
-    { name: 'Kalendarz', href: '/operacje/kalendarz', icon: CalendarIcon },
+    {
+      name: 'Kalendarz',
+      href: '/operacje/kalendarz',
+      icon: CalendarIcon,
+      disabled: true, // S-CLEAN — route 404, plan future
+    },
   ]
 
   return (

@@ -54,6 +54,10 @@ interface NavLeaf {
   href: string
   icon?: React.ComponentType<{ className?: string }>
   badgeCount?: number
+  /** Sprint S-CLEAN (13.05.2026) — disabled state з tooltip "Wkrótce
+   *  dostępne". Item renders as non-clickable button без <Link> wrapper.
+   *  Use для routes які ще не shipped OR temporarily hidden з primary nav. */
+  disabled?: boolean
 }
 
 interface NavGroup {
@@ -65,6 +69,8 @@ interface NavGroup {
   badgeCount?: number
   /** Sub-items shown гdy group expanded. */
   items: NavLeaf[]
+  /** Sprint S-CLEAN — disable PARENT button only; sub-items remain active. */
+  disabled?: boolean
 }
 
 type NavEntry = NavLeaf | NavGroup
@@ -95,6 +101,18 @@ function matchesPath(pathname: string, href: string): boolean {
 
 function NavItemRow({ item, pathname }: { item: NavLeaf; pathname: string }) {
   const isActive = matchesPath(pathname, item.href)
+  // Sprint S-CLEAN (13.05.2026) — disabled state: render bez <Link>, tooltip
+  // "Wkrótce dostępne". `disabled` HTML attr + aria-disabled блокують click.
+  if (item.disabled) {
+    return (
+      <SidebarMenuItem>
+        <SidebarMenuButton disabled aria-disabled tooltip="Wkrótce dostępne">
+          {item.icon && <item.icon className="size-4" />}
+          <span>{item.name}</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    )
+  }
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={isActive} tooltip={item.name}>
@@ -138,20 +156,30 @@ function NavGroupRow({ group, pathname }: { group: NavGroup; pathname: string })
   return (
     <>
       <SidebarMenuItem>
-        <SidebarMenuButton asChild isActive={isActive} tooltip={group.name}>
-          <Link href={group.href}>
+        {/* Sprint S-CLEAN — disabled parent: button без <Link>, tooltip
+            "Wkrótce dostępne". Sub-items remain active (chevron still
+            visible). */}
+        {group.disabled ? (
+          <SidebarMenuButton disabled aria-disabled tooltip="Wkrótce dostępne">
             <group.icon className="size-4" />
             <span>{group.name}</span>
-            {group.badgeCount !== undefined && group.badgeCount > 0 && (
-              <Badge
-                variant="secondary"
-                className="ml-auto mr-6 h-5 min-w-[20px] justify-center bg-emerald-100 px-1.5 text-[10px] text-emerald-800"
-              >
-                {group.badgeCount}
-              </Badge>
-            )}
-          </Link>
-        </SidebarMenuButton>
+          </SidebarMenuButton>
+        ) : (
+          <SidebarMenuButton asChild isActive={isActive} tooltip={group.name}>
+            <Link href={group.href}>
+              <group.icon className="size-4" />
+              <span>{group.name}</span>
+              {group.badgeCount !== undefined && group.badgeCount > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="ml-auto mr-6 h-5 min-w-[20px] justify-center bg-emerald-100 px-1.5 text-[10px] text-emerald-800"
+                >
+                  {group.badgeCount}
+                </Badge>
+              )}
+            </Link>
+          </SidebarMenuButton>
+        )}
         {/* Chevron jest SIBLINGiem SidebarMenuButton (не child Link!) —
             avoids nested-interactive HTML и blocks click bubbling до Link. */}
         <SidebarMenuAction
@@ -199,9 +227,17 @@ export function AppSidebar({ user, prospectHotCount = 0, counts = {} }: AppSideb
   void prospectHotCount
 
   // Top-level entries — order matches Vadym spec.
+  // Sprint S-CLEAN (13.05.2026) — disabled items mark routes hidden з primary
+  // nav: LIVE pages still accessible via direct URL, footer dropdown, або
+  // sub-items, але користувач НЕ кліка primary nav button. Pre-CzM cleanup.
   const topNav: NavEntry[] = [
     { name: 'Dziś', href: '/pulpit/dzisiaj', icon: LayoutDashboardIcon },
-    { name: 'Szukanie firm', href: '/pulpit/szukaj', icon: SearchIcon },
+    {
+      name: 'Szukanie firm',
+      href: '/pulpit/szukaj',
+      icon: SearchIcon,
+      disabled: true, // S-CLEAN — route LIVE але hidden з primary workflow
+    },
     {
       name: 'Klienci',
       href: '/clients',
@@ -226,12 +262,18 @@ export function AppSidebar({ user, prospectHotCount = 0, counts = {} }: AppSideb
       ],
     },
     { name: 'Produkty', href: '/produkty', icon: PackageIcon, badgeCount: counts.products },
-    { name: 'Dostawcy', href: '/suppliers', icon: TruckIcon },
+    {
+      name: 'Dostawcy',
+      href: '/suppliers',
+      icon: TruckIcon,
+      disabled: true, // S-CLEAN — CRUD page LIVE але hidden з primary nav
+    },
     { name: 'Organizer', href: '/organizer', icon: CalendarIcon },
     {
       name: 'Ustawienia',
       href: '/settings',
       icon: SettingsIcon,
+      disabled: true, // S-CLEAN — parent button disabled; sub-items active
       items: [
         { name: 'Konfiguracja', href: '/settings' },
         { name: 'Admin Health', href: '/admin/health' },

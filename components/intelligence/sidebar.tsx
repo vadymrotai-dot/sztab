@@ -58,6 +58,9 @@ interface NavLeaf {
   href: string
   icon: React.ComponentType<{ className?: string }>
   badgeCount?: number
+  /** Sprint S-CLEAN (13.05.2026) — disabled state з tooltip "Wkrótce
+   *  dostępne". Item renders bez <Link> wrapper; click blocked via disabled. */
+  disabled?: boolean
 }
 
 interface IntelligenceSidebarProps {
@@ -89,6 +92,17 @@ function NavItemRow({
   pathname: string
 }) {
   const isActive = matchesPath(pathname, item.href)
+  // Sprint S-CLEAN (13.05.2026) — disabled state.
+  if (item.disabled) {
+    return (
+      <SidebarMenuItem>
+        <SidebarMenuButton disabled aria-disabled tooltip="Wkrótce dostępne">
+          <item.icon className="size-4" />
+          <span>{item.name}</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    )
+  }
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
@@ -163,18 +177,21 @@ export function IntelligenceSidebar({
       name: 'Discovery',
       href: '/intelligence/discovery', // placeholder
       icon: CompassIcon,
+      disabled: true, // S-CLEAN (13.05.2026) — route 404, plan future
     },
     {
       name: 'Dopasowania',
       href: '/intelligence/dopasowania', // placeholder
       icon: Link2Icon,
       badgeCount: counts.matches,
+      disabled: true, // S-CLEAN — route 404, plan future
     },
     {
       name: 'Analizy',
       href: '/intelligence/analizy', // placeholder
       icon: ListChecksIcon,
       badgeCount: counts.analyses,
+      disabled: true, // S-CLEAN — route 404, plan future
     },
   ]
 
