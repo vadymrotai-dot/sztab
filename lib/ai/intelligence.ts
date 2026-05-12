@@ -157,7 +157,7 @@ PRODUKT:
 
 KONTEKST RYNKOWY:
 - Geo: ${geoLabel}
-- Kanały Pikniko (główny partner Vadyma): HoReCa, catering, małe sklepy, przetwórstwo (jako surowiec), retail (negocjowany Leviathan)
+- Kanały Ziomek Fish (direct sales od 05.2026): HoReCa, catering, małe sklepy, przetwórstwo (jako surowiec), retail (negocjowany Leviathan)
 - WYKLUCZ: sieci ogólnopolskie typu ${excludeList} — Vadym nie ma do nich kanału. Skupiaj się na regionalnych dystrybutorach (<500 osób), specjalistycznych sklepach, lokalnych sieciach HoReCa.
 
 ZADANIE — przeprowadź szybką analizę. Zwróć WYŁĄCZNIE valid JSON. Bez wstępu, bez wyjaśnień, bez markdown code block (\`\`\`). Pierwszy znak musi być { ostatni }.

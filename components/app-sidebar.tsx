@@ -87,7 +87,6 @@ interface AppSidebarProps {
     clients?: number
     deals?: number
     products?: number
-    handoff?: number
   }
 }
 
@@ -258,7 +257,9 @@ export function AppSidebar({ user, prospectHotCount = 0, counts = {} }: AppSideb
       items: [
         { name: 'Pipeline', href: '/sprzedaz' },
         { name: 'Dopasowania', href: '/matches' },
-        { name: 'Pikniko handoff', href: '/handoff/pikniko' },
+        // Sprint S-CLEAN ETAP 2 (13.05.2026) — removed "Pikniko handoff"
+        // sub-item. Route /handoff/pikniko видалено, table унифіковано
+        // у /intelligence/cohorts.
       ],
     },
     { name: 'Produkty', href: '/produkty', icon: PackageIcon, badgeCount: counts.products },

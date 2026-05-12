@@ -222,7 +222,10 @@ export function BusinessProfileSection({
             { name: 'Mod-loszka', strength: null, skuCount: null },
             { name: 'Gmurczyk', strength: null, skuCount: null },
             { name: 'Karol', strength: null, skuCount: null },
-            { name: 'Pikniko', strength: null, skuCount: null },
+            // Sprint S-CLEAN ETAP 2 (13.05.2026) — Pikniko removed (Vadym
+            // pivoted to direct Ziomek Fish sales). Replaced з SpoonJoy
+            // (Day 0 supplier seed).
+            { name: 'SpoonJoy', strength: null, skuCount: null },
           ]}
         />
 

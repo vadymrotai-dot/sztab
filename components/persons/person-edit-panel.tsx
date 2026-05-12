@@ -194,7 +194,7 @@ export function PersonEditPanel({ person }: { person: PersonInitial }) {
             onChange={(e) => setNotes(e.target.value)}
             rows={4}
             className="w-full rounded border px-2 py-1 text-sm"
-            placeholder="Co Pikniko wie o tej osobie — preferencje, history, kontekst..."
+            placeholder="Notatki o osobie — preferencje, history, kontekst..."
           />
         </div>
       </CardContent>

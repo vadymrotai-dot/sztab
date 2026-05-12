@@ -1,6 +1,7 @@
 // app/api/matches/global/route.ts
 // GET /api/matches/global?target_type=&min_score=50&limit=100
-// TOP-N global view — Pikniko handoff dashboard.
+// TOP-N global view — direct Ziomek Fish sales dashboard
+// (Sprint S-CLEAN 13.05.2026 — removed Pikniko handoff context).
 //
 // target_type: 'client' | 'prospect' | undefined (default = all)
 // min_score: 0-100 (default 50)

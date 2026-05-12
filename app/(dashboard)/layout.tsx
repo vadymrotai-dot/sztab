@@ -23,9 +23,10 @@ export default async function DashboardLayout({
   let clientsCount = 0
   let dealsCount = 0
   let productsCount = 0
-  let handoffCount = 0
+  // Sprint S-CLEAN ETAP 2 (13.05.2026) — removed handoffCount (pikniko_handoff_cohorts
+  // table dropped via migration 066, cohorts unified into `cohorts`).
   try {
-    const [{ count: pH }, { count: cl }, { count: dl }, { count: pr }, { count: hc }] =
+    const [{ count: pH }, { count: cl }, { count: dl }, { count: pr }] =
       await Promise.all([
         supabase
           .from('scored_prospects')
@@ -41,13 +42,11 @@ export default async function DashboardLayout({
           .from('products')
           .select('id', { count: 'exact', head: true })
           .not('family_id', 'is', null),
-        supabase.from('pikniko_handoff_cohorts').select('id', { count: 'exact', head: true }),
       ])
     prospectHotCount = pH ?? 0
     clientsCount = cl ?? 0
     dealsCount = dl ?? 0
     productsCount = pr ?? 0
-    handoffCount = hc ?? 0
   } catch {
     /* counts default 0 */
   }
@@ -74,7 +73,6 @@ export default async function DashboardLayout({
           clients: clientsCount,
           deals: dealsCount,
           products: productsCount,
-          handoff: handoffCount,
         }}
       />
       <SidebarInset>{children}</SidebarInset>

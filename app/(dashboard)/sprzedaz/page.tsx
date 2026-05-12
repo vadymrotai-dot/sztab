@@ -72,12 +72,18 @@ async function KpContent({
   return <KPGeneratorContent clients={clients || []} products={products || []} />
 }
 
+// Sprint S-CLEAN ETAP 2 STEP 3 (13.05.2026) — KohortyContent swap:
+// pikniko_handoff_cohorts → unified cohorts + cohort_members. Single source
+// of truth з /intelligence/cohorts. Rows clickable → /intelligence/cohorts/{id}.
+
 interface CohortRow {
   id: string
-  cohort_name: string
-  total_entities: number
+  name: string
+  description: string | null
   created_at: string
-  metadata: { distribution?: { clients: number; prospects: number } } | null
+  member_count: number
+  client_count: number
+  prospect_count: number
 }
 
 async function KohortyContent({
@@ -85,11 +91,46 @@ async function KohortyContent({
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>
 }) {
-  const { data } = await supabase
-    .from('pikniko_handoff_cohorts')
-    .select('id, cohort_name, total_entities, created_at, metadata')
-    .order('created_at', { ascending: false })
-  const rows = ((data ?? []) as unknown) as CohortRow[]
+  const [{ data: cohorts }, { data: allMembers }] = await Promise.all([
+    supabase
+      .from('cohorts')
+      .select('id, name, description, created_at')
+      .order('created_at', { ascending: false }),
+    supabase.from('cohort_members').select('cohort_id, subject_type'),
+  ])
+
+  // Aggregate split counts per cohort_id (same pattern як
+  // /intelligence/cohorts/page.tsx).
+  const splitMap = new Map<string, { client: number; prospect: number }>()
+  for (const m of (allMembers ?? []) as Array<{
+    cohort_id: string
+    subject_type: 'prospect' | 'client'
+  }>) {
+    if (!splitMap.has(m.cohort_id)) {
+      splitMap.set(m.cohort_id, { client: 0, prospect: 0 })
+    }
+    const b = splitMap.get(m.cohort_id)!
+    if (m.subject_type === 'client') b.client++
+    else b.prospect++
+  }
+
+  const rows: CohortRow[] = ((cohorts ?? []) as Array<{
+    id: string
+    name: string
+    description: string | null
+    created_at: string
+  }>).map((c) => {
+    const split = splitMap.get(c.id) ?? { client: 0, prospect: 0 }
+    return {
+      id: c.id,
+      name: c.name,
+      description: c.description,
+      created_at: c.created_at,
+      member_count: split.client + split.prospect,
+      client_count: split.client,
+      prospect_count: split.prospect,
+    }
+  })
 
   if (rows.length === 0) {
     return (
@@ -123,30 +164,37 @@ async function KohortyContent({
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
-                const dist = r.metadata?.distribution
-                return (
-                  <tr key={r.id} className="border-b hover:bg-muted/20">
-                    <td className="px-4 py-2 font-medium">{r.cohort_name}</td>
-                    <td className="px-4 py-2">
-                      <Badge variant="outline">{r.total_entities}</Badge>
-                    </td>
-                    <td className="px-4 py-2 text-xs text-muted-foreground">
-                      {dist
-                        ? `${dist.clients ?? 0} klientów / ${dist.prospects ?? 0} prospекtów`
-                        : '—'}
-                    </td>
-                    <td className="px-4 py-2 text-xs text-muted-foreground">
-                      {new Date(r.created_at).toLocaleString('pl-PL')}
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <Button asChild size="sm" variant="outline">
-                        <Link href={`/handoff/pikniko?cohort=${r.id}`}>Otwórz</Link>
-                      </Button>
-                    </td>
-                  </tr>
-                )
-              })}
+              {rows.map((r) => (
+                <tr key={r.id} className="border-b hover:bg-muted/20">
+                  <td className="px-4 py-2 font-medium">
+                    <Link
+                      href={`/intelligence/cohorts/${r.id}`}
+                      className="hover:underline"
+                    >
+                      {r.name}
+                    </Link>
+                    {r.description && (
+                      <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
+                        {r.description}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-4 py-2">
+                    <Badge variant="outline">{r.member_count}</Badge>
+                  </td>
+                  <td className="px-4 py-2 text-xs text-muted-foreground">
+                    {r.client_count} klientów / {r.prospect_count} prospекtów
+                  </td>
+                  <td className="px-4 py-2 text-xs text-muted-foreground">
+                    {new Date(r.created_at).toLocaleString('pl-PL')}
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/intelligence/cohorts/${r.id}`}>Otwórz</Link>
+                    </Button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </CardContent>

@@ -2,7 +2,7 @@
 // Sprint S4 Phase 3 — operational dashboard.
 //
 // DROP from old: 6 colored cards з '0', cron debug talk
-// (e.g. "Cron bzp-monitor uruchamia się o 03:00."), TODO Pikniko placeholder.
+// (e.g. "Cron bzp-monitor uruchamia się o 03:00.").
 //
 // NEW: Header + warnings panel (auto-hide gdy 0) + calendar widget
 // з toggle Split focus / Time grid + Hot leady chips.

@@ -149,12 +149,10 @@ export function MatchesGlobalView() {
   }
 
   function handleExport() {
-    const url = new URL('/api/export/pikniko-handoff', window.location.origin)
-    url.searchParams.set('min_score', String(Math.max(minScore, 60)))
-    url.searchParams.set('limit', '50')
-    url.searchParams.set('format', 'csv')
-    url.searchParams.set('with_contacts_only', 'true')
-    window.location.href = url.toString()
+    // Sprint S-CLEAN ETAP 2 (13.05.2026) — endpoint /api/export/pikniko-handoff
+    // видалено. TODO post-S-CLEAN: реалізувати generic /api/export/matches CSV
+    // якщо CSV export потрібен поза Sztab UI.
+    alert('Export CSV — wkrótce. Endpoint /api/export/matches w planie.')
   }
 
   async function handleAiBulk() {
@@ -265,7 +263,7 @@ export function MatchesGlobalView() {
             </Button>
             <Button onClick={handleExport} size="sm">
               <DownloadIcon className="size-4 mr-1" />
-              Export Pikniko CSV
+              Export do CSV
             </Button>
           </div>
         </CardContent>
