@@ -96,6 +96,11 @@ export interface DataTableProps<TData, TValue> {
   /** Controlled pagination (для URL sync). */
   pagination?: PaginationState
   onPaginationChange?: (updater: Updater<PaginationState>) => void
+  /** Controlled rowSelection (для derivation з parent Set). Else internal. */
+  rowSelection?: RowSelectionState
+  /** Custom globalFilterFn (для multi-field ILIKE-style filter).
+   *  Default: TanStack's `includesString` behavior на all visible cols. */
+  globalFilterFn?: import('@tanstack/react-table').FilterFn<TData>
   /** Extra Tailwind className на root wrapper. */
   className?: string
 }
@@ -122,6 +127,8 @@ export function DataTable<TData, TValue>({
   onGlobalFilterChange,
   pagination: controlledPagination,
   onPaginationChange,
+  rowSelection: controlledRowSelection,
+  globalFilterFn,
   className,
 }: DataTableProps<TData, TValue>) {
   // Internal states fallback (uncontrolled mode)
@@ -132,12 +139,14 @@ export function DataTable<TData, TValue>({
     pageIndex: 0,
     pageSize: defaultPageSize,
   })
-  const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
+  const [internalRowSelection, setInternalRowSelection] =
+    React.useState<RowSelectionState>({})
 
   // Determine effective state — controlled wins if prop provided
   const sorting = controlledSorting ?? internalSorting
   const columnFilters = controlledColumnFilters ?? internalFilters
   const pagination = controlledPagination ?? internalPagination
+  const rowSelection = controlledRowSelection ?? internalRowSelection
   const globalFilterRaw =
     controlledGlobalFilter !== undefined ? controlledGlobalFilter : internalGlobalRaw
   const globalFilter = useDebouncedValue(globalFilterRaw, 300)
@@ -149,10 +158,13 @@ export function DataTable<TData, TValue>({
     ((v: string) => setInternalGlobalRaw(v))
   const setPagination = onPaginationChange ?? setInternalPagination
 
-  // Bubble row selection up якщо callback provided
+  // Bubble row selection up якщо callback provided (internal mode only;
+  // controlled mode callbacks own updates).
   React.useEffect(() => {
-    onRowSelectionChange?.(rowSelection)
-  }, [rowSelection, onRowSelectionChange])
+    if (controlledRowSelection === undefined) {
+      onRowSelectionChange?.(internalRowSelection)
+    }
+  }, [internalRowSelection, onRowSelectionChange, controlledRowSelection])
 
   const table = useReactTable<TData>({
     data,
@@ -172,9 +184,22 @@ export function DataTable<TData, TValue>({
       setGlobalFilterRaw(next)
     },
     onPaginationChange: setPagination,
-    onRowSelectionChange: setRowSelection,
+    onRowSelectionChange: (updater) => {
+      const next =
+        typeof updater === 'function'
+          ? (updater as (old: RowSelectionState) => RowSelectionState)(rowSelection)
+          : updater
+      // Controlled mode: bubble new value up через callback (parent owns state).
+      // Internal mode: write to internal useState (effect bubbles up too).
+      if (controlledRowSelection !== undefined) {
+        onRowSelectionChange?.(next)
+      } else {
+        setInternalRowSelection(next)
+      }
+    },
     getRowId,
     enableRowSelection,
+    globalFilterFn,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),

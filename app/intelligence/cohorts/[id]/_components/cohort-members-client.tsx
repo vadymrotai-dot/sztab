@@ -2,20 +2,23 @@
 
 // app/intelligence/cohorts/[id]/_components/cohort-members-client.tsx
 // Phase 2 Krok 1.D1 (08.05.2026) — interactive cohort members UI.
-// Wraps Prospekti + Klienci sections з shared selection state, inline
-// status mutation (DropdownMenu badge), notes inline edit з explicit
-// Save/Cancel buttons.
+// Phase 2 Krok 1.C1/C2 — prospекti + klienci sections.
+//
+// Sprint S-UX-CORE STEP 2 (14.05.2026) — migrated to shared DataTable:
+//   - components/ui/data-table.tsx wraps TanStack Table v8
+//   - lib/table/use-table-url-state.ts — bidirectional URL ↔ state sync
+//   - lib/table/table-helpers (createSortableHeader + multi-field filter)
 //
 // Selection key encoding: `${subject_type}:${subject_id}` — cohort_id
 // implicit (per page params). Per Krok 1.D1 Q2=B2 — composite tuple keys
-// у server actions, NIE schema id PK change.
+// у server actions, НЕ schema id PK change.
 //
 // Optimistic updates: useTransition + manual local override Map для
 // status (immediate badge color change). Notes — local edit value у
-// parent state, explicit Save trigger через button/Enter (NIE save-on-blur;
+// parent state, explicit Save trigger через button/Enter (НЕ save-on-blur;
 // blur-as-trigger had race condition між focus loss + React state commit).
 
-import { useState, useTransition, useEffect } from 'react'
+import { useMemo, useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -25,9 +28,9 @@ import {
   Loader2Icon,
   XIcon,
 } from 'lucide-react'
+import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -40,19 +43,18 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+
+import { DataTable } from '@/components/ui/data-table'
+import { useTableUrlState } from '@/lib/table/use-table-url-state'
+import {
+  createSortableHeader,
+  createMultiFieldGlobalFilter,
+} from '@/lib/table/table-helpers'
 
 import {
   updateCohortMemberStatus,
@@ -118,7 +120,7 @@ export interface ProspectMemberRow {
    *  yet enriched OR enrichment failed (no_match/error). */
   enrichment: ProspectEnrichmentData | null
   /** Sprint S-RANK B-min (13.05.2026) — matches.combined_score MAX per prospect.
-   *  Null коли matching algo ne ran для цього prospекта (e.g. hard filter
+   *  Null коли matching algo ne ran для цього prospекta (e.g. hard filter
    *  excluded: brak PKD, brak krs_legal_form). */
   match: ProspectMatchData | null
 }
@@ -154,7 +156,6 @@ const ALL_STATUSES: CohortMemberStatus[] = [
 ]
 
 function statusLabel(s: CohortMemberStatus): string {
-  // Plural form — consistent з bulk Select + filter chips (Vadym 09.05 i18n).
   if (s === 'pending') return 'Pending'
   if (s === 'called') return 'Zadzwoniono'
   if (s === 'interested') return 'Zainteresowani'
@@ -206,7 +207,7 @@ function formatDateTime(iso: string): string {
   }
 }
 
-/** Encode composite PK as selection key для useState<Set<string>>.
+/** Encode composite PK як selection key for TanStack getRowId.
  *  cohort_id implicit (page param), so 2-component string. */
 function memberKey(row: ProspectMemberRow | ClientMemberRow): string {
   return `${row.subject_type}:${row.subject_id}`
@@ -235,7 +236,8 @@ export function CohortMembersClient({
 }: Props) {
   const router = useRouter()
 
-  // Selection state (cross-section)
+  // Selection state (cross-section) — source of truth, mirrored to
+  // TanStack rowSelection via controlled prop.
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   // Optimistic status overrides — Map<memberKey, status>. Cleared after
@@ -251,6 +253,7 @@ export function CohortMembersClient({
 
   const [statusPending, startStatusTransition] = useTransition()
   const [notesPending, startNotesTransition] = useTransition()
+  void notesPending
 
   // Sprint S-CLEAN (13.05.2026) — sync optimistic overrides з freshly-loaded
   // props. Якщо row.status тепер matches optimistic override (server confirmed
@@ -261,7 +264,6 @@ export function CohortMembersClient({
       if (prev.size === 0) return prev
       const next = new Map(prev)
       let changed = false
-      // Drop optimistic entries which match current prop status
       for (const row of prospects) {
         const k = memberKey(row)
         if (next.get(k) === row.status) {
@@ -279,42 +281,6 @@ export function CohortMembersClient({
       return changed ? next : prev
     })
   }, [prospects, clients])
-
-  // ─── Selection helpers ────────────────────────────────────────
-
-  const toggleOne = (key: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-
-  const toggleAllProspects = () => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      const allSelected = prospects.every((p) => next.has(memberKey(p)))
-      if (allSelected) {
-        prospects.forEach((p) => next.delete(memberKey(p)))
-      } else {
-        prospects.forEach((p) => next.add(memberKey(p)))
-      }
-      return next
-    })
-  }
-
-  const toggleAllClients = () => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      const allSelected = clients.every((c) => next.has(memberKey(c)))
-      if (allSelected) {
-        clients.forEach((c) => next.delete(memberKey(c)))
-      } else {
-        clients.forEach((c) => next.add(memberKey(c)))
-      }
-      return next
-    })
-  }
 
   const clearSelection = () => setSelected(new Set())
 
@@ -336,7 +302,6 @@ export function CohortMembersClient({
     const key = memberKey(row)
     if (effectiveStatus(row) === newStatus) return
 
-    // Optimistic override
     setOptimisticStatus((prev) => {
       const next = new Map(prev)
       next.set(key, newStatus)
@@ -354,14 +319,8 @@ export function CohortMembersClient({
           newStatus,
         )
         toast.success(`${displayName} → ${statusLabel(newStatus)}`)
-        // Sprint S-CLEAN (13.05.2026) — DO NOT clear optimistic here.
-        // Previous pattern (clear → refresh) caused flicker: clearing Map
-        // re-rendered зі старим row.status BEFORE refresh propagated new
-        // server data. Now: optimistic залишається active aż useEffect
-        // (below) detects що prop status matches override → drops entry.
         router.refresh()
       } catch (e) {
-        // Revert optimistic on error (immediate, no refresh needed)
         setOptimisticStatus((prev) => {
           const next = new Map(prev)
           next.delete(key)
@@ -392,7 +351,6 @@ export function CohortMembersClient({
     const key = memberKey(row)
     const trimmed = editValue.trim()
 
-    // No-op якщо unchanged
     if ((row.notes ?? '') === trimmed) {
       cancelEdit()
       return
@@ -427,17 +385,461 @@ export function CohortMembersClient({
     })
   }
 
-  // ─── Render helpers ──────────────────────────────────────────
+  // ─── Bridge: selected Set ↔ TanStack RowSelectionState ────────
+  // DataTable приймає rowSelection as Record<rowId, boolean>. Derive
+  // from parent selected Set; onChange writes back до Set.
 
-  const allProspectsSelected =
-    prospects.length > 0 && prospects.every((p) => selected.has(memberKey(p)))
-  const allClientsSelected =
-    clients.length > 0 && clients.every((c) => selected.has(memberKey(c)))
+  const prospectRowSelection = useMemo<RowSelectionState>(() => {
+    const out: RowSelectionState = {}
+    for (const key of selected) {
+      if (key.startsWith('prospect:')) out[key] = true
+    }
+    return out
+  }, [selected])
+
+  const clientRowSelection = useMemo<RowSelectionState>(() => {
+    const out: RowSelectionState = {}
+    for (const key of selected) {
+      if (key.startsWith('client:')) out[key] = true
+    }
+    return out
+  }, [selected])
+
+  // Update parent selected Set коли DataTable селект змінюється.
+  // We get a partial RowSelectionState за tab (prospect OR client);
+  // need to merge з existing selected (preserving counter section).
+  const handleProspectSelectionChange = (next: RowSelectionState) => {
+    setSelected((prev) => {
+      const out = new Set<string>()
+      // Preserve all client selections (different table)
+      for (const k of prev) if (k.startsWith('client:')) out.add(k)
+      // Add new prospect selections
+      for (const [k, v] of Object.entries(next)) if (v) out.add(k)
+      return out
+    })
+  }
+  const handleClientSelectionChange = (next: RowSelectionState) => {
+    setSelected((prev) => {
+      const out = new Set<string>()
+      for (const k of prev) if (k.startsWith('prospect:')) out.add(k)
+      for (const [k, v] of Object.entries(next)) if (v) out.add(k)
+      return out
+    })
+  }
+
+  // ─── URL state для prospекtів table ──────────────────────────
+  // Per Vadym S-UX spec: prospекti table get URL sync (Vadym's pain
+  // point — refresh loses sort/search). Clients table = internal state
+  // тільки (smaller use case, avoids URL param key collision).
+
+  const prospectsUrlState = useTableUrlState({
+    defaultPageSize: 50,
+    sortableColumnIds: ['name', 'source', 'miejscowosc', 'channel', 'score', 'status', 'added_at'],
+    preserveKeys: ['status', 'tab', 'cohort_id'],
+  })
+
+  // ─── Column definitions ──────────────────────────────────────
+
+  const prospectColumns = useMemo<ColumnDef<ProspectMemberRow>[]>(
+    () => [
+      {
+        id: 'select',
+        header: ({ table }) => (
+          <Checkbox
+            checked={table.getIsAllPageRowsSelected()}
+            onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
+            aria-label="Zaznacz wszystkich prospektów"
+          />
+        ),
+        cell: ({ row }) => (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(v) => row.toggleSelected(!!v)}
+            aria-label={`Zaznacz ${row.original.snapshot?.name ?? '?'}`}
+          />
+        ),
+        enableSorting: false,
+      },
+      {
+        id: 'name',
+        accessorFn: (row) => row.snapshot?.name ?? '',
+        header: createSortableHeader<ProspectMemberRow>('Nazwa'),
+        cell: ({ row }) => {
+          const p = row.original.snapshot
+          if (!p) {
+            return (
+              <span className="text-xs italic text-muted-foreground">
+                Prospekt {row.original.subject_id.slice(0, 8)}… (orphan)
+              </span>
+            )
+          }
+          return (
+            <div>
+              {p.nip ? (
+                <Link
+                  href={`/intelligence/lookup?nip=${p.nip}`}
+                  className="font-medium hover:text-emerald-700 hover:underline"
+                >
+                  {p.name}
+                </Link>
+              ) : (
+                <div className="font-medium">{p.name}</div>
+              )}
+              {p.owner_name && (
+                <div className="text-xs text-muted-foreground">{p.owner_name}</div>
+              )}
+            </div>
+          )
+        },
+      },
+      {
+        id: 'nip',
+        accessorFn: (row) => row.snapshot?.nip ?? '',
+        header: 'NIP',
+        cell: ({ row }) => (
+          <span className="font-mono text-xs">{row.original.snapshot?.nip ?? '—'}</span>
+        ),
+        enableSorting: false,
+      },
+      {
+        id: 'source',
+        accessorFn: (row) => (row.snapshot ? sourceLabel(row.snapshot) : ''),
+        header: createSortableHeader<ProspectMemberRow>('Źródło'),
+        cell: ({ row }) => {
+          const p = row.original.snapshot
+          if (!p) return null
+          return (
+            <Badge variant="outline" className="text-xs">
+              {sourceLabel(p)}
+            </Badge>
+          )
+        },
+      },
+      {
+        id: 'miejscowosc',
+        accessorFn: (row) => row.snapshot?.miejscowosc ?? '',
+        header: createSortableHeader<ProspectMemberRow>('Miasto'),
+        cell: ({ row }) => (
+          <span className="text-sm">{row.original.snapshot?.miejscowosc ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'channel',
+        accessorFn: (row) => row.snapshot?.dominant_channel ?? '',
+        header: createSortableHeader<ProspectMemberRow>('Kanał'),
+        cell: ({ row }) => (
+          <span className="text-sm">{row.original.snapshot?.dominant_channel ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'score',
+        accessorFn: (row) => {
+          // Score priority: matches.max_score → horeca_meta_score → gmaps_rating
+          const ms = row.match?.max_score
+          if (typeof ms === 'number' && ms > 0) return ms
+          const meta = num(row.snapshot?.horeca_meta_score)
+          if (meta > 0) return meta
+          const gmaps = row.enrichment?.gmaps_rating
+          if (gmaps) return num(gmaps) * 20 // 5★ → 100
+          return -1 // sort below all real scores
+        },
+        header: createSortableHeader<ProspectMemberRow>('Score'),
+        sortDescFirst: true,
+        cell: ({ row }) => {
+          const p = row.original.snapshot
+          if (!p) return null
+          const enr = row.original.enrichment
+          const meta = num(p.horeca_meta_score)
+          const gmapsRating = enr?.gmaps_rating ? num(enr.gmaps_rating) : null
+          const matchScore = row.original.match?.max_score ?? null
+          const showMatchScore = matchScore !== null && matchScore > 0
+          const showOriginalScore = !showMatchScore && meta > 0
+          const showGmapsScore =
+            !showMatchScore && !showOriginalScore && gmapsRating !== null
+          if (showMatchScore) {
+            return (
+              <MatchScoreBadge
+                score={matchScore!}
+                breakdown={row.original.match?.breakdown}
+                productCount={row.original.match?.count ?? 0}
+              />
+            )
+          }
+          if (showOriginalScore) {
+            return <span className="tabular-nums">{meta.toFixed(1)}</span>
+          }
+          if (showGmapsScore) {
+            return (
+              <span className="text-xs">
+                ⭐ {gmapsRating!.toFixed(1)}
+                {enr?.gmaps_reviews_count != null && (
+                  <span className="ml-1 text-muted-foreground">
+                    ({enr.gmaps_reviews_count})
+                  </span>
+                )}
+              </span>
+            )
+          }
+          return <span className="text-xs text-muted-foreground">—</span>
+        },
+      },
+      {
+        id: 'contact',
+        accessorFn: (row) =>
+          row.enrichment?.status === 'success' &&
+          (row.enrichment.phone || row.enrichment.website || row.enrichment.gmaps_rating)
+            ? 1
+            : row.snapshot?.has_contact
+              ? 1
+              : 0,
+        header: 'Kontakt',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const enr = row.original.enrichment
+          const p = row.original.snapshot
+          const enrSuccess =
+            enr?.status === 'success' &&
+            (enr.phone || enr.website || enr.gmaps_rating)
+          if (enrSuccess) {
+            return (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      variant="outline"
+                      className="cursor-default text-xs text-emerald-700 border-emerald-200"
+                    >
+                      ✓
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="max-w-xs">
+                    <div className="space-y-1 text-xs">
+                      {enr.phone && <div>📞 {enr.phone}</div>}
+                      {enr.website && (
+                        <div className="break-all">🌐 {enr.website}</div>
+                      )}
+                      {enr.gmaps_rating != null && (
+                        <div>
+                          ⭐ {num(enr.gmaps_rating).toFixed(1)}
+                          {enr.gmaps_reviews_count != null && (
+                            <> ({enr.gmaps_reviews_count} opinii)</>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )
+          }
+          if (p?.has_contact) {
+            return (
+              <Badge
+                variant="outline"
+                className="text-xs text-emerald-700 border-emerald-200"
+              >
+                ✓
+              </Badge>
+            )
+          }
+          return <span className="text-xs text-muted-foreground">—</span>
+        },
+      },
+      {
+        id: 'notes',
+        header: 'Notatka',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const r = row.original
+          const key = memberKey(r)
+          return (
+            <NotesCell
+              row={r}
+              isEditing={editingKey === key}
+              isSaving={savingKey === key}
+              editValue={editValue}
+              onStartEdit={() => startEdit(key, r.notes)}
+              onChangeValue={setEditValue}
+              onCancel={cancelEdit}
+              onSave={() => saveNotes(r, r.snapshot?.name ?? '?')}
+            />
+          )
+        },
+      },
+      {
+        id: 'status',
+        accessorFn: (row) => row.status,
+        header: createSortableHeader<ProspectMemberRow>('Status'),
+        cell: ({ row }) => {
+          const r = row.original
+          const status = effectiveStatus(r)
+          return (
+            <StatusCell
+              status={status}
+              busy={statusPending}
+              onSelect={(s) =>
+                handleStatusChange(r, s, r.snapshot?.name ?? '?')
+              }
+            />
+          )
+        },
+      },
+      {
+        id: 'added_at',
+        accessorFn: (row) => row.added_at,
+        header: createSortableHeader<ProspectMemberRow>('Dodano'),
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground">
+            {formatDateTime(row.original.added_at)}
+          </span>
+        ),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editingKey, editValue, savingKey, statusPending, optimisticStatus],
+  )
+
+  const clientColumns = useMemo<ColumnDef<ClientMemberRow>[]>(
+    () => [
+      {
+        id: 'select',
+        header: ({ table }) => (
+          <Checkbox
+            checked={table.getIsAllPageRowsSelected()}
+            onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
+            aria-label="Zaznacz wszystkich klientów"
+          />
+        ),
+        cell: ({ row }) => (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(v) => row.toggleSelected(!!v)}
+            aria-label={`Zaznacz ${row.original.snapshot?.title ?? '?'}`}
+          />
+        ),
+        enableSorting: false,
+      },
+      {
+        id: 'title',
+        accessorFn: (row) => row.snapshot?.title ?? '',
+        header: createSortableHeader<ClientMemberRow>('Nazwa'),
+        cell: ({ row }) => {
+          const c = row.original.snapshot
+          if (!c) {
+            return (
+              <span className="text-xs italic text-muted-foreground">
+                Klient {row.original.subject_id.slice(0, 8)}… (orphan)
+              </span>
+            )
+          }
+          return (
+            <Link href={`/clients/${c.id}`} className="font-medium hover:underline">
+              {c.title}
+            </Link>
+          )
+        },
+      },
+      {
+        id: 'city',
+        accessorFn: (row) => row.snapshot?.city ?? '',
+        header: createSortableHeader<ClientMemberRow>('Miasto'),
+        cell: ({ row }) => (
+          <span className="text-sm">{row.original.snapshot?.city ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'nip',
+        accessorFn: (row) => row.snapshot?.nip ?? '',
+        header: 'NIP',
+        enableSorting: false,
+        cell: ({ row }) => (
+          <span className="font-mono text-xs">{row.original.snapshot?.nip ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'industry',
+        accessorFn: (row) => row.snapshot?.industry ?? '',
+        header: createSortableHeader<ClientMemberRow>('Industry'),
+        cell: ({ row }) => (
+          <span className="text-sm">{row.original.snapshot?.industry ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'segment',
+        accessorFn: (row) => row.snapshot?.segment ?? '',
+        header: createSortableHeader<ClientMemberRow>('Segment'),
+        cell: ({ row }) => (
+          <span className="text-sm">{row.original.snapshot?.segment ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'notes',
+        header: 'Notatka',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const r = row.original
+          const key = memberKey(r)
+          return (
+            <NotesCell
+              row={r}
+              isEditing={editingKey === key}
+              isSaving={savingKey === key}
+              editValue={editValue}
+              onStartEdit={() => startEdit(key, r.notes)}
+              onChangeValue={setEditValue}
+              onCancel={cancelEdit}
+              onSave={() => saveNotes(r, r.snapshot?.title ?? '?')}
+            />
+          )
+        },
+      },
+      {
+        id: 'status',
+        accessorFn: (row) => row.status,
+        header: createSortableHeader<ClientMemberRow>('Status'),
+        cell: ({ row }) => {
+          const r = row.original
+          const status = effectiveStatus(r)
+          return (
+            <StatusCell
+              status={status}
+              busy={statusPending}
+              onSelect={(s) =>
+                handleStatusChange(r, s, r.snapshot?.title ?? '?')
+              }
+            />
+          )
+        },
+      },
+      {
+        id: 'added_at',
+        accessorFn: (row) => row.added_at,
+        header: createSortableHeader<ClientMemberRow>('Dodano'),
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground">
+            {formatDateTime(row.original.added_at)}
+          </span>
+        ),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editingKey, editValue, savingKey, statusPending, optimisticStatus],
+  )
+
+  // Multi-field global filter (name + nip + miejscowosc) для prospекtів
+  const prospectGlobalFilter = useMemo(
+    () => createMultiFieldGlobalFilter<ProspectMemberRow>(['name', 'nip', 'miejscowosc']),
+    [],
+  )
+  const clientGlobalFilter = useMemo(
+    () => createMultiFieldGlobalFilter<ClientMemberRow>(['title', 'nip', 'city']),
+    [],
+  )
+
+  // ─── Render ──────────────────────────────────────────────────
 
   const totalCount = prospects.length + clients.length
   const filterActive = statusFilter !== null
-
-  // ─── Render ──────────────────────────────────────────────────
 
   return (
     <div className="space-y-6 px-6 pb-6 pt-4">
@@ -467,8 +869,8 @@ export function CohortMembersClient({
                   className="text-primary underline"
                 >
                   /intelligence/prospects
-                </Link>
-                {' '}або{' '}
+                </Link>{' '}
+                або{' '}
                 <Link href="/clients" className="text-primary underline">
                   /clients
                 </Link>{' '}
@@ -479,13 +881,11 @@ export function CohortMembersClient({
         </div>
       ) : (
         <>
-          {/* Prospekti section — Krok 1.C1 */}
+          {/* Prospekti section */}
           <section>
             <h2 className="mb-2 text-sm font-medium">
               Prospekti{' '}
-              <span className="text-muted-foreground">
-                ({prospects.length})
-              </span>
+              <span className="text-muted-foreground">({prospects.length})</span>
             </h2>
             {prospects.length === 0 ? (
               <div className="rounded-md border p-6 text-center text-xs text-muted-foreground">
@@ -494,221 +894,26 @@ export function CohortMembersClient({
                   : 'Brak prospektów.'}
               </div>
             ) : (
-              <div className="rounded-md border overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[40px]">
-                        <Checkbox
-                          checked={allProspectsSelected}
-                          onCheckedChange={toggleAllProspects}
-                          aria-label="Zaznacz wszystkich prospektów"
-                        />
-                      </TableHead>
-                      <TableHead>Nazwa</TableHead>
-                      <TableHead>Źródło</TableHead>
-                      <TableHead>Miasto</TableHead>
-                      <TableHead>Kanał</TableHead>
-                      <TableHead className="text-right">Score</TableHead>
-                      <TableHead className="text-center">Kontakt</TableHead>
-                      <TableHead className="min-w-[200px]">Notatka</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-xs text-muted-foreground">
-                        Dodano
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {prospects.map((row) => {
-                      const key = memberKey(row)
-                      const p = row.snapshot
-                      const isSelected = selected.has(key)
-                      const isEditing = editingKey === key
-                      const isSaving = savingKey === key
-                      const status = effectiveStatus(row)
-                      const displayName = p?.name ?? row.subject_id.slice(0, 8)
-
-                      if (!p) {
-                        return (
-                          <TableRow key={key}>
-                            <TableCell>
-                              <Checkbox
-                                checked={isSelected}
-                                onCheckedChange={() => toggleOne(key)}
-                              />
-                            </TableCell>
-                            <TableCell
-                              colSpan={9}
-                              className="text-xs text-muted-foreground italic"
-                            >
-                              Prospekt {row.subject_id.slice(0, 8)}… (orphan)
-                            </TableCell>
-                          </TableRow>
-                        )
-                      }
-
-                      // Sprint S6D Day 4 — enrichment data joined server-side.
-                      const enr = row.enrichment
-                      const enrSuccess =
-                        enr?.status === 'success' &&
-                        (enr.phone || enr.website || enr.gmaps_rating)
-                      const meta = num(p.horeca_meta_score)
-                      const gmapsRating = enr?.gmaps_rating
-                        ? num(enr.gmaps_rating)
-                        : null
-                      // Sprint S-RANK B-min (13.05.2026) — score priority:
-                      // 1. row.match.max_score (matches table — algo z 8 modules)
-                      // 2. snapshot.horeca_meta_score (CEIDG sole-prop scoring)
-                      // 3. enrichment.gmaps_rating × 20 (Apify GMaps fallback)
-                      // 4. "—" якщо нічого
-                      const matchScore = row.match?.max_score ?? null
-                      const showMatchScore = matchScore !== null && matchScore > 0
-                      const showOriginalScore = !showMatchScore && meta > 0
-                      const showGmapsScore = !showMatchScore && !showOriginalScore && gmapsRating !== null
-                      return (
-                        <TableRow
-                          key={key}
-                          className={cn(isSelected && 'bg-muted/30')}
-                        >
-                          <TableCell>
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={() => toggleOne(key)}
-                              aria-label={`Zaznacz ${p.name}`}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            {/* Sprint S6D Day 4 ETAP 4 — clickable name → lookup page з prefill NIP */}
-                            {p.nip ? (
-                              <Link
-                                href={`/intelligence/lookup?nip=${p.nip}`}
-                                className="font-medium hover:text-emerald-700 hover:underline"
-                              >
-                                {p.name}
-                              </Link>
-                            ) : (
-                              <div className="font-medium">{p.name}</div>
-                            )}
-                            {p.owner_name && (
-                              <div className="text-xs text-muted-foreground">
-                                {p.owner_name}
-                              </div>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="text-xs">
-                              {sourceLabel(p)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {p.miejscowosc ?? '—'}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {p.dominant_channel ?? '—'}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {showMatchScore ? (
-                              <MatchScoreBadge
-                                score={matchScore!}
-                                breakdown={row.match?.breakdown}
-                                productCount={row.match?.count ?? 0}
-                              />
-                            ) : showOriginalScore ? (
-                              meta.toFixed(1)
-                            ) : showGmapsScore ? (
-                              <span className="text-xs">
-                                ⭐ {gmapsRating!.toFixed(1)}
-                                {enr?.gmaps_reviews_count != null && (
-                                  <span className="ml-1 text-muted-foreground">
-                                    ({enr.gmaps_reviews_count})
-                                  </span>
-                                )}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {enrSuccess ? (
-                              <TooltipProvider delayDuration={200}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Badge
-                                      variant="outline"
-                                      className="cursor-default text-xs text-emerald-700 border-emerald-200"
-                                    >
-                                      ✓
-                                    </Badge>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="left" className="max-w-xs">
-                                    <div className="space-y-1 text-xs">
-                                      {enr.phone && (
-                                        <div>📞 {enr.phone}</div>
-                                      )}
-                                      {enr.website && (
-                                        <div className="break-all">
-                                          🌐 {enr.website}
-                                        </div>
-                                      )}
-                                      {enr.gmaps_rating != null && (
-                                        <div>
-                                          ⭐ {num(enr.gmaps_rating).toFixed(1)}
-                                          {enr.gmaps_reviews_count != null && (
-                                            <> ({enr.gmaps_reviews_count} opinii)</>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            ) : p.has_contact ? (
-                              <Badge
-                                variant="outline"
-                                className="text-xs text-emerald-700 border-emerald-200"
-                              >
-                                ✓
-                              </Badge>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                —
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <NotesCell
-                              row={row}
-                              isEditing={isEditing}
-                              isSaving={isSaving}
-                              editValue={editValue}
-                              onStartEdit={() => startEdit(key, row.notes)}
-                              onChangeValue={setEditValue}
-                              onCancel={cancelEdit}
-                              onSave={() => saveNotes(row, p.name)}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <StatusCell
-                              status={status}
-                              busy={statusPending}
-                              onSelect={(s) =>
-                                handleStatusChange(row, s, p.name)
-                              }
-                            />
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {formatDateTime(row.added_at)}
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+              <DataTable
+                columns={prospectColumns}
+                data={prospects}
+                searchPlaceholder="Szukaj: nazwa, NIP, miasto..."
+                getRowId={(row) => memberKey(row)}
+                enableRowSelection
+                rowSelection={prospectRowSelection}
+                onRowSelectionChange={handleProspectSelectionChange}
+                globalFilterFn={prospectGlobalFilter}
+                sorting={prospectsUrlState.sorting}
+                onSortingChange={prospectsUrlState.setSorting}
+                globalFilter={prospectsUrlState.globalFilter}
+                onGlobalFilterChange={prospectsUrlState.setGlobalFilter}
+                pagination={prospectsUrlState.pagination}
+                onPaginationChange={prospectsUrlState.setPagination}
+              />
             )}
           </section>
 
-          {/* Klienci section — Krok 1.C2 */}
+          {/* Klienci section */}
           <section>
             <h2 className="mb-2 text-sm font-medium">
               Klienci{' '}
@@ -721,120 +926,16 @@ export function CohortMembersClient({
                   : 'Brak klientów.'}
               </div>
             ) : (
-              <div className="rounded-md border overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[40px]">
-                        <Checkbox
-                          checked={allClientsSelected}
-                          onCheckedChange={toggleAllClients}
-                          aria-label="Zaznacz wszystkich klientów"
-                        />
-                      </TableHead>
-                      <TableHead>Nazwa</TableHead>
-                      <TableHead>Miasto</TableHead>
-                      <TableHead>NIP</TableHead>
-                      <TableHead>Industry</TableHead>
-                      <TableHead>Segment</TableHead>
-                      <TableHead className="min-w-[200px]">Notatka</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-xs text-muted-foreground">
-                        Dodano
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {clients.map((row) => {
-                      const key = memberKey(row)
-                      const c = row.snapshot
-                      const isSelected = selected.has(key)
-                      const isEditing = editingKey === key
-                      const isSaving = savingKey === key
-                      const status = effectiveStatus(row)
-                      const displayName = c?.title ?? row.subject_id.slice(0, 8)
-
-                      if (!c) {
-                        return (
-                          <TableRow key={key}>
-                            <TableCell>
-                              <Checkbox
-                                checked={isSelected}
-                                onCheckedChange={() => toggleOne(key)}
-                              />
-                            </TableCell>
-                            <TableCell
-                              colSpan={8}
-                              className="text-xs text-muted-foreground italic"
-                            >
-                              Klient {row.subject_id.slice(0, 8)}… (orphan)
-                            </TableCell>
-                          </TableRow>
-                        )
-                      }
-
-                      return (
-                        <TableRow
-                          key={key}
-                          className={cn(isSelected && 'bg-muted/30')}
-                        >
-                          <TableCell>
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={() => toggleOne(key)}
-                              aria-label={`Zaznacz ${c.title}`}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Link
-                              href={`/clients/${c.id}`}
-                              className="font-medium hover:underline"
-                            >
-                              {c.title}
-                            </Link>
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {c.city ?? '—'}
-                          </TableCell>
-                          <TableCell className="font-mono text-xs">
-                            {c.nip ?? '—'}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {c.industry ?? '—'}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {c.segment ?? '—'}
-                          </TableCell>
-                          <TableCell>
-                            <NotesCell
-                              row={row}
-                              isEditing={isEditing}
-                              isSaving={isSaving}
-                              editValue={editValue}
-                              onStartEdit={() => startEdit(key, row.notes)}
-                              onChangeValue={setEditValue}
-                              onCancel={cancelEdit}
-                              onSave={() => saveNotes(row, c.title)}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <StatusCell
-                              status={status}
-                              busy={statusPending}
-                              onSelect={(s) =>
-                                handleStatusChange(row, s, c.title)
-                              }
-                            />
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {formatDateTime(row.added_at)}
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+              <DataTable
+                columns={clientColumns}
+                data={clients}
+                searchPlaceholder="Szukaj: nazwa, NIP, miasto..."
+                getRowId={(row) => memberKey(row)}
+                enableRowSelection
+                rowSelection={clientRowSelection}
+                onRowSelectionChange={handleClientSelectionChange}
+                globalFilterFn={clientGlobalFilter}
+              />
             )}
           </section>
         </>
@@ -891,16 +992,10 @@ function StatusCell({
           <DropdownMenuItem
             key={s}
             onClick={() => onSelect(s)}
-            className={cn(
-              'cursor-pointer',
-              s === status && 'font-medium',
-            )}
+            className={cn('cursor-pointer', s === status && 'font-medium')}
           >
             <Badge
-              className={cn(
-                'mr-2 text-[10px] font-normal',
-                statusBadgeClass(s),
-              )}
+              className={cn('mr-2 text-[10px] font-normal', statusBadgeClass(s))}
             >
               {statusLabel(s)}
             </Badge>
