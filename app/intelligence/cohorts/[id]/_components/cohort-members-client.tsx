@@ -28,7 +28,7 @@ import {
   Loader2Icon,
   XIcon,
 } from 'lucide-react'
-import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
+import type { ColumnDef, ColumnFiltersState, RowSelectionState } from '@tanstack/react-table'
 
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -55,6 +55,13 @@ import {
   createSortableHeader,
   createMultiFieldGlobalFilter,
 } from '@/lib/table/table-helpers'
+import {
+  ScoreHistogram,
+  scoreTierFilterFn,
+  getProspectEffectiveScore,
+  type ScoreTier,
+} from '@/components/cohort/score-histogram'
+import { ScoreDrilldownModal } from '@/components/cohort/score-drilldown-modal'
 
 import {
   updateCohortMemberStatus,
@@ -67,6 +74,16 @@ import { CohortBulkBar } from './cohort-bulk-bar'
 
 // ─── Types ────────────────────────────────────────────────────────
 
+/** Sprint S-UX-CORE STEP 3.3 (14.05.2026) — business_profile JSONB
+ *  exposed для drilldown modal AI section + false-positive heuristic
+ *  (buyer_strength_for_chm < 60 + combined ≥ 70 → ⚠ warning). */
+export interface ProspectBusinessProfile {
+  buyer_strength_for_chm?: number | null
+  client_type?: string | null
+  // інші keys у JSONB ignored для UI рендеру (extensible).
+  [key: string]: unknown
+}
+
 interface ProspectSnapshot {
   id: string
   name: string
@@ -78,6 +95,8 @@ interface ProspectSnapshot {
   dominant_channel: string | null
   horeca_meta_score: number | string | null
   has_contact: boolean | null
+  /** STEP 3.3 — joined з ceidg_prospects.business_profile JSONB. */
+  business_profile: ProspectBusinessProfile | null
 }
 
 /** Sprint S6D Day 4 — enrichment з contact_enrichment (apify_gmaps),
@@ -91,11 +110,20 @@ export interface ProspectEnrichmentData {
 }
 
 /** Sprint S-RANK B-min (13.05.2026) — match aggregation per prospect.
- *  Joined server-side у page.tsx via matches table (combined_score per prospect). */
+ *  Joined server-side у page.tsx via matches table (combined_score per prospect).
+ *  Sprint S-UX-CORE STEP 3.3 (14.05.2026) — extended з top-match algo_score /
+ *  ai_score / reason_codes для drilldown modal AI re-score section + false
+ *  positive heuristic. */
 export interface ProspectMatchData {
   max_score: number | null
   count: number
   breakdown: unknown
+  /** STEP 3.3 — top match's algo_score (raw, pre-AI). */
+  top_algo_score: number | null
+  /** STEP 3.3 — top match's ai_score (null коли L6 AI ne ran). */
+  top_ai_score: number | null
+  /** STEP 3.3 — top match's reason_codes (e.g. ['buyer_strength_cap:5']). */
+  top_reason_codes: string[]
 }
 
 interface ClientSnapshot {
@@ -250,6 +278,9 @@ export function CohortMembersClient({
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [savingKey, setSavingKey] = useState<string | null>(null)
+
+  // STEP 3.3 — score drilldown modal state. null = closed.
+  const [drilldownProspect, setDrilldownProspect] = useState<ProspectMemberRow | null>(null)
 
   const [statusPending, startStatusTransition] = useTransition()
   const [notesPending, startNotesTransition] = useTransition()
@@ -435,8 +466,33 @@ export function CohortMembersClient({
   const prospectsUrlState = useTableUrlState({
     defaultPageSize: 50,
     sortableColumnIds: ['name', 'source', 'miejscowosc', 'channel', 'score', 'status', 'added_at'],
+    // STEP 3.2: score column filterable via histogram chips.
+    filterableColumnIds: ['score'],
     preserveKeys: ['status', 'tab', 'cohort_id'],
   })
+
+  // STEP 3.2: derive active score tier z columnFilters (URL-synced).
+  const activeScoreTier: ScoreTier | null = useMemo(() => {
+    const f = prospectsUrlState.columnFilters.find((cf) => cf.id === 'score')
+    if (!f) return null
+    const v = f.value
+    if (v === 'high' || v === 'mid' || v === 'low' || v === 'none') return v
+    return null
+  }, [prospectsUrlState.columnFilters])
+
+  const handleScoreTierChange = (next: ScoreTier | null) => {
+    prospectsUrlState.setColumnFilters((prev: ColumnFiltersState) => {
+      const without = prev.filter((cf) => cf.id !== 'score')
+      return next ? [...without, { id: 'score', value: next }] : without
+    })
+  }
+
+  // STEP 3.2: pre-compute effective scores для histogram counts.
+  // Uses same accessor priority як score column accessorFn (single source).
+  const prospectScores = useMemo(
+    () => prospects.map((p) => getProspectEffectiveScore(p)),
+    [prospects],
+  )
 
   // ─── Column definitions ──────────────────────────────────────
 
@@ -545,6 +601,9 @@ export function CohortMembersClient({
         },
         header: createSortableHeader<ProspectMemberRow>('Score'),
         sortDescFirst: true,
+        // STEP 3.2 — tier filter (histogram chip click). Maps numeric
+        // accessor value (-1 / 0+) до 'high'/'mid'/'low'/'none' буckets.
+        filterFn: scoreTierFilterFn,
         cell: ({ row }) => {
           const p = row.original.snapshot
           if (!p) return null
@@ -562,6 +621,7 @@ export function CohortMembersClient({
                 score={matchScore!}
                 breakdown={row.original.match?.breakdown}
                 productCount={row.original.match?.count ?? 0}
+                onOpenDrilldown={() => setDrilldownProspect(row.original)}
               />
             )
           }
@@ -894,22 +954,32 @@ export function CohortMembersClient({
                   : 'Brak prospektów.'}
               </div>
             ) : (
-              <DataTable
-                columns={prospectColumns}
-                data={prospects}
-                searchPlaceholder="Szukaj: nazwa, NIP, miasto..."
-                getRowId={(row) => memberKey(row)}
-                enableRowSelection
-                rowSelection={prospectRowSelection}
-                onRowSelectionChange={handleProspectSelectionChange}
-                globalFilterFn={prospectGlobalFilter}
-                sorting={prospectsUrlState.sorting}
-                onSortingChange={prospectsUrlState.setSorting}
-                globalFilter={prospectsUrlState.globalFilter}
-                onGlobalFilterChange={prospectsUrlState.setGlobalFilter}
-                pagination={prospectsUrlState.pagination}
-                onPaginationChange={prospectsUrlState.setPagination}
-              />
+              <div className="space-y-2">
+                {/* STEP 3.2 — score distribution banner */}
+                <ScoreHistogram
+                  scores={prospectScores}
+                  activeTier={activeScoreTier}
+                  onChange={handleScoreTierChange}
+                />
+                <DataTable
+                  columns={prospectColumns}
+                  data={prospects}
+                  searchPlaceholder="Szukaj: nazwa, NIP, miasto..."
+                  getRowId={(row) => memberKey(row)}
+                  enableRowSelection
+                  rowSelection={prospectRowSelection}
+                  onRowSelectionChange={handleProspectSelectionChange}
+                  globalFilterFn={prospectGlobalFilter}
+                  sorting={prospectsUrlState.sorting}
+                  onSortingChange={prospectsUrlState.setSorting}
+                  columnFilters={prospectsUrlState.columnFilters}
+                  onColumnFiltersChange={prospectsUrlState.setColumnFilters}
+                  globalFilter={prospectsUrlState.globalFilter}
+                  onGlobalFilterChange={prospectsUrlState.setGlobalFilter}
+                  pagination={prospectsUrlState.pagination}
+                  onPaginationChange={prospectsUrlState.setPagination}
+                />
+              </div>
             )}
           </section>
 
@@ -951,6 +1021,12 @@ export function CohortMembersClient({
           onClear={clearSelection}
         />
       )}
+
+      {/* STEP 3.3 — score drilldown modal. Single instance, controlled. */}
+      <ScoreDrilldownModal
+        prospect={drilldownProspect}
+        onClose={() => setDrilldownProspect(null)}
+      />
     </div>
   )
 }
@@ -1130,10 +1206,20 @@ function MatchScoreBadge({
   score,
   breakdown,
   productCount,
+  onOpenDrilldown,
 }: {
   score: number
   breakdown: unknown
   productCount: number
+  /** STEP 3.3 — optional click handler → opens drilldown modal. Якщо не
+   *  передано, badge поводиться як hover-only tooltip (legacy mode).
+   *
+   *  FIX #2 (14.05.2026) — раніше button був INSIDE TooltipTrigger asChild
+   *  (Radix Slot composed props), і onClick якось не fire'ив. Restructure:
+   *  button — OUTERMOST element. Tooltip+TooltipTrigger+Badge — INSIDE
+   *  button. Click on button (anywhere в Badge area) → React fires onClick
+   *  directly без Slot interception. Hover on Badge → Tooltip portal shows. */
+  onOpenDrilldown?: () => void
 }) {
   const tierClass =
     score >= 70
@@ -1146,14 +1232,20 @@ function MatchScoreBadge({
   const bonuses = b?.bonuses ?? {}
   const penalties = b?.penalties ?? {}
 
-  return (
+  // Tooltip wraps non-interactive Badge (span). Used in обох modes (clickable
+  // and read-only). Click handling moved до outer button wrapper if drilldown
+  // enabled.
+  const tooltipNode = (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
           <Badge
             variant="outline"
             className={cn(
-              'cursor-help text-xs font-semibold tabular-nums',
+              'text-xs font-semibold tabular-nums',
+              onOpenDrilldown
+                ? 'cursor-pointer transition-transform hover:scale-105'
+                : 'cursor-help',
               tierClass,
             )}
           >
@@ -1218,4 +1310,23 @@ function MatchScoreBadge({
       </Tooltip>
     </TooltipProvider>
   )
+
+  // FIX #2 — drilldown mode: button at outermost level, Tooltip wrapped inside.
+  // Click anywhere в Badge area → React fires button's onClick directly.
+  // Tooltip portal renders to body, не conflicts з button hierarchy.
+  if (onOpenDrilldown) {
+    return (
+      <button
+        type="button"
+        onClick={onOpenDrilldown}
+        aria-label={`Score ${score} — kliknij dla szczegółów`}
+        className="inline-flex rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1"
+      >
+        {tooltipNode}
+      </button>
+    )
+  }
+
+  // Read-only mode (no drilldown handler) — render tooltip alone.
+  return tooltipNode
 }

@@ -5,6 +5,16 @@
 // поверх TanStack Table v8. Foundation для replacing 5 hand-rolled tables
 // у repo (prospects, cohort-members, products, produkty, clients-hub).
 //
+// Sprint S-UX-CORE STEP 3.1 (14.05.2026) — sticky header polish:
+//   - thead: bg-background + border-b + shadow-sm (z-10)
+//   - Outer wrapper: dropped overflow-hidden (clipped sticky thead),
+//     replaced з rounded-md border + explicit corner round на inner.
+//   - Inner: overflow-x-auto only — horizontal scroll preserved для
+//     wide cohort tables (10+ cols). Vertical scroll inherited з
+//     nearest ancestor — page-level scroll on cohort detail, modal
+//     scroll inside Dialog.
+//   - First col (select) optional sticky-left via columnDef meta (opt-in).
+//
 // Architecture:
 //   - useReactTable з core/sorted/filtered/pagination row models
 //   - Sticky table header (CSS position:sticky)
@@ -232,15 +242,16 @@ export function DataTable<TData, TValue>({
         </div>
       )}
 
-      {/* Table container */}
-      <div className="rounded-md border overflow-hidden">
-        <div className="overflow-x-auto">
+      {/* Table container — STEP 3.1: dropped outer overflow-hidden;
+          rounded-md + border via outer; horizontal scroll via inner. */}
+      <div className="rounded-md border">
+        <div className="overflow-x-auto rounded-md">
           <Table>
-            <TableHeader className="sticky top-0 z-10 bg-muted/50 backdrop-blur supports-[backdrop-filter]:bg-muted/40">
+            <TableHeader className="sticky top-0 z-10 bg-background border-b shadow-[0_1px_0_0_var(--tw-shadow-color)] shadow-border/60">
               {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
+                <TableRow key={headerGroup.id} className="hover:bg-transparent">
                   {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id}>
+                    <TableHead key={header.id} className="bg-background">
                       {header.isPlaceholder
                         ? null
                         : flexRender(header.column.columnDef.header, header.getContext())}

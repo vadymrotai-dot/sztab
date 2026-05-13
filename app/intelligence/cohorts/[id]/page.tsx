@@ -51,6 +51,16 @@ interface MemberRowRaw {
   notes: string | null
 }
 
+/** Sprint S-UX-CORE STEP 3.3 (14.05.2026) — business_profile exposed
+ *  через scored_prospects view (migration 063 join: ceidg_prospects.business_profile).
+ *  Used у cohort score drilldown modal для AI re-score section + false
+ *  positive heuristic ("strength<60 + combined≥70 → ⚠ warning"). */
+export interface ProspectBusinessProfile {
+  buyer_strength_for_chm?: number | null
+  client_type?: string | null
+  [key: string]: unknown
+}
+
 interface ProspectSnapshot {
   id: string
   name: string
@@ -62,6 +72,8 @@ interface ProspectSnapshot {
   dominant_channel: string | null
   horeca_meta_score: number | string | null
   has_contact: boolean | null
+  /** STEP 3.3 — joined for drilldown. */
+  business_profile: ProspectBusinessProfile | null
 }
 
 /** Sprint S6D Day 4 BUGFIX (12.05.2026) — enrichment data joined з
@@ -82,11 +94,17 @@ export interface ProspectEnrichment {
  *  count = total match rows (typically ~34 = всі CzM products).
  *  breakdown = score_breakdown JSONB з top-scoring product row, structure:
  *  { total, base: {pkd, activity, size, geo, recency, niche},
- *    bonuses: {ua_founder_boost, revenue, ...}, penalties: {...}, reasons:[] }. */
+ *    bonuses: {ua_founder_boost, revenue, ...}, penalties: {...}, reasons:[] }.
+ *  Sprint S-UX-CORE STEP 3.3 (14.05.2026) — extra fields на top match для
+ *  drilldown modal: algo_score (pre-AI), ai_score (L6 override або null),
+ *  reason_codes (e.g. ['buyer_strength_cap:5', 'shell_company_penalty']). */
 export interface ProspectMatch {
   max_score: number | null
   count: number
   breakdown: unknown
+  top_algo_score: number | null
+  top_ai_score: number | null
+  top_reason_codes: string[]
 }
 
 interface ClientSnapshot {
@@ -239,7 +257,7 @@ export default async function CohortDetailPage({
       supabase
         .from('scored_prospects')
         .select(
-          'id, name, nip, owner_name, source, krs_legal_form, miejscowosc, dominant_channel, horeca_meta_score, has_contact',
+          'id, name, nip, owner_name, source, krs_legal_form, miejscowosc, dominant_channel, horeca_meta_score, has_contact, business_profile',
         )
         .in('id', prospectIds),
       supabase
@@ -252,9 +270,11 @@ export default async function CohortDetailPage({
       // prospect_id. Sort у JS: pick row з highest combined_score per
       // prospect (the algorithm produces 1 row per product, ~34 rows per
       // prospect — we display the BEST match score).
+      // STEP 3.3 — also pull algo_score, ai_score, reason_codes для
+      // drilldown modal (top match row used).
       supabase
         .from('matches')
-        .select('prospect_id, combined_score, score_breakdown')
+        .select('prospect_id, combined_score, algo_score, ai_score, reason_codes, score_breakdown')
         .in('prospect_id', prospectIds)
         .order('combined_score', { ascending: false, nullsFirst: false }),
     ])
@@ -275,9 +295,15 @@ export default async function CohortDetailPage({
       ]),
     )
     // Aggregate matches: count + top-row (best score + breakdown) per prospect.
+    // STEP 3.3 — top-row also yields algo_score / ai_score / reason_codes
+    // для drilldown modal AI section. Matches sorted DESC, so first hit
+    // per prospect_id IS the top row.
     type MatchRow = {
       prospect_id: string
       combined_score: number | null
+      algo_score: number | null
+      ai_score: number | null
+      reason_codes: string[] | null
       score_breakdown: unknown
     }
     for (const m of (matchesRes.data ?? []) as MatchRow[]) {
@@ -287,11 +313,14 @@ export default async function CohortDetailPage({
           max_score: m.combined_score,
           count: 1,
           breakdown: m.score_breakdown,
+          top_algo_score: m.algo_score,
+          top_ai_score: m.ai_score,
+          top_reason_codes: Array.isArray(m.reason_codes) ? m.reason_codes : [],
         })
       } else {
         existing.count += 1
         // matches sorted DESC, тому first row має highest score;
-        // breakdown вже з top row, не overwrite.
+        // breakdown + algo/ai/reasons вже з top row, не overwrite.
       }
     }
   }
