@@ -297,13 +297,25 @@ export default async function ProspectsPage({
       }
     }
     // STEP 4.1 — search ?q= server-side ILIKE на name + nip + miejscowosc.
-    // Escape user input проти PostgREST filter injection.
+    //
+    // HOTFIX (14.05.2026 evening) — multi-word AND search (Vadym test: "AGRO GROUP"
+    // → 1 result раніше = literal substring match. Тепер: кожне слово matches
+    // anywhere у any з 3 fields, всі слова потрібні).
+    //
+    // Implementation: split на whitespace → кожне word окремий .or() group.
+    // Supabase chains multiple .or() calls з AND → kombinowany filter:
+    //   WHERE (name~"AGRO" OR nip~"AGRO" OR miejscowosc~"AGRO")
+    //     AND (name~"GROUP" OR nip~"GROUP" OR miejscowosc~"GROUP")
+    // Order слів irrelevant. Standard CRM search behavior (Apollo/Pipedrive pattern).
     if (searchQuery.length > 0) {
       const safe = escapeIlikeQuery(searchQuery)
       if (safe.length > 0) {
-        q = q.or(
-          `name.ilike.*${safe}*,nip.ilike.*${safe}*,miejscowosc.ilike.*${safe}*`,
-        )
+        const words = safe.split(/\s+/).filter((w) => w.length > 0)
+        for (const word of words) {
+          q = q.or(
+            `name.ilike.*${word}*,nip.ilike.*${word}*,miejscowosc.ilike.*${word}*`,
+          )
+        }
       }
     }
     // Phase 2 Krok 1.E S-CORE.3.B Phase A — UA filter (opt-in URL param).

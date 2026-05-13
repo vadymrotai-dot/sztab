@@ -253,10 +253,12 @@ export function DataTable<TData, TValue>({
 
   return (
     <div className={cn('flex flex-col gap-3', className)}>
-      {/* Toolbar slot + global search */}
+      {/* Toolbar slot + global search.
+          HOTFIX (14.05.2026 evening) — search input на LEFT (поряд saved views
+          + custom toolbar elements) замість far-right. Vadym критика: "пошукова
+          панель так далеко від назв". Layout тепер: [Search] [Toolbar slot]. */}
       {(toolbar || enableGlobalFilter) && (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">{toolbar}</div>
+        <div className="flex flex-wrap items-center gap-2">
           {enableGlobalFilter && (
             <div className="relative w-full sm:w-80">
               <SearchIcon className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
@@ -268,6 +270,9 @@ export function DataTable<TData, TValue>({
                 aria-label="Wyszukaj"
               />
             </div>
+          )}
+          {toolbar && (
+            <div className="flex flex-wrap items-center gap-2">{toolbar}</div>
           )}
         </div>
       )}
