@@ -15,11 +15,13 @@
 // prospects-table.tsx (type-only krs-section imports).
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { toast } from 'sonner'
 import {
   CopyIcon,
   ExternalLinkIcon,
   CheckIcon,
+  ArrowUpRightIcon,
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -170,6 +172,40 @@ export function ProspectDetailPanel({
           <SheetTitle className="pr-8 text-base">{prospect.name}</SheetTitle>
           {prospect.owner_name && (
             <SheetDescription>{prospect.owner_name}</SheetDescription>
+          )}
+          {/* Sprint S-UX-CORE STEP 4.4 (14.05.2026) — full profile page link.
+              Side panel = quick peek. Pełny profil = standalone route з 6-source
+              enrichment (CEIDG + KRS + VAT + GUS + Apify GMaps + AI analysis).
+              Disabled якщо nip null (lookup form requires NIP). Opens у новій
+              вкладці — Vadym workflow: side panel для triage + full page для
+              deep dive перед call. */}
+          {prospect.nip ? (
+            <Button
+              asChild
+              size="sm"
+              variant="default"
+              className="mt-2 w-fit gap-1.5"
+            >
+              <Link
+                href={`/intelligence/lookup?nip=${prospect.nip}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <ArrowUpRightIcon className="size-3.5" />
+                Otwórz pełny profil
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled
+              className="mt-2 w-fit gap-1.5"
+              title="Brak NIP — pełny profil wymaga numeru NIP"
+            >
+              <ArrowUpRightIcon className="size-3.5" />
+              Pełny profil niedostępny (brak NIP)
+            </Button>
           )}
         </SheetHeader>
 

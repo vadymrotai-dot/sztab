@@ -34,9 +34,59 @@ import { cn } from '@/lib/utils'
 import { DataTable } from '@/components/ui/data-table'
 import { useTableUrlState } from '@/lib/table/use-table-url-state'
 import { createSortableHeader } from '@/lib/table/table-helpers'
+import { SavedViewsDropdown } from '@/components/table/saved-views-dropdown'
+import type { DefaultViewSeed } from '@/lib/table/use-saved-views'
 
 import { ProspectDetailPanel } from './prospect-detail-panel'
 import { BulkActionBar, type CohortOption } from './bulk-action-bar'
+
+// ────────────────────────────────────────────────────────────
+// Pre-seed default views (Vadym's go-to filter sets)
+// STEP 4.3 — params match real URL schema у page.tsx searchParams parser.
+//
+// HOTFIX (14.05.2026 evening) — видалено score_min з усіх default views.
+// Причина: bulk matching script broken (S-RANK-BULK-FIX tech-debt), більшість
+// sp.z o.o. prospекtів мають horeca_meta_score=NULL → пресет з score_min=70
+// повертав 0 results → confusing UX для Vadym ("preset не працює").
+//
+// TODO: коли S-RANK-BULK-FIX shipped (1478 prospects recompute matches),
+// re-enable score_min defaults — recommended thresholds:
+//   - Hot Hurtownie: score_min=70
+//   - UA-edge: score_min=50
+//   - Sklepy detal: score_min=40
+//   - Tylko z kontaktem: score_min=50 (Vadym сам зараз додає manually)
+// ────────────────────────────────────────────────────────────
+
+const PROSPECTS_DEFAULT_VIEWS: DefaultViewSeed[] = [
+  {
+    name: '🔥 Hot Hurtownie sp.z o.o.',
+    params: {
+      type: 'spzoo',
+      client_type: 'hurtownia',
+    },
+  },
+  {
+    name: '🇺🇦 UA-edge hurtownie',
+    params: {
+      type: 'spzoo',
+      client_type: 'hurtownia',
+      ua_filter: 'likely',
+    },
+  },
+  {
+    name: '🏪 Sklepy detal ФОП',
+    params: {
+      type: 'fop',
+      client_type: 'sklep_detal',
+    },
+  },
+  {
+    name: '📞 Tylko z kontaktem',
+    params: {
+      has_contact: 'true',
+    },
+  },
+]
 
 // ────────────────────────────────────────────────────────────
 // Types
@@ -674,7 +724,8 @@ export function ProspectsTable({
         </div>
       </div>
 
-      {/* DataTable з manual modes (server-side everything) */}
+      {/* DataTable з manual modes (server-side everything).
+          STEP 4.3 — toolbar slot rendered ABOVE table з SavedViewsDropdown. */}
       <DataTable
         columns={columns}
         data={initialProspects}
@@ -695,6 +746,12 @@ export function ProspectsTable({
         pageCount={totalPageCount}
         rowCount={totalRowCount}
         pageSizeOptions={[50, 100, 200, 500]}
+        toolbar={
+          <SavedViewsDropdown
+            tableId="prospects"
+            defaultViews={PROSPECTS_DEFAULT_VIEWS}
+          />
+        }
       />
 
       {/* Sticky bulk action bar */}
