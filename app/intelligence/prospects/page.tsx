@@ -6,15 +6,18 @@
 // ?type= CSV param (fop / spzoo / sa / inne, multi-select). Default — всі.
 // Phase 2 Krok 1.B (08.05.2026 evening) — server-side pagination via
 // ?page= + ?size= params. Default size=50, valid sizes [50, 100, 200].
-// Removed hard limit(100) — unblocks 205 KRS prospekti previously invisible
-// (поточний pool: 100 ФОП + 305 sp.z o.o. — без pagination Vadym бачив
-// тільки top 100 по horeca_meta_score).
+//
+// Sprint S-UX-CORE STEP 4.1 (14.05.2026) — Vadym pain points fix:
+//   - NO search input → додати ?q= → server-side ILIKE на name/nip/miejscowosc
+//   - Sort name тільки page-local → ?sort=&?dir= → server-side ORDER BY
+//   - Page size 200 з реsetом filterів → useTableUrlState preserves URL params
+//   - Page size 500 додано (top sales reps want 500 row dump для phone calls)
+//   - Rendered через <DataTable> foundation (cohort UX parity)
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 import { CLIENT_TYPE_META } from '@/lib/clients/client-type-meta'
 import type { ClientType } from '@/lib/ai/business-analysis'
 
@@ -37,7 +40,8 @@ const ALL_TYPES = TYPE_OPTIONS.map((o) => o.id) as TypeId[]
 
 // ─── Pagination constants ────────────────────────────────────────
 
-const PAGE_SIZES = [50, 100, 200] as const
+// STEP 4.1 — додано 500 (top sales reps want big phone-call dump)
+const PAGE_SIZES = [50, 100, 200, 500] as const
 type PageSize = (typeof PAGE_SIZES)[number]
 const DEFAULT_SIZE: PageSize = 50
 
@@ -51,6 +55,39 @@ function parsePage(raw: string | undefined): number {
   const n = parseInt(raw ?? '', 10)
   if (!Number.isFinite(n) || n < 1) return 1
   return n
+}
+
+// ─── Sort + search params (STEP 4.1) ────────────────────────────
+
+const SORTABLE_COLUMNS = [
+  'name',
+  'nip',
+  'source',
+  'owner_name',
+  'miejscowosc',
+  'dominant_channel',
+  'horeca_meta_score',
+  'has_contact',
+] as const
+type SortColumn = (typeof SORTABLE_COLUMNS)[number]
+const DEFAULT_SORT: SortColumn = 'horeca_meta_score'
+const DEFAULT_DIR: 'asc' | 'desc' = 'desc'
+
+function parseSort(raw: string | undefined): SortColumn {
+  if (raw && (SORTABLE_COLUMNS as readonly string[]).includes(raw)) {
+    return raw as SortColumn
+  }
+  return DEFAULT_SORT
+}
+
+function parseDir(raw: string | undefined): 'asc' | 'desc' {
+  return raw === 'asc' ? 'asc' : 'desc'
+}
+
+/** Escape `%` `,` and `*` characters що мають special meaning у PostgREST
+ *  filter expressions. Used для user input у `.or(name.ilike.*Q*)`. */
+function escapeIlikeQuery(q: string): string {
+  return q.replace(/[%,*()]/g, ' ').trim()
 }
 
 // ─── UA filter (Phase 2 Krok 1.E S-CORE.3.B Phase A — opt-in) ────
@@ -137,34 +174,40 @@ function selectedToTypeStr(selected: Set<TypeId> | null): string | null {
   return ordered.length > 0 ? ordered.join(',') : null
 }
 
-/** Canonical URL builder. Drops params at default (size=50, page=1, type=all, ua=null, client_type=null). */
-function buildHref(opts: {
-  type?: string | null
-  page?: number
-  size?: PageSize
-  ua?: UaFilter
-  clientType?: ClientTypeFilter
-}): string {
-  const sp = new URLSearchParams()
-  if (opts.type) sp.set('type', opts.type)
-  if (opts.page && opts.page > 1) sp.set('page', String(opts.page))
-  if (opts.size && opts.size !== DEFAULT_SIZE) sp.set('size', String(opts.size))
-  if (opts.ua) sp.set('ua_filter', opts.ua)
-  if (opts.clientType) sp.set('client_type', opts.clientType)
-  const s = sp.toString()
+/** STEP 4.1 — generic preserve-other-params helper. Builds /intelligence/prospects?...
+ *  з ALL existing URL params з `sp` (raw searchParams), оverriden лише ключами
+ *  у `overrides`. Передача null до override → delete param. Це fixes регресію
+ *  де chipHref/uaChipHref strip-али пользовательскі search/sort/score/etc. */
+type RawSearchParams = {
+  [key: string]: string | undefined
+}
+
+function buildHrefMerged(
+  sp: RawSearchParams,
+  overrides: Record<string, string | number | null | undefined>,
+): string {
+  const params = new URLSearchParams()
+  // Copy всі поточні URL params
+  for (const [k, v] of Object.entries(sp)) {
+    if (typeof v === 'string' && v.length > 0) params.set(k, v)
+  }
+  // Apply overrides (null deletes, undefined ignored, value sets)
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v === null) params.delete(k)
+    else if (v !== undefined) params.set(k, String(v))
+  }
+  // Default page=1 завжди дроп
+  if (params.get('page') === '1') params.delete('page')
+  if (params.get('size') === String(DEFAULT_SIZE)) params.delete('size')
+  const s = params.toString()
   return s ? `/intelligence/prospects?${s}` : '/intelligence/prospects'
 }
 
-/** Toggle single TypeId; resets page to 1; preserves size.
- *  - Toggling одне з default (selected=null=all) → deselect → решта 3.
- *  - Result == ALL_TYPES або порожнє → drop ?type= (back to default).
- */
+/** Toggle single TypeId; resets page to 1; preserves ALL other URL params. */
 function chipHref(
   typeId: TypeId,
   selected: Set<TypeId> | null,
-  size: PageSize,
-  ua: UaFilter,
-  clientType: ClientTypeFilter,
+  sp: RawSearchParams,
 ): string {
   const next = selected ? new Set(selected) : new Set<TypeId>(ALL_TYPES)
   if (next.has(typeId)) {
@@ -173,54 +216,17 @@ function chipHref(
     next.add(typeId)
   }
   const typeStr = selectedToTypeStr(next)
-  return buildHref({ type: typeStr, size, ua, clientType })
+  return buildHrefMerged(sp, { type: typeStr, page: null })
 }
 
-/** Set explicit page; preserves type + size + ua + clientType. */
-function pageHref(
-  target: number,
-  selected: Set<TypeId> | null,
-  size: PageSize,
-  ua: UaFilter,
-  clientType: ClientTypeFilter,
-): string {
-  const typeStr = selectedToTypeStr(selected)
-  return buildHref({ type: typeStr, page: target, size, ua, clientType })
+/** Toggle UA filter — 3-state cycle. Preserves ALL other URL params. */
+function uaChipHref(target: UaFilter, sp: RawSearchParams): string {
+  return buildHrefMerged(sp, { ua_filter: target, page: null })
 }
 
-/** Set page size; resets page to 1; preserves type + ua + clientType. */
-function sizeHref(
-  target: PageSize,
-  selected: Set<TypeId> | null,
-  ua: UaFilter,
-  clientType: ClientTypeFilter,
-): string {
-  const typeStr = selectedToTypeStr(selected)
-  return buildHref({ type: typeStr, size: target, ua, clientType })
-}
-
-/** Toggle UA filter — 3-state cycle: null → likely → verified → null.
- *  Resets page to 1; preserves type + size. Per Vadym Q4 D1 — backend URL param. */
-function uaChipHref(
-  target: UaFilter,
-  selected: Set<TypeId> | null,
-  size: PageSize,
-  clientType: ClientTypeFilter,
-): string {
-  const typeStr = selectedToTypeStr(selected)
-  return buildHref({ type: typeStr, size, ua: target, clientType })
-}
-
-/** Set client_type filter (Sprint S6D Day 1). Resets page to 1; preserves
- *  type + size + ua. Single-value (DropdownMenu UI), не chip toggle. */
-function clientTypeHref(
-  target: ClientTypeFilter,
-  selected: Set<TypeId> | null,
-  size: PageSize,
-  ua: UaFilter,
-): string {
-  const typeStr = selectedToTypeStr(selected)
-  return buildHref({ type: typeStr, size, ua, clientType: target })
+/** Set client_type filter. Preserves ALL other URL params. */
+function clientTypeHref(target: ClientTypeFilter, sp: RawSearchParams): string {
+  return buildHrefMerged(sp, { client_type: target, page: null })
 }
 
 // ─── Page ────────────────────────────────────────────────────────
@@ -234,6 +240,16 @@ export default async function ProspectsPage({
     size?: string
     ua_filter?: string
     client_type?: string
+    /** STEP 4.1 — search + sort + ALL filters server-side */
+    q?: string
+    sort?: string
+    dir?: string
+    score_min?: string
+    score_max?: string
+    channels?: string
+    has_contact?: string
+    hide_closed?: string
+    show_excluded?: string
   }>
 }) {
   const sp = await searchParams
@@ -242,6 +258,25 @@ export default async function ProspectsPage({
   let page = parsePage(sp.page)
   const uaFilter = parseUaFilter(sp.ua_filter)
   const clientTypeFilter = parseClientTypeFilter(sp.client_type)
+  // STEP 4.1
+  const searchQuery = (sp.q ?? '').trim()
+  const sortColumn = parseSort(sp.sort)
+  const sortDir = parseDir(sp.dir)
+  // STEP 4.1 — раніше client-side, тепер server-side (correct UX coли total != visible page)
+  const scoreMinRaw = parseInt(sp.score_min ?? '', 10)
+  const scoreMaxRaw = parseInt(sp.score_max ?? '', 10)
+  const scoreMin = Number.isFinite(scoreMinRaw) ? Math.max(0, scoreMinRaw) : 0
+  const scoreMax = Number.isFinite(scoreMaxRaw) ? Math.min(100, scoreMaxRaw) : 100
+  const ALL_CHANNELS_SET = ['sklep', 'restaurant', 'catering', 'cafe', 'multi'] as const
+  const channelsList = (sp.channels ?? '')
+    .split(',')
+    .map((c) => c.trim())
+    .filter((c): c is (typeof ALL_CHANNELS_SET)[number] =>
+      (ALL_CHANNELS_SET as readonly string[]).includes(c),
+    )
+  const hasContact = sp.has_contact === 'true'
+  const hideClosed = sp.hide_closed === 'true'
+  const showExcluded = sp.show_excluded === 'true'
 
   const supabase = await createClient()
 
@@ -250,11 +285,25 @@ export default async function ProspectsPage({
     let q = supabase
       .from('scored_prospects')
       .select('*', { count: 'exact' })
-      .order('horeca_meta_score', { ascending: false, nullsFirst: false })
+      // STEP 4.1 — URL-driven sort замість hardcoded horeca_meta_score.
+      .order(sortColumn, {
+        ascending: sortDir === 'asc',
+        nullsFirst: false,
+      })
     if (selected) {
       const expr = buildTypeFilterExpression(selected)
       if (expr) {
         q = q.or(expr)
+      }
+    }
+    // STEP 4.1 — search ?q= server-side ILIKE на name + nip + miejscowosc.
+    // Escape user input проти PostgREST filter injection.
+    if (searchQuery.length > 0) {
+      const safe = escapeIlikeQuery(searchQuery)
+      if (safe.length > 0) {
+        q = q.or(
+          `name.ilike.*${safe}*,nip.ilike.*${safe}*,miejscowosc.ilike.*${safe}*`,
+        )
       }
     }
     // Phase 2 Krok 1.E S-CORE.3.B Phase A — UA filter (opt-in URL param).
@@ -272,6 +321,34 @@ export default async function ProspectsPage({
       q = q.is('business_profile->>client_type', null)
     } else if (clientTypeFilter) {
       q = q.eq('business_profile->>client_type', clientTypeFilter)
+    }
+    // STEP 4.1 — score range (раніше client-side useMemo на 50 rows; тепер
+    // server-side для correct UX поверх 2705+ pool).
+    if (scoreMin > 0) {
+      q = q.gte('horeca_meta_score', scoreMin)
+    }
+    if (scoreMax < 100) {
+      q = q.lte('horeca_meta_score', scoreMax)
+    }
+    // STEP 4.1 — channels filter via PostgREST .in()
+    if (channelsList.length > 0) {
+      q = q.in('dominant_channel', channelsList)
+    }
+    // STEP 4.1 — Tylko z kontaktem switch
+    if (hasContact) {
+      q = q.eq('has_contact', true)
+    }
+    // STEP 4.1 — Pokaż wykluczone toggle. Default false → hide filter_passed=false.
+    // Use .not.eq которое включає NULL (legacy/unscored rows).
+    if (!showExcluded) {
+      q = q.or('filter_passed.is.null,filter_passed.eq.true')
+    }
+    // STEP 4.1 — Ukryj closed chains. Chain tier у JSONB score_breakdown->chain->loyalty_tier.
+    // PostgREST JSONB path: '.neq.closed' include NULL (non-chain rows безпечно).
+    if (hideClosed) {
+      q = q.or(
+        'score_breakdown->chain->>loyalty_tier.is.null,score_breakdown->chain->>loyalty_tier.neq.closed',
+      )
     }
     return q
   }
@@ -347,9 +424,6 @@ export default async function ProspectsPage({
   const rangeEnd = totalCount === 0 ? 0 : (page - 1) * size + rowsLen
   const counterText = `${rangeStart} – ${rangeEnd} z ${totalCount}`
 
-  const prevDisabled = page <= 1
-  const nextDisabled = page >= totalPages || totalCount === 0
-
   return (
     <div className="flex flex-col">
       <PageHeader
@@ -360,7 +434,7 @@ export default async function ProspectsPage({
         ]}
       />
 
-      {/* Type filter chips (Phase 2 Krok 1.A) */}
+      {/* Type filter chips (Phase 2 Krok 1.A) — STEP 4.1 chipHref signature change */}
       <div className="flex flex-wrap items-center gap-2 px-6 pt-4">
         <span className="text-sm text-muted-foreground">Тип фірми:</span>
         {TYPE_OPTIONS.map((opt) => {
@@ -373,7 +447,7 @@ export default async function ProspectsPage({
               asChild
             >
               <Link
-                href={chipHref(opt.id, selected, size, uaFilter, clientTypeFilter)}
+                href={chipHref(opt.id, selected, sp)}
                 className={active ? 'pointer-events-auto' : undefined}
               >
                 {opt.label}
@@ -383,51 +457,30 @@ export default async function ProspectsPage({
         })}
         {!isAllActive && (
           <Button variant="ghost" size="sm" asChild>
-            <Link href={buildHref({ size, ua: uaFilter, clientType: clientTypeFilter })}>
-              Reset
-            </Link>
+            <Link href={buildHrefMerged(sp, { type: null, page: null })}>Reset</Link>
           </Button>
         )}
 
-        {/* UA founders filter chips — Phase 2 Krok 1.E S-CORE.3.B Phase A.
-            OPT-IN: default OFF (no URL param). 3 states: Wszyscy / Likely / Verified. */}
+        {/* UA founders filter chips */}
         <span className="ml-2 inline-flex items-center gap-1 border-l pl-2 text-xs text-muted-foreground">
           🇺🇦 UA-власники:
         </span>
-        <Button
-          asChild
-          size="sm"
-          variant={uaFilter === null ? 'default' : 'outline'}
-        >
-          <Link href={uaChipHref(null, selected, size, clientTypeFilter)}>Wszyscy</Link>
+        <Button asChild size="sm" variant={uaFilter === null ? 'default' : 'outline'}>
+          <Link href={uaChipHref(null, sp)}>Wszyscy</Link>
         </Button>
-        <Button
-          asChild
-          size="sm"
-          variant={uaFilter === 'likely' ? 'default' : 'outline'}
-        >
-          <Link href={uaChipHref('likely', selected, size, clientTypeFilter)}>Likely</Link>
+        <Button asChild size="sm" variant={uaFilter === 'likely' ? 'default' : 'outline'}>
+          <Link href={uaChipHref('likely', sp)}>Likely</Link>
         </Button>
-        <Button
-          asChild
-          size="sm"
-          variant={uaFilter === 'verified' ? 'default' : 'outline'}
-        >
-          <Link href={uaChipHref('verified', selected, size, clientTypeFilter)}>Verified</Link>
+        <Button asChild size="sm" variant={uaFilter === 'verified' ? 'default' : 'outline'}>
+          <Link href={uaChipHref('verified', sp)}>Verified</Link>
         </Button>
 
-        {/* Client type filter chips — Sprint S6D Day 1.
-            6 chips dominant + "Nieznany" (not yet AI-classified). Pełne 9
-            типів available via /clients/{id} manual override dropdown. */}
+        {/* Client type filter chips */}
         <span className="ml-2 inline-flex items-center gap-1 border-l pl-2 text-xs text-muted-foreground">
           Тип:
         </span>
-        <Button
-          asChild
-          size="sm"
-          variant={clientTypeFilter === null ? 'default' : 'outline'}
-        >
-          <Link href={clientTypeHref(null, selected, size, uaFilter)}>Wszyscy</Link>
+        <Button asChild size="sm" variant={clientTypeFilter === null ? 'default' : 'outline'}>
+          <Link href={clientTypeHref(null, sp)}>Wszyscy</Link>
         </Button>
         {(['gastronomia', 'hurtownia', 'sklep_detal', 'hotel'] as const).map((t) => {
           const meta = CLIENT_TYPE_META[t]
@@ -440,7 +493,7 @@ export default async function ProspectsPage({
               variant={active ? 'default' : 'outline'}
               title={meta.label_pl}
             >
-              <Link href={clientTypeHref(t, selected, size, uaFilter)}>
+              <Link href={clientTypeHref(t, sp)}>
                 <span className="mr-1">{meta.emoji}</span>
                 {meta.label_pl}
               </Link>
@@ -453,14 +506,10 @@ export default async function ProspectsPage({
           variant={clientTypeFilter === 'unknown' ? 'default' : 'outline'}
           title="Klient bez przypisanego typu (uruchom Analiza klienta)"
         >
-          <Link href={clientTypeHref('unknown', selected, size, uaFilter)}>
-            ❓ Nieznany
-          </Link>
+          <Link href={clientTypeHref('unknown', sp)}>❓ Nieznany</Link>
         </Button>
 
-        <span className="ml-auto text-xs text-muted-foreground">
-          {counterText}
-        </span>
+        <span className="ml-auto text-xs text-muted-foreground">{counterText}</span>
       </div>
 
       {/* Page-correction note (Phase 2 Krok 1.B) */}
@@ -473,65 +522,14 @@ export default async function ProspectsPage({
         </div>
       )}
 
+      {/* STEP 4.1 — ProspectsTable тепер handles search/sort/pagination via DataTable.
+          Server passes total counts для manual pagination footer. */}
       <ProspectsTable
         initialProspects={(prospects ?? []) as ProspectRow[]}
         cohorts={cohorts}
+        totalRowCount={totalCount}
+        totalPageCount={totalPages}
       />
-
-      {/* Pagination footer (Phase 2 Krok 1.B) */}
-      <div className="mt-4 flex items-center justify-between px-6 pb-6">
-        <p className="text-sm text-muted-foreground">{counterText}</p>
-        <div className="flex items-center gap-2">
-          {/* Size selector — STEP 4 */}
-          <span className="text-xs text-muted-foreground">Per page:</span>
-          {PAGE_SIZES.map((s) => (
-            <Button
-              key={s}
-              asChild
-              variant={size === s ? 'default' : 'outline'}
-              size="sm"
-            >
-              <Link href={sizeHref(s, selected, uaFilter, clientTypeFilter)}>{s}</Link>
-            </Button>
-          ))}
-
-          {/* Spacer */}
-          <span className="mx-2 h-4 w-px bg-border" aria-hidden />
-
-          {/* Prev/Next — STEP 3 */}
-          <Button
-            asChild
-            variant="outline"
-            size="sm"
-            disabled={prevDisabled}
-            className={cn(prevDisabled && 'pointer-events-none opacity-50')}
-          >
-            <Link
-              href={prevDisabled ? '#' : pageHref(page - 1, selected, size, uaFilter, clientTypeFilter)}
-              aria-disabled={prevDisabled || undefined}
-            >
-              ← Poprzednia
-            </Link>
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            {page} / {totalPages}
-          </span>
-          <Button
-            asChild
-            variant="outline"
-            size="sm"
-            disabled={nextDisabled}
-            className={cn(nextDisabled && 'pointer-events-none opacity-50')}
-          >
-            <Link
-              href={nextDisabled ? '#' : pageHref(page + 1, selected, size, uaFilter, clientTypeFilter)}
-              aria-disabled={nextDisabled || undefined}
-            >
-              Następna →
-            </Link>
-          </Button>
-        </div>
-      </div>
     </div>
   )
 }

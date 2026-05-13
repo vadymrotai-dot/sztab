@@ -1,18 +1,27 @@
 'use client'
 
+// app/intelligence/prospects/_components/prospects-table.tsx
 // Prospects table — Phase 2.6 / Promt 3.
-// Sortable + filterable table z bulk action "Add to Clients".
-// Filter state synced to URL query params (bookmarkable).
+//
+// Sprint S-UX-CORE STEP 4.1 (14.05.2026) — full rewrite на DataTable foundation:
+//   - <DataTable> (components/ui/data-table.tsx) replace hand-rolled <Table>
+//   - useTableUrlState (lib/table/use-table-url-state.ts) для q/sort/page/size
+//   - manualSorting + manualPagination + manualFiltering = ALL server-side
+//   - 10 sortable columns (раніше тільки 3)
+//   - Search input у DataTable toolbar (раніше відсутній — головна Vadym pain)
+//   - Page size 50/100/200/500 selector у footer
+//   - Filter toolbar (slider, channels, switches) тепер ПИШЕ до URL → server
+//     refetch. Раніше: useMemo on visible 50 rows (incoherent з 2705 pool).
+//
+// Preserved:
+//   - ProspectDetailPanel (row click → side panel detail view)
+//   - BulkActionBar (sticky bottom, cohort dropdown, "Add to Clients")
+//   - All filter chips на page.tsx (type/UA/client_type) — server-side, untouched
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useCallback, useEffect, useMemo, useState, useTransition } from 'react'
+import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { toast } from 'sonner'
-import {
-  ArrowDownIcon,
-  ArrowUpDownIcon,
-  ArrowUpIcon,
-  ExternalLinkIcon,
-} from 'lucide-react'
+import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,15 +29,11 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { cn } from '@/lib/utils'
+
+import { DataTable } from '@/components/ui/data-table'
+import { useTableUrlState } from '@/lib/table/use-table-url-state'
+import { createSortableHeader } from '@/lib/table/table-helpers'
 
 import { ProspectDetailPanel } from './prospect-detail-panel'
 import { BulkActionBar, type CohortOption } from './bulk-action-bar'
@@ -40,17 +45,14 @@ import { BulkActionBar, type CohortOption } from './bulk-action-bar'
 export interface ProspectRow {
   id: string
   /** Phase 2.8 (migration 055) made ceidg_id nullable — KRS-only prospekti
-   *  не мають CEIDG counterpart. Type updated 08.05.2026 Phase 2 Krok 1.A. */
+   *  не мають CEIDG counterpart. */
   ceidg_id: string | null
   nip: string | null
   regon: string | null
   name: string
   owner_name: string | null
   status: string
-  /** 'ceidg' | 'krs' (default 'ceidg' per migration 014).
-   *  Phase 2 Krok 1.A — added до interface для "Źródło" column display. */
   source: string | null
-  /** Phase 2.8 — KRS prezes/chairman name з glowna_osoba.imiona_i_nazwisko. */
   decision_maker_name?: string | null
   pkd_main: string | null
   pkd_all: string[] | null
@@ -62,7 +64,6 @@ export interface ProspectRow {
   www: string | null
   data_rozpoczecia: string | null
   raw_data: unknown
-  // Score columns (LEFT JOIN — могą być null jeśli prospect bez score)
   sklep_score: number | string | null
   restaurant_score: number | string | null
   catering_score: number | string | null
@@ -76,12 +77,12 @@ export interface ProspectRow {
   score_breakdown: unknown
   scoring_version: string | null
   has_contact: boolean | null
-  // VAT enrichment (migration 017)
+  // VAT enrichment
   vat_status?: string | null
   vat_registered_date?: string | null
   vat_bank_accounts?: string[] | null
   vat_last_checked?: string | null
-  // GUS enrichment (migrations 018a/018b)
+  // GUS enrichment
   gus_legal_name?: string | null
   gus_regon?: string | null
   gus_status?: string | null
@@ -89,7 +90,7 @@ export interface ProspectRow {
   employee_count_range?: string | null
   pkd_codes?: string[] | null
   gus_last_checked?: string | null
-  // KRS enrichment (migrations 021/022)
+  // KRS enrichment
   krs_number?: string | null
   krs_full_name?: string | null
   krs_legal_form?: string | null
@@ -98,10 +99,6 @@ export interface ProspectRow {
   krs_management_board?: import('@/app/(dashboard)/_shared/krs-section').KrsBoardMember[] | null
   krs_pkd_with_descriptions?: import('@/app/(dashboard)/_shared/krs-section').KrsPkdEntry[] | null
   krs_last_checked?: string | null
-  /** Phase 2 Krok 1.E (S-CORE.3.B Phase A) — Ukrainian-founder signal.
-   *  Computed by lib/intelligence/ukrainian-detect.ts, cached jsonb.
-   *  detected=true тільки для verified (CRBR) + high (UK first+surname без PL).
-   *  Display: 🇺🇦 inline flag поряд з nazwa якщо detected=true. INFO-ONLY. */
   ua_founders_signal?: {
     detected: boolean
     confidence: 'verified' | 'high' | 'medium' | 'low' | null
@@ -130,9 +127,6 @@ const CHANNEL_BADGE_CLASS: Record<Channel, string> = {
   multi: 'bg-purple-100 text-purple-800 border-transparent',
 }
 
-type SortKey = 'name' | 'miejscowosc' | 'horeca_meta_score'
-type SortDir = 'asc' | 'desc' | null
-
 // ────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────
@@ -144,10 +138,7 @@ function num(v: number | string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-// ─── Phase 2 Krok 1.A — "Źródło" column helpers ───────────────
-
-/** Derive display label з row.source + krs_legal_form ILIKE classification.
- *  Mirror server-side filter logic у page.tsx for consistent UX. */
+/** Derive display label з row.source + krs_legal_form ILIKE classification. */
 function sourceLabel(row: ProspectRow): string {
   if (row.source === 'ceidg') return 'CEIDG (ФОП)'
   if (row.source === 'krs') {
@@ -159,7 +150,6 @@ function sourceLabel(row: ProspectRow): string {
   return row.source ?? '?'
 }
 
-/** Tailwind classes для Badge color coding by source/legal-form. */
 function sourceBadgeClass(row: ProspectRow): string {
   if (row.source === 'ceidg') return 'bg-emerald-100 text-emerald-800 border-transparent'
   if (row.source === 'krs') {
@@ -198,32 +188,20 @@ const CHAIN_BADGE_CLASS: Record<string, string> = {
 }
 
 // ────────────────────────────────────────────────────────────
-// URL sync
+// Client filter state (slider, channels, switches)
+// STEP 4.1 — лише UI state. Real filtering = server-side через URL params.
 // ────────────────────────────────────────────────────────────
 
-interface FilterState {
+interface ClientFilterState {
   scoreMin: number
   scoreMax: number
-  channels: Set<Channel> // empty = no channel filter (all)
+  channels: Set<Channel>
   hasContact: boolean
   hideClosedChains: boolean
-  showExcluded: boolean // default FALSE — excluded prospects (filter_passed=false) hidden
-  sortKey: SortKey
-  sortDir: SortDir
+  showExcluded: boolean
 }
 
-const DEFAULT_FILTER: FilterState = {
-  scoreMin: 0,
-  scoreMax: 100,
-  channels: new Set(),
-  hasContact: false,
-  hideClosedChains: false,
-  showExcluded: false,
-  sortKey: 'horeca_meta_score',
-  sortDir: 'desc',
-}
-
-function parseFilterFromUrl(sp: URLSearchParams): FilterState {
+function parseClientFilterFromUrl(sp: URLSearchParams): ClientFilterState {
   const min = Number.parseInt(sp.get('score_min') ?? '', 10)
   const max = Number.parseInt(sp.get('score_max') ?? '', 10)
   const channelsRaw = sp.get('channels') ?? ''
@@ -232,8 +210,6 @@ function parseFilterFromUrl(sp: URLSearchParams): FilterState {
       .split(',')
       .filter((s): s is Channel => ALL_CHANNELS.includes(s as Channel)),
   )
-  const sortKeyRaw = sp.get('sort') as SortKey | null
-  const sortDirRaw = sp.get('dir') as 'asc' | 'desc' | null
   return {
     scoreMin: Number.isFinite(min) ? Math.max(0, min) : 0,
     scoreMax: Number.isFinite(max) ? Math.min(100, max) : 100,
@@ -241,29 +217,7 @@ function parseFilterFromUrl(sp: URLSearchParams): FilterState {
     hasContact: sp.get('has_contact') === 'true',
     hideClosedChains: sp.get('hide_closed') === 'true',
     showExcluded: sp.get('show_excluded') === 'true',
-    sortKey:
-      sortKeyRaw === 'name' ||
-      sortKeyRaw === 'miejscowosc' ||
-      sortKeyRaw === 'horeca_meta_score'
-        ? sortKeyRaw
-        : 'horeca_meta_score',
-    sortDir: sortDirRaw === 'asc' || sortDirRaw === 'desc' ? sortDirRaw : 'desc',
   }
-}
-
-function filterToUrl(f: FilterState): string {
-  const params = new URLSearchParams()
-  if (f.scoreMin !== 0) params.set('score_min', String(f.scoreMin))
-  if (f.scoreMax !== 100) params.set('score_max', String(f.scoreMax))
-  if (f.channels.size > 0)
-    params.set('channels', Array.from(f.channels).join(','))
-  if (f.hasContact) params.set('has_contact', 'true')
-  if (f.hideClosedChains) params.set('hide_closed', 'true')
-  if (f.showExcluded) params.set('show_excluded', 'true')
-  if (f.sortKey !== 'horeca_meta_score') params.set('sort', f.sortKey)
-  if (f.sortDir !== 'desc') params.set('dir', f.sortDir ?? 'desc')
-  const s = params.toString()
-  return s ? `?${s}` : ''
 }
 
 // ────────────────────────────────────────────────────────────
@@ -272,120 +226,284 @@ function filterToUrl(f: FilterState): string {
 
 export interface ProspectsTableProps {
   initialProspects: ProspectRow[]
-  /** Phase 2 Krok 1.C1 — cohort options для bulk-action dropdown.
-   *  Server-fetched у parent /intelligence/prospects/page.tsx. Empty array
-   *  показує "Brak cohortów" placeholder + opens "+ Nowa cohort" dialog. */
   cohorts?: CohortOption[]
+  /** STEP 4.1 — server-known totals для DataTable manual pagination. */
+  totalRowCount: number
+  totalPageCount: number
 }
 
 export function ProspectsTable({
   initialProspects,
   cohorts = [],
+  totalRowCount,
+  totalPageCount,
 }: ProspectsTableProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const [pending, startTransition] = useTransition()
 
-  const [filter, setFilter] = useState<FilterState>(() =>
-    parseFilterFromUrl(new URLSearchParams(searchParams.toString())),
-  )
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [detailId, setDetailId] = useState<string | null>(null)
+  // ─── URL state (sort/q/page/size) via shared hook ───
+  // STEP 4.1 — preserveKeys = всі page-level filter params не вписані у
+  // useTableUrlState (так щоб sort/search клiки не стирали filter chips).
+  const urlState = useTableUrlState({
+    defaultPageSize: 50,
+    sortableColumnIds: [
+      'name',
+      'nip',
+      'source',
+      'owner_name',
+      'miejscowosc',
+      'dominant_channel',
+      'horeca_meta_score',
+      'has_contact',
+    ],
+    preserveKeys: [
+      'type',
+      'ua_filter',
+      'client_type',
+      'score_min',
+      'score_max',
+      'channels',
+      'has_contact',
+      'hide_closed',
+      'show_excluded',
+    ],
+  })
 
-  // Sync filter changes to URL (replace, no history bloat)
+  // ─── Client filter toolbar state ───
+  // STEP 4.1 — local mirror з URL. Slider drag → setState (immediate UI feedback)
+  // → debounced URL write → server refetch. Switches/channels → instant URL write.
+  const [clientFilter, setClientFilter] = useState<ClientFilterState>(() =>
+    parseClientFilterFromUrl(new URLSearchParams(searchParams.toString())),
+  )
+
+  // Sync local state з URL changes (e.g. router.refresh, browser back/forward)
   useEffect(() => {
-    const url = filterToUrl(filter)
-    const current = `?${searchParams.toString()}`
-    if (url !== current && !(url === '' && current === '?')) {
-      router.replace(`/intelligence/prospects${url}`, { scroll: false })
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter])
+    setClientFilter(parseClientFilterFromUrl(new URLSearchParams(searchParams.toString())))
+  }, [searchParams])
 
-  // Total excluded (filter_passed=false) — for transparency counter
-  const totalExcluded = useMemo(
-    () => initialProspects.filter((p) => p.filter_passed === false).length,
-    [initialProspects],
+  /** Write client filter changes до URL (preserving sort/q/page/size etc).
+   *  Resets ?page= до 1 — filter change може shrink pool < current page * size. */
+  const writeClientFilterToUrl = useCallback(
+    (next: ClientFilterState) => {
+      const params = new URLSearchParams(searchParams.toString())
+      params.delete('page') // reset on filter change
+
+      // Score range
+      if (next.scoreMin === 0) params.delete('score_min')
+      else params.set('score_min', String(next.scoreMin))
+      if (next.scoreMax === 100) params.delete('score_max')
+      else params.set('score_max', String(next.scoreMax))
+
+      // Channels CSV
+      if (next.channels.size === 0) params.delete('channels')
+      else params.set('channels', Array.from(next.channels).join(','))
+
+      // Switches
+      if (!next.hasContact) params.delete('has_contact')
+      else params.set('has_contact', 'true')
+      if (!next.hideClosedChains) params.delete('hide_closed')
+      else params.set('hide_closed', 'true')
+      if (!next.showExcluded) params.delete('show_excluded')
+      else params.set('show_excluded', 'true')
+
+      const s = params.toString()
+      router.replace(s ? `${pathname}?${s}` : pathname, { scroll: false })
+    },
+    [searchParams, router, pathname],
   )
 
-  // Apply filters + sort
-  const filtered = useMemo(() => {
-    let rows = initialProspects.filter((p) => {
-      // Hide excluded by default (RADEKZOOH wide_spectrum_freelancer etc.)
-      // Toggle "Pokaż wykluczone" inverts to show them.
-      if (!filter.showExcluded && p.filter_passed === false) return false
-      const meta = num(p.horeca_meta_score)
-      if (meta < filter.scoreMin || meta > filter.scoreMax) return false
-      if (filter.channels.size > 0) {
-        const ch = (p.dominant_channel ?? '') as Channel
-        if (!filter.channels.has(ch)) return false
-      }
-      if (filter.hasContact && !p.has_contact) return false
-      if (filter.hideClosedChains) {
-        const tier = getChainTier(p)
-        if (tier === 'closed') return false
-      }
-      return true
-    })
-    // Sort
-    if (filter.sortKey && filter.sortDir) {
-      const dirMul = filter.sortDir === 'asc' ? 1 : -1
-      rows = [...rows].sort((a, b) => {
-        if (filter.sortKey === 'horeca_meta_score') {
-          return (num(a.horeca_meta_score) - num(b.horeca_meta_score)) * dirMul
-        }
-        const av = String(a[filter.sortKey] ?? '').toLowerCase()
-        const bv = String(b[filter.sortKey] ?? '').toLowerCase()
-        return av.localeCompare(bv) * dirMul
-      })
+  // Debounced URL write для slider (avoid spam during drag)
+  useEffect(() => {
+    const id = setTimeout(() => writeClientFilterToUrl(clientFilter), 300)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientFilter.scoreMin, clientFilter.scoreMax])
+
+  // ─── Selection state (bridge ↔ TanStack RowSelection) ───
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const rowSelection = useMemo<RowSelectionState>(() => {
+    const out: RowSelectionState = {}
+    for (const id of selected) out[id] = true
+    return out
+  }, [selected])
+  const handleRowSelectionChange = (next: RowSelectionState) => {
+    const out = new Set<string>()
+    for (const [k, v] of Object.entries(next)) {
+      if (v) out.add(k)
     }
-    return rows
-  }, [initialProspects, filter])
-
-  const totalAvailable = initialProspects.length
-  const totalFiltered = filtered.length
-
-  // Bulk select handlers
-  const allSelected =
-    filtered.length > 0 && filtered.every((p) => selected.has(p.id))
-  const toggleAll = () =>
-    setSelected((prev) => {
-      if (allSelected) {
-        const next = new Set(prev)
-        filtered.forEach((p) => next.delete(p.id))
-        return next
-      }
-      const next = new Set(prev)
-      filtered.forEach((p) => next.add(p.id))
-      return next
-    })
-  const toggleOne = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+    setSelected(out)
+  }
   const clearSelection = () => setSelected(new Set())
 
-  const resetFilters = () =>
-    setFilter({ ...DEFAULT_FILTER, channels: new Set() })
+  // ─── Detail panel state ───
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const detailProspect = useMemo(
+    () => initialProspects.find((p) => p.id === detailId) ?? null,
+    [initialProspects, detailId],
+  )
 
-  const toggleChannel = (ch: Channel) =>
-    setFilter((f) => {
-      const next = new Set(f.channels)
-      if (next.has(ch)) next.delete(ch)
-      else next.add(ch)
-      return { ...f, channels: next }
-    })
+  // ─── ColumnDef ───
+  const columns = useMemo<ColumnDef<ProspectRow>[]>(
+    () => [
+      {
+        id: 'select',
+        header: ({ table }) => (
+          <Checkbox
+            checked={table.getIsAllPageRowsSelected()}
+            onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
+            aria-label="Zaznacz wszystkie"
+          />
+        ),
+        cell: ({ row }) => (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(v) => row.toggleSelected(!!v)}
+            aria-label={`Zaznacz ${row.original.name}`}
+            // Stop click з cell propagating до row (row click → detail panel)
+            onClick={(e) => e.stopPropagation()}
+          />
+        ),
+        enableSorting: false,
+      },
+      {
+        id: 'name',
+        accessorKey: 'name',
+        header: createSortableHeader<ProspectRow>('Nazwa'),
+        cell: ({ row }) => {
+          const p = row.original
+          return (
+            <button
+              type="button"
+              onClick={() => setDetailId(p.id)}
+              className="text-left font-medium hover:text-emerald-700 hover:underline"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                {p.name}
+                {p.ua_founders_signal?.detected && (
+                  <span
+                    className="inline-flex items-center rounded bg-blue-50 px-1 text-[10px] font-medium text-blue-700"
+                    title={
+                      p.ua_founders_signal.source === 'crbr'
+                        ? `UA-власники (verified з CRBR): ${(p.ua_founders_signal.names ?? []).join(', ')}`
+                        : `UA-likely (heuristic): ${(p.ua_founders_signal.names ?? []).join(', ')}`
+                    }
+                  >
+                    🇺🇦{' '}
+                    {p.ua_founders_signal.confidence === 'verified' ? 'verified' : 'likely'}
+                  </span>
+                )}
+              </span>
+            </button>
+          )
+        },
+      },
+      {
+        id: 'nip',
+        accessorKey: 'nip',
+        header: createSortableHeader<ProspectRow>('NIP'),
+        cell: ({ row }) => (
+          <span className="font-mono text-xs text-muted-foreground">
+            {row.original.nip ?? '—'}
+          </span>
+        ),
+      },
+      {
+        id: 'source',
+        accessorKey: 'source',
+        header: createSortableHeader<ProspectRow>('Źródło'),
+        cell: ({ row }) => {
+          const p = row.original
+          return (
+            <Badge variant="outline" className={cn('text-[10px]', sourceBadgeClass(p))}>
+              {sourceLabel(p)}
+            </Badge>
+          )
+        },
+      },
+      {
+        id: 'owner_name',
+        accessorKey: 'owner_name',
+        header: createSortableHeader<ProspectRow>('Właściciel'),
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">
+            {row.original.owner_name ?? '—'}
+          </span>
+        ),
+      },
+      {
+        id: 'miejscowosc',
+        accessorKey: 'miejscowosc',
+        header: createSortableHeader<ProspectRow>('Miasto'),
+        cell: ({ row }) => (
+          <span className="text-sm">{row.original.miejscowosc ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'dominant_channel',
+        accessorKey: 'dominant_channel',
+        header: createSortableHeader<ProspectRow>('Kanał'),
+        cell: ({ row }) => {
+          const ch = (row.original.dominant_channel ?? null) as Channel | null
+          if (!ch || !CHANNEL_LABEL_PL[ch]) {
+            return <span className="text-xs text-muted-foreground">—</span>
+          }
+          return (
+            <Badge variant="outline" className={cn('text-xs', CHANNEL_BADGE_CLASS[ch])}>
+              {CHANNEL_LABEL_PL[ch]}
+            </Badge>
+          )
+        },
+      },
+      {
+        id: 'horeca_meta_score',
+        accessorKey: 'horeca_meta_score',
+        header: createSortableHeader<ProspectRow>('Score'),
+        sortDescFirst: true,
+        cell: ({ row }) => {
+          const p = row.original
+          const meta = num(p.horeca_meta_score)
+          return (
+            <span className={cn('tabular-nums', scoreColorClass(meta))}>
+              {p.horeca_meta_score === null ? '—' : meta.toFixed(0)}
+            </span>
+          )
+        },
+      },
+      {
+        id: 'has_contact',
+        accessorKey: 'has_contact',
+        header: createSortableHeader<ProspectRow>('Kontakt'),
+        cell: ({ row }) =>
+          row.original.has_contact ? (
+            <span className="text-emerald-600">✓</span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+      },
+      {
+        id: 'chain',
+        header: 'Sieć',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const p = row.original
+          const tier = getChainTier(p)
+          if (!p.is_chain_franchise || !p.chain_brand || !tier) return null
+          return (
+            <Badge variant="outline" className={cn('text-xs', CHAIN_BADGE_CLASS[tier])}>
+              {p.chain_brand} · {tier}
+            </Badge>
+          )
+        },
+      },
+    ],
+    // setDetailId is stable (useState setter)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
 
-  const setSort = (key: SortKey) =>
-    setFilter((f) => {
-      if (f.sortKey !== key) return { ...f, sortKey: key, sortDir: 'asc' }
-      // toggle asc → desc → asc (no unsorted state — always sorted)
-      return { ...f, sortDir: f.sortDir === 'asc' ? 'desc' : 'asc' }
-    })
-
+  // ─── Bulk actions ───
   const handleAddToClients = () => {
     const ids = Array.from(selected)
     if (ids.length === 0) return
@@ -403,7 +521,9 @@ export function ProspectsTable({
         }
         const { added, skipped_duplicates } = data
         toast.success(
-          `Dodano ${added} klientów${skipped_duplicates > 0 ? ` (${skipped_duplicates} duplikatów pominięto)` : ''}`,
+          `Dodano ${added} klientów${
+            skipped_duplicates > 0 ? ` (${skipped_duplicates} duplikatów pominięto)` : ''
+          }`,
         )
         clearSelection()
         router.refresh()
@@ -413,50 +533,67 @@ export function ProspectsTable({
     })
   }
 
-  const detailProspect = useMemo(
-    () => initialProspects.find((p) => p.id === detailId) ?? null,
-    [initialProspects, detailId],
-  )
+  // ─── Filter toolbar (slider + channels + switches) ───
+  const toggleChannel = (ch: Channel) => {
+    setClientFilter((f) => {
+      const next = new Set(f.channels)
+      if (next.has(ch)) next.delete(ch)
+      else next.add(ch)
+      const updated = { ...f, channels: next }
+      // Instant URL write для channels (no slider debounce)
+      writeClientFilterToUrl(updated)
+      return updated
+    })
+  }
 
+  const updateSwitch = (key: 'hasContact' | 'hideClosedChains' | 'showExcluded', value: boolean) => {
+    setClientFilter((f) => {
+      const updated = { ...f, [key]: value }
+      writeClientFilterToUrl(updated)
+      return updated
+    })
+  }
+
+  const resetClientFilters = () => {
+    const reset: ClientFilterState = {
+      scoreMin: 0,
+      scoreMax: 100,
+      channels: new Set(),
+      hasContact: false,
+      hideClosedChains: false,
+      showExcluded: false,
+    }
+    setClientFilter(reset)
+    writeClientFilterToUrl(reset)
+  }
+
+  const hasActiveClientFilter =
+    clientFilter.scoreMin > 0 ||
+    clientFilter.scoreMax < 100 ||
+    clientFilter.channels.size > 0 ||
+    clientFilter.hasContact ||
+    clientFilter.hideClosedChains ||
+    clientFilter.showExcluded
+
+  // ─── Render ───
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
-      {/* Counter + filters bar */}
-      <div className="sticky top-0 z-10 flex flex-col gap-3 rounded-md border bg-background/95 p-3 backdrop-blur">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="text-sm text-muted-foreground">
-            {totalFiltered === totalAvailable
-              ? `${totalAvailable} dostępnych`
-              : `${totalFiltered} z ${totalAvailable} po filtrach`}
-            {totalExcluded > 0 && (
-              <span className="ml-2 text-xs">
-                · Wykluczone: <span className="font-medium">{totalExcluded}</span>
-                {!filter.showExcluded && ' (ukryte)'}
-              </span>
-            )}
-          </div>
-          <Button
-            variant="link"
-            size="sm"
-            onClick={resetFilters}
-            className="ml-auto h-auto p-0 text-xs text-muted-foreground"
-          >
-            Resetuj filtry
-          </Button>
-        </div>
-
+      {/* Client filter toolbar — slider + channels + switches.
+          Pisze URL params → server refetch via Next.js navigation. */}
+      <div className="flex flex-col gap-3 rounded-md border bg-muted/20 p-3">
         <div className="flex flex-wrap items-center gap-4">
           {/* Score range slider */}
-          <div className="flex min-w-[220px] flex-1 items-center gap-3">
+          <div className="flex min-w-[240px] flex-1 items-center gap-3">
             <Label className="shrink-0 text-xs text-muted-foreground">
-              Score: {filter.scoreMin}–{filter.scoreMax}
+              Score: {clientFilter.scoreMin}–{clientFilter.scoreMax}
             </Label>
             <Slider
               min={0}
               max={100}
               step={1}
-              value={[filter.scoreMin, filter.scoreMax]}
+              value={[clientFilter.scoreMin, clientFilter.scoreMax]}
               onValueChange={(v) =>
-                setFilter((f) => ({
+                setClientFilter((f) => ({
                   ...f,
                   scoreMin: v[0] ?? 0,
                   scoreMax: v[1] ?? 100,
@@ -469,7 +606,7 @@ export function ProspectsTable({
           {/* Channel pills */}
           <div className="flex items-center gap-1">
             {ALL_CHANNELS.map((ch) => {
-              const active = filter.channels.has(ch)
+              const active = clientFilter.channels.has(ch)
               return (
                 <button
                   key={ch}
@@ -488,14 +625,12 @@ export function ProspectsTable({
             })}
           </div>
 
-          {/* Has contact toggle */}
+          {/* Has contact */}
           <div className="flex items-center gap-2">
             <Switch
               id="has-contact"
-              checked={filter.hasContact}
-              onCheckedChange={(v) =>
-                setFilter((f) => ({ ...f, hasContact: v }))
-              }
+              checked={clientFilter.hasContact}
+              onCheckedChange={(v) => updateSwitch('hasContact', v)}
             />
             <Label htmlFor="has-contact" className="cursor-pointer text-xs">
               Tylko z kontaktem
@@ -506,217 +641,63 @@ export function ProspectsTable({
           <div className="flex items-center gap-2">
             <Switch
               id="hide-closed"
-              checked={filter.hideClosedChains}
-              onCheckedChange={(v) =>
-                setFilter((f) => ({ ...f, hideClosedChains: v }))
-              }
+              checked={clientFilter.hideClosedChains}
+              onCheckedChange={(v) => updateSwitch('hideClosedChains', v)}
             />
             <Label htmlFor="hide-closed" className="cursor-pointer text-xs">
               Ukryj closed chains
             </Label>
           </div>
 
-          {/* Show excluded (default false — RADEKZOOH wide_spectrum etc. hidden) */}
+          {/* Show excluded */}
           <div className="flex items-center gap-2">
             <Switch
               id="show-excluded"
-              checked={filter.showExcluded}
-              onCheckedChange={(v) =>
-                setFilter((f) => ({ ...f, showExcluded: v }))
-              }
+              checked={clientFilter.showExcluded}
+              onCheckedChange={(v) => updateSwitch('showExcluded', v)}
             />
             <Label htmlFor="show-excluded" className="cursor-pointer text-xs">
               Pokaż wykluczone
             </Label>
           </div>
+
+          {hasActiveClientFilter && (
+            <Button
+              variant="link"
+              size="sm"
+              onClick={resetClientFilters}
+              className="ml-auto h-auto p-0 text-xs text-muted-foreground"
+            >
+              Resetuj filtry
+            </Button>
+          )}
         </div>
       </div>
 
-      {/* Bulk action bar — Phase 2 Krok 1.C1 (08.05.2026):
-          inline bar relocated to sticky bottom + extended з cohort UI.
-          See <BulkActionBar /> below table closing tag. */}
+      {/* DataTable з manual modes (server-side everything) */}
+      <DataTable
+        columns={columns}
+        data={initialProspects}
+        searchPlaceholder="Szukaj: nazwa, NIP, miasto..."
+        getRowId={(row) => row.id}
+        enableRowSelection
+        rowSelection={rowSelection}
+        onRowSelectionChange={handleRowSelectionChange}
+        sorting={urlState.sorting}
+        onSortingChange={urlState.setSorting}
+        globalFilter={urlState.globalFilter}
+        onGlobalFilterChange={urlState.setGlobalFilter}
+        pagination={urlState.pagination}
+        onPaginationChange={urlState.setPagination}
+        manualSorting
+        manualPagination
+        manualFiltering
+        pageCount={totalPageCount}
+        rowCount={totalRowCount}
+        pageSizeOptions={[50, 100, 200, 500]}
+      />
 
-      {/* Table */}
-      {filtered.length === 0 ? (
-        <div className="rounded-md border p-12 text-center text-sm text-muted-foreground">
-          {totalAvailable === 0 ? (
-            <>
-              Brak prospektów w bazie.
-              <br />
-              <span className="mt-2 inline-block text-xs">
-                Uruchom <code className="rounded bg-muted px-1.5 py-0.5 font-mono">scripts/sync-ceidg-bootstrap.ts</code> aby pobrać dane z CEIDG.
-              </span>
-            </>
-          ) : (
-            <>
-              Brak prospektów po filtrach.{' '}
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="text-primary underline"
-              >
-                Resetuj filtry
-              </button>
-            </>
-          )}
-        </div>
-      ) : (
-        <div className="rounded-md border overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[40px]">
-                  <Checkbox
-                    checked={allSelected}
-                    onCheckedChange={toggleAll}
-                    aria-label="Zaznacz wszystkie"
-                  />
-                </TableHead>
-                <TableHead>
-                  <SortHeader
-                    label="Nazwa"
-                    sortKey="name"
-                    activeSort={filter.sortKey}
-                    activeDir={filter.sortDir}
-                    onSort={setSort}
-                  />
-                </TableHead>
-                {/* Sprint S6C STEP 2 — NIP column для disambiguation
-                    (e.g. 2 SOLERA Sp.z o.o. — Warszawska + Wrocławska).
-                    Hidden on mobile через hidden md:table-cell. */}
-                <TableHead className="hidden md:table-cell">NIP</TableHead>
-                {/* Phase 2 Krok 1.A — Źródło column (CEIDG/KRS classification) */}
-                <TableHead>Źródło</TableHead>
-                <TableHead>Właściciel</TableHead>
-                <TableHead>
-                  <SortHeader
-                    label="Miasto"
-                    sortKey="miejscowosc"
-                    activeSort={filter.sortKey}
-                    activeDir={filter.sortDir}
-                    onSort={setSort}
-                  />
-                </TableHead>
-                <TableHead>Kanał</TableHead>
-                <TableHead className="text-right">
-                  <SortHeader
-                    label="Score"
-                    sortKey="horeca_meta_score"
-                    activeSort={filter.sortKey}
-                    activeDir={filter.sortDir}
-                    onSort={setSort}
-                    align="right"
-                  />
-                </TableHead>
-                <TableHead className="text-center">Kontakt</TableHead>
-                <TableHead>Sieć</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((p) => {
-                const isSelected = selected.has(p.id)
-                const meta = num(p.horeca_meta_score)
-                const ch = (p.dominant_channel ?? null) as Channel | null
-                const tier = getChainTier(p)
-                return (
-                  <TableRow
-                    key={p.id}
-                    className={cn(
-                      'cursor-pointer hover:bg-muted/50',
-                      isSelected && 'bg-primary/5',
-                    )}
-                    onClick={() => setDetailId(p.id)}
-                  >
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={() => toggleOne(p.id)}
-                        aria-label={`Zaznacz ${p.name}`}
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      <span className="inline-flex items-center gap-1.5">
-                        {p.name}
-                        {p.ua_founders_signal?.detected && (
-                          <span
-                            className="inline-flex items-center rounded bg-blue-50 px-1 text-[10px] font-medium text-blue-700"
-                            title={
-                              p.ua_founders_signal.source === 'crbr'
-                                ? `UA-власники (verified з CRBR): ${(p.ua_founders_signal.names ?? []).join(', ')}`
-                                : `UA-likely (heuristic): ${(p.ua_founders_signal.names ?? []).join(', ')}`
-                            }
-                            aria-label="Ukrainian founders signal"
-                          >
-                            🇺🇦{' '}
-                            {p.ua_founders_signal.confidence === 'verified'
-                              ? 'verified'
-                              : 'likely'}
-                          </span>
-                        )}
-                      </span>
-                    </TableCell>
-                    {/* Sprint S6C STEP 2 — NIP cell для disambiguation */}
-                    <TableCell className="hidden md:table-cell font-mono text-xs text-muted-foreground">
-                      {p.nip ?? '—'}
-                    </TableCell>
-                    {/* Phase 2 Krok 1.A — Źródło Badge */}
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={cn('text-[10px]', sourceBadgeClass(p))}
-                      >
-                        {sourceLabel(p)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {p.owner_name ?? '—'}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {p.miejscowosc ?? '—'}
-                    </TableCell>
-                    <TableCell>
-                      {ch && CHANNEL_LABEL_PL[ch] ? (
-                        <Badge
-                          variant="outline"
-                          className={cn('text-xs', CHANNEL_BADGE_CLASS[ch])}
-                        >
-                          {CHANNEL_LABEL_PL[ch]}
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className={cn('tabular-nums', scoreColorClass(meta))}>
-                        {p.horeca_meta_score === null ? '—' : meta.toFixed(0)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {p.has_contact ? (
-                        <span className="text-emerald-600">✓</span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {p.is_chain_franchise && p.chain_brand && tier ? (
-                        <Badge
-                          variant="outline"
-                          className={cn('text-xs', CHAIN_BADGE_CLASS[tier])}
-                        >
-                          {p.chain_brand} · {tier}
-                        </Badge>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      {/* Sticky bulk action bar — Phase 2 Krok 1.C1 */}
+      {/* Sticky bulk action bar */}
       {selected.size > 0 && (
         <BulkActionBar
           selectedIds={Array.from(selected)}
@@ -737,43 +718,3 @@ export function ProspectsTable({
   )
 }
 
-// ────────────────────────────────────────────────────────────
-// Sort header
-// ────────────────────────────────────────────────────────────
-
-function SortHeader({
-  label,
-  sortKey,
-  activeSort,
-  activeDir,
-  onSort,
-  align,
-}: {
-  label: string
-  sortKey: SortKey
-  activeSort: SortKey
-  activeDir: SortDir
-  onSort: (key: SortKey) => void
-  align?: 'left' | 'right'
-}) {
-  const active = activeSort === sortKey
-  const Icon =
-    !active ? ArrowUpDownIcon : activeDir === 'asc' ? ArrowUpIcon : ArrowDownIcon
-  return (
-    <button
-      type="button"
-      onClick={() => onSort(sortKey)}
-      className={cn(
-        'inline-flex items-center gap-1 hover:text-foreground',
-        active ? 'text-foreground' : 'text-muted-foreground',
-        align === 'right' && 'flex-row-reverse',
-      )}
-    >
-      {label}
-      <Icon className="size-3" />
-    </button>
-  )
-}
-
-// Re-export icon used in SortHeader so unused-import lint OK
-export { ExternalLinkIcon }

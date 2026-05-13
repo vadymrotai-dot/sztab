@@ -111,6 +111,20 @@ export interface DataTableProps<TData, TValue> {
   /** Custom globalFilterFn (для multi-field ILIKE-style filter).
    *  Default: TanStack's `includesString` behavior на all visible cols. */
   globalFilterFn?: import('@tanstack/react-table').FilterFn<TData>
+  /** Sprint S-UX-CORE STEP 4.1 (14.05.2026) — manual modes for server-side
+   *  sort / pagination / filtering. Коли true, TanStack НЕ re-sorts /
+   *  paginates / filters incoming data — assumes server already did it.
+   *  Sort/pagination clicks все ще fire onSortingChange / onPaginationChange
+   *  (use these to update URL → trigger server refetch). */
+  manualSorting?: boolean
+  manualPagination?: boolean
+  manualFiltering?: boolean
+  /** Required коли manualPagination=true — server-known total page count
+   *  (для footer "Strona X z Y" display + disabling next/prev). */
+  pageCount?: number
+  /** Required коли manualPagination=true — server-known total row count
+   *  (для footer "N wierszy" display). */
+  rowCount?: number
   /** Extra Tailwind className на root wrapper. */
   className?: string
 }
@@ -139,6 +153,11 @@ export function DataTable<TData, TValue>({
   onPaginationChange,
   rowSelection: controlledRowSelection,
   globalFilterFn,
+  manualSorting = false,
+  manualPagination = false,
+  manualFiltering = false,
+  pageCount: serverPageCount,
+  rowCount: serverRowCount,
   className,
 }: DataTableProps<TData, TValue>) {
   // Internal states fallback (uncontrolled mode)
@@ -210,15 +229,26 @@ export function DataTable<TData, TValue>({
     getRowId,
     enableRowSelection,
     globalFilterFn,
+    manualSorting,
+    manualPagination,
+    manualFiltering,
+    // STEP 4.1 — pageCount required по TanStack для manual pagination.
+    // -1 = unknown total (next button always enabled until empty page).
+    pageCount: manualPagination ? (serverPageCount ?? -1) : undefined,
+    rowCount: manualPagination ? serverRowCount : undefined,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    // Skip these row models у manual modes — server already did the work.
+    getSortedRowModel: manualSorting ? undefined : getSortedRowModel(),
+    getFilteredRowModel: manualFiltering ? undefined : getFilteredRowModel(),
+    getPaginationRowModel: manualPagination ? undefined : getPaginationRowModel(),
   })
 
-  const totalRows = table.getFilteredRowModel().rows.length
-  const totalAll = data.length
-  const pageCount = table.getPageCount()
+  // STEP 4.1 — у manual modes use server-provided totals; else compute з TanStack.
+  const totalRows = manualFiltering
+    ? (serverRowCount ?? data.length)
+    : table.getFilteredRowModel().rows.length
+  const totalAll = manualFiltering ? (serverRowCount ?? data.length) : data.length
+  const pageCount = manualPagination ? (serverPageCount ?? 1) : table.getPageCount()
   const currentPage = pagination.pageIndex + 1
 
   return (
