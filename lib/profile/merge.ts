@@ -22,10 +22,20 @@ export const SOURCE_PRIORITIES: Record<string, number> = {
   CEIDG: 8,
   VAT_BL: 7,
   BZP: 6,
+  // Sprint S-MENU Day 3 (15.05.2026) — 'manual_override' розрізняє
+  // користувацький UI override (POST /api/clients/[id]/website) від
+  // legacy 'manual' import flow. Same priority (5) — both win проти
+  // automated sources, але distinct у DB audit trail.
   manual: 5,
+  manual_override: 5,
   Apify_GMaps: 4,
   AI: 3,
   WWW: 4, // Website extraction — same tier as Apify
+  // Sprint S-MENU Day 3 — 'tavily_brand' = brand-aware Tavily re-query
+  // (after CEIDG brand_aliases populated). Higher than default tavily=1
+  // (unknown source) бо CEIDG-derived brand є strong evidence — але
+  // нижче manual_override щоб Vadym override завжди wins.
+  tavily_brand: 2,
   sprawozdania_KRS: 9, // Same as GUS — official filings
   MSiG: 9, // Same as GUS — official Monitor publication
 }

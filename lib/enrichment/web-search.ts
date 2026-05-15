@@ -50,6 +50,30 @@ export const AGGREGATOR_BLOCKLIST = [
   'ekrs.ms.gov.pl',
   'mfa.gov.pl',
   'gov.pl',
+  // Sprint S-MENU Day 3 (15.05.2026) — caught у MARCIN BOROWY live audit.
+  // Tavily picked monitorfirm.pb.pl + yelp.com як "company website",
+  // overwriting real kemerkebab.pl у company_profile_fields. Expanded
+  // blocklist з PL B2B aggregators + global review/listing sites.
+  // Polish B2B / monitoring aggregators
+  'monitorfirm.pb.pl',
+  'pb.pl', // Puls Biznesu root (catches monitorfirm subdomain + others)
+  'firmy.wp.pl',
+  'bizpolska.pl',
+  'kompass.com',
+  'nportal.pl',
+  'fakty.pl',
+  'opineo.pl',
+  'goldenline.pl',
+  'znajdz-firme.pl',
+  'mapy.pb.pl',
+  'branzeinfo.pl',
+  // Global review / listing aggregators
+  'yelp.com',
+  'yelp.pl',
+  'tripadvisor.com',
+  'tripadvisor.pl',
+  'foursquare.com',
+  'yellowpages.com',
 ]
 
 export function isAggregator(host: string): boolean {
@@ -345,4 +369,152 @@ export async function searchCompanyOnline(
   }
 
   return out
+}
+
+// ─── Sprint S-MENU Day 3 (15.05.2026) — Brand-aware Tavily fallback ───
+// Why: для JDG-gastronomy clients where CEIDG koncesja provides brand name
+// (e.g. "KEMER KEBAB" from uprawnienia.opis), generic Tavily query (NIP +
+// "firma sklep") picks aggregators (monitorfirm.pb.pl, yelp). Brand-aware
+// re-query targets "${brand} ${city} menu OR jadlospis site:.pl" —
+// strongly biased toward real restaurant сайту з menu (e.g. kemerkebab.pl).
+//
+// Strategy:
+//   1. Tavily query з brand + city + menu/oferta keywords + site:.pl
+//   2. Filter results через AGGREGATOR_BLOCKLIST
+//   3. Score candidates: domain контаining brand slug substring boosts +5
+//   4. Return best-scoring non-aggregator domain
+//
+// Outer Promise.race(15s) — захист Phase B budget.
+export interface BrandSearchResult {
+  website_url: string | null
+  search_cost_usd: number
+  candidates_considered: number
+  error: string | null
+  status: 'success' | 'partial' | 'error'
+}
+
+const BRAND_SEARCH_TIMEOUT_MS = 15_000
+
+function normalizeBrandSlug(brand: string): string {
+  return brand
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // strip diacritics
+    .replace(/[^a-z0-9]/g, '')
+}
+
+async function searchCompanyByBrandInternal(
+  brand: string,
+  city: string | null,
+  tavilyApiKey: string,
+): Promise<BrandSearchResult> {
+  const out: BrandSearchResult = {
+    website_url: null,
+    search_cost_usd: 0,
+    candidates_considered: 0,
+    error: null,
+    status: 'partial',
+  }
+  if (!tavilyApiKey) {
+    out.error = 'TAVILY_API_KEY missing'
+    out.status = 'error'
+    return out
+  }
+  if (!brand?.trim()) {
+    out.error = 'brand empty'
+    out.status = 'error'
+    return out
+  }
+
+  // Query targeted на real restaurant sites (menu/oferta keywords PL),
+  // bound to .pl ccTLD (most kebabnia/gastronomia)
+  const cityPart = city ? ` ${city}` : ''
+  const query = `"${brand}"${cityPart} menu OR oferta OR jadlospis site:.pl`
+
+  const tavilyResult = await tavilySearch(tavilyApiKey, query, 8)
+  if (!tavilyResult.success || !tavilyResult.response) {
+    out.error = tavilyResult.error ?? 'tavily call failed'
+    out.status = 'error'
+    return out
+  }
+  out.search_cost_usd = COST_PER_BASIC_SEARCH_USD
+  const results = tavilyResult.response.results ?? []
+  out.candidates_considered = results.length
+
+  // Score each candidate: filter aggregators, boost domain-contains-brand
+  const brandSlug = normalizeBrandSlug(brand)
+  let best: { url: string; score: number } | null = null
+  for (const r of results) {
+    let host: string
+    try {
+      host = new URL(r.url).hostname.toLowerCase().replace(/^www\./, '')
+    } catch {
+      continue
+    }
+    if (isAggregator(host)) continue
+    // Social media — не company website
+    if (
+      host.includes('facebook.com') ||
+      host.includes('instagram.com') ||
+      host.includes('linkedin.com') ||
+      host.includes('youtube.com') ||
+      host.includes('tiktok.com') ||
+      host.includes('twitter.com') ||
+      host.includes('x.com')
+    ) continue
+    // Google Maps / search aggregator
+    if (host.includes('google.com') || host.includes('goo.gl')) continue
+
+    let score = typeof r.score === 'number' ? r.score : 0.5
+    const hostSlug = host.replace(/[^a-z0-9]/g, '')
+    if (brandSlug.length >= 4 && hostSlug.includes(brandSlug.slice(0, 6))) {
+      score += 5 // strong boost — domain contains brand
+    }
+    // Tavily score range typically 0-1; brand bonus dominates коли it fires
+    if (!best || score > best.score) {
+      try {
+        const u = new URL(r.url)
+        best = { url: `${u.protocol}//${u.host}`, score }
+      } catch {
+        continue
+      }
+    }
+  }
+
+  if (best) {
+    out.website_url = best.url
+    out.status = 'success'
+  } else {
+    out.error = `no non-aggregator results matching brand "${brand}"`
+    out.status = 'partial'
+  }
+  return out
+}
+
+/** Public entry. Hard 15s ceiling via Promise.race. Returns brand-matched
+ *  website URL OR null. Use коли brand_aliases populated (post-CEIDG step)
+ *  AND current website missing/aggregator. */
+export async function searchCompanyByBrand(
+  brand: string,
+  city: string | null,
+  tavilyApiKey: string,
+): Promise<BrandSearchResult> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeoutPromise = new Promise<BrandSearchResult>((resolve) => {
+    timeoutId = setTimeout(() => {
+      resolve({
+        website_url: null,
+        search_cost_usd: 0,
+        candidates_considered: 0,
+        error: `BRAND_SEARCH_TIMEOUT_${Math.floor(BRAND_SEARCH_TIMEOUT_MS / 1000)}S`,
+        status: 'partial',
+      })
+    }, BRAND_SEARCH_TIMEOUT_MS)
+  })
+  const result = await Promise.race([
+    searchCompanyByBrandInternal(brand, city, tavilyApiKey),
+    timeoutPromise,
+  ])
+  if (timeoutId !== undefined) clearTimeout(timeoutId)
+  return result
 }

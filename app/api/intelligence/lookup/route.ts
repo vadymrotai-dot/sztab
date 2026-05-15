@@ -32,7 +32,11 @@ import { extractFromWebsite } from '@/lib/enrichment/website'
 import { upsertField, upsertFields } from '@/lib/profile/merge'
 import { findExistingContact } from '@/lib/enrichment/contact-preflight'
 import { enrichContactsApify } from '@/lib/enrichment/apify'
-import { searchCompanyOnline } from '@/lib/enrichment/web-search'
+import {
+  searchCompanyOnline,
+  searchCompanyByBrand,
+  isAggregatorUrl,
+} from '@/lib/enrichment/web-search'
 // Sprint S6D Day 2 REVISION (12.05.2026) — Pyszne path DEPRECATED.
 // Reason: NO Polish-specific Pyszne actor у Apify Store. Available
 // scrapepilot/just-eat-scraper returns UK Subway data для PL queries.
@@ -1181,6 +1185,127 @@ async function runPhaseB({
     }
   } catch (err) {
     response.errors.push(`AI: ${err instanceof Error ? err.message : err}`)
+  }
+
+  // ─── STEP 6.6: Brand-aware website discovery (Sprint S-MENU Day 3) ───
+  // Якщо CEIDG step populated brand_aliases AND current company_profile_fields
+  // [website] is missing OR aggregator (Tavily picked monitorfirm.pb.pl /
+  // yelp.com — live MARCIN BOROWY audit 15.05.2026), запускаємо brand-aware
+  // Tavily re-query targeted на real restaurant site. Якщо знаходимо domain
+  // contains brand slug — upsert під source='tavily_brand' (priority 2,
+  // wins over default tavily=1 but loses до manual_override=5).
+  //
+  // ВАЖЛИВО: runs PERSE deferred menu/krs (STEP 6.7) щоб website був correct
+  // коли www_menu/Restaumatic extractor пробує fetch HTML.
+  const brandSearchKey = params.tavily_api_key || process.env.TAVILY_API_KEY || ''
+  if (brandSearchKey && clientId) {
+    try {
+      // Fresh fetch — brand_aliases written by CEIDG (STEP 6.4), bp by AI (6.5)
+      const { data: brandClientRow } = await supabase
+        .from('clients')
+        .select('brand_aliases, business_profile, city')
+        .eq('id', clientId)
+        .maybeSingle()
+      type BrandClientRow = {
+        brand_aliases?: Array<{ brand: string; kind: string | null; address: string | null }> | null
+        business_profile?: { client_type?: string; client_subtype?: string } | null
+        city?: string | null
+      }
+      const bcr = brandClientRow as BrandClientRow | null
+      const brandAliases = Array.isArray(bcr?.brand_aliases) ? bcr.brand_aliases : []
+      const primaryBrand = brandAliases[0]?.brand ?? null
+
+      // Current website з canonical (active row у company_profile_fields)
+      const { data: currentWebField } = await supabase
+        .from('company_profile_fields')
+        .select('value_text, source')
+        .eq('client_id', clientId)
+        .eq('field_key', 'website')
+        .is('superseded_at', null)
+        .maybeSingle()
+      const currentWebsite = (currentWebField as { value_text?: string | null } | null)?.value_text ?? null
+      const currentSource = (currentWebField as { source?: string | null } | null)?.source ?? null
+      const websiteIsAggregator = currentWebsite ? isAggregatorUrl(currentWebsite) : false
+      const websiteIsManual = currentSource === 'manual_override' || currentSource === 'manual'
+
+      // Gate: only fire якщо brand exists AND website is missing/aggregator AND NOT manual-set
+      const shouldRun =
+        primaryBrand !== null &&
+        primaryBrand.trim().length > 0 &&
+        !websiteIsManual &&
+        (currentWebsite === null || websiteIsAggregator)
+
+      if (shouldRun && primaryBrand) {
+        const brandRunId = await startEnrichmentRun(supabase, {
+          target_type: 'company',
+          target_id: clientId,
+          source: 'tavily_brand_search',
+        })
+        try {
+          const result = await searchCompanyByBrand(primaryBrand, bcr?.city ?? null, brandSearchKey)
+          if (result.status === 'success' && result.website_url) {
+            await upsertFields(
+              supabase,
+              { type: 'client', id: clientId },
+              [{ field_key: 'website', value: { value_text: result.website_url } }],
+              'tavily_brand',
+            )
+            response.sources_completed.push({
+              source: 'tavily_brand_search',
+              status: 'success',
+              note: `brand "${primaryBrand}" → ${result.website_url} (replaces ${websiteIsAggregator ? `aggregator ${currentWebsite}` : 'null'})`,
+            })
+            await finishEnrichmentRun(supabase, brandRunId, {
+              status: 'success',
+              raw_payload: {
+                brand: primaryBrand,
+                city: bcr?.city ?? null,
+                website_url: result.website_url,
+                candidates_considered: result.candidates_considered,
+                replaced: currentWebsite,
+              },
+              cost_usd: result.search_cost_usd,
+            })
+          } else {
+            response.sources_completed.push({
+              source: 'tavily_brand_search',
+              status: result.status,
+              note: result.error ?? 'no brand-matching website found',
+            })
+            await finishEnrichmentRun(supabase, brandRunId, {
+              status: result.status === 'error' ? 'error' : 'partial',
+              raw_payload: {
+                brand: primaryBrand,
+                candidates_considered: result.candidates_considered,
+              },
+              // Sprint S-MENU Day 3 TSC fix: BrandSearchResult.error is
+              // `string | null`, finishEnrichmentRun expects `string | undefined`.
+              error_message: result.error ?? undefined,
+              cost_usd: result.search_cost_usd,
+            })
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          response.errors.push(`tavily_brand_search: ${msg}`)
+          await finishEnrichmentRun(supabase, brandRunId, { status: 'error', error_message: msg })
+        }
+      } else {
+        const skipReason = !primaryBrand
+          ? 'brand_aliases empty (CEIDG не extracted koncesja)'
+          : websiteIsManual
+            ? `website set manually (source=${currentSource})`
+            : currentWebsite && !websiteIsAggregator
+              ? `website already non-aggregator (${currentWebsite})`
+              : 'gate skipped'
+        response.sources_completed.push({
+          source: 'tavily_brand_search',
+          status: 'skipped',
+          note: skipReason,
+        })
+      }
+    } catch (err) {
+      console.error('[PhaseB] tavily_brand_search outer failed:', err)
+    }
   }
 
   // ─── STEP 6.7: deferred menu + KRS-fullnames (Sprint S-MENU Day 2 fix) ───

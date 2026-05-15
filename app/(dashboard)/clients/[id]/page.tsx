@@ -14,6 +14,7 @@ import { ClientTasks } from '@/components/clients/client-tasks'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { MatchesPanel } from '@/components/matches/matches-panel'
 import { BusinessProfileSection } from '@/components/clients/business-profile-section'
+import { WebsiteOverrideCard } from '@/components/clients/website-override-card'
 import { EnrichmentProgressBanner } from '@/components/clients/enrichment-progress-banner'
 import { AccordionSection } from '@/components/clients/accordion-section'
 import { MetricStrip } from '@/components/clients/metric-strip'
@@ -548,6 +549,17 @@ export default async function ClientDetailPage({
             bank_account={bankAccount}
           />
         </AccordionSection>
+
+        {/* Sprint S-MENU Day 3 (15.05.2026) — Manual website override.
+            Placed after Profil but before Sprawozdania — visible without
+            accordion expand. Reason: Tavily-picked aggregator URLs
+            (monitorfirm.pb.pl, yelp.com) block menu extraction; Vadym
+            potrzebuje quick override без going into "Edytuj" full form. */}
+        <WebsiteOverrideCard
+          clientId={id}
+          currentWebsite={websiteValue ?? null}
+          currentSource={websiteSource}
+        />
 
         <AccordionSection
           id="sprawozdania"
