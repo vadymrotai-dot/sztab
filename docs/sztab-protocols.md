@@ -1673,7 +1673,12 @@ Chrome MCP? Якщо так — НЕ задавати Vadym.
 
 ---
 
-## Протокол 39 — Cohort UI must be functional, not visual reference (12.05.2026)
+## Протокол 41 — Cohort UI must be functional, not visual reference (12.05.2026)
+
+> **Renumbered 13.05.2026** з Protocol 39 → 41 щоб resolve conflict з standalone
+> `docs/protocols/Protocol-39-Design-Deliverable-Iteration.md`. Vadym memory
+> reference Protocol 39 = Design Deliverable Iteration; Cohort UI було новішим
+> uроком 12.05 і renumbered безболісно.
 
 **Тригер:** будь-яка нова list/table сторінка у Sztab (cohorts, prospекti,
 clients, matches)
@@ -1751,4 +1756,4 @@ fast-fail logic — 49 NIPs × 4s retry = ~200s wasted на impossible runs
 
 ---
 
-**END OF PROTOCOLS (40 total).**
+**END OF PROTOCOLS (41 total).**
