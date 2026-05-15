@@ -196,12 +196,29 @@ classification_reasoning_pl: krótki tekst 1-2 zdania UZASADNIENIA. NIE pisz
 nazwa 'Restauracja Włoska Continental' + Tavily potwierdza menu online".
 
 ==============================
-EXTRACTED_BRAND — Sprint S-MENU Day 3.1.1 (15.05.2026)
+EXTRACTED_BRAND — Sprint S-MENU Day 3.1.1 + Day 3.1.2 (15.05.2026)
 ==============================
 
 extracted_brand: handlowa MARKA biznesu wyłuskana z pola 'nazwa' (i kontekstu),
 NIE pełna nazwa prawna ani nazwisko właściciela. Używana jako input do
 brand-aware Tavily search (znajduje rzeczywistą stronę WWW restauracji).
+
+PRIORYTET (Day 3.1.2): Jeśli w kontekście CEIDG koncesje istnieje zapis
+"lokal gastronomiczny X", "BAR X", "RESTAURACJA X" lub podobny pattern —
+ten X JEST AUTHORITATIVE nazwą marki. Override title-derived guess.
+Examples critical:
+- Title "Dariusz Wieczorek Fortuna" + CEIDG koncesja 'lokal gastronomiczny
+  "Fabryka sushi"' → extracted_brand="FABRYKA SUSHI" (NIE "Fortuna" — Fortuna
+  to suffix właściciela w legal title, prawdziwa marka to Fabryka Sushi)
+- Title "MARCIN BOROWY" + CEIDG koncesja "BAR KEMER KEBAB UL.MAGICZNA" →
+  extracted_brand="KEMER KEBAB" (matches CEIDG)
+- Title "HANDEL,GASTRONOMIA,TRANSPORT - MARCIN BOROWY" + CEIDG "BAR KEMER
+  KEBAB" → extracted_brand="KEMER KEBAB" (legal title to generic legal name,
+  CEIDG koncesja = authoritative)
+
+Legal title często zawiera owner suffix lub generic legal name (HANDEL...,
+"Działalność Gospodarcza..."). CEIDG koncesja brand = real placówka name
+identifiable z lokalnej tablicy / oznakowania zewnętrznego restauracji.
 
 PRZYKŁADY:
 - "Dariusz Wieczorek Fortuna" → "Fortuna" (ostatnie słowo to marka, pierwsze
