@@ -161,8 +161,12 @@ export interface CeidgFilters {
   wojewodztwo?: string            // lowercase w URL — "mazowieckie"
   status?: CeidgStatus            // "AKTYWNY"
   miasto?: string
+  /** Sprint S-CEIDG-DETAILS Day 1 (15.05.2026) — NIP filter verified live
+   *  proти `?nip=1250825446` returning count=1. Used by Phase B JDG flow
+   *  to resolve clients.nip → firma UUID for getFirmDetails(uuid) call. */
+  nip?: string                    // raw 10 digits, no dashes
   // CEIDG v3 wspiera dodatkowe filtry — dorzucimy w miarę potrzeb.
-  // TODO: data_od, data_do, nip, regon, imie, nazwisko (probe nie pokrył).
+  // TODO: data_od, data_do, regon, imie, nazwisko (probe nie pokrył).
 }
 
 // ────────────────────────────────────────────────────────────

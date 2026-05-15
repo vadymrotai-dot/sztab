@@ -85,6 +85,8 @@ function filtersToQuery(filters: CeidgFilters): Record<string, string> {
   if (filters.wojewodztwo) out.wojewodztwo = filters.wojewodztwo.toLowerCase()
   if (filters.status) out.status = filters.status
   if (filters.miasto) out.miasto = filters.miasto
+  // Sprint S-CEIDG-DETAILS Day 1 — NIP filter (live-verified raw 10 digits).
+  if (filters.nip) out.nip = filters.nip.replace(/\D/g, '')
   return out
 }
 

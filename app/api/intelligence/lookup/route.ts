@@ -47,6 +47,11 @@ import { getHorecaCategory } from '@/lib/pkd/mapping-2007-2025'
 import { startEnrichmentRun, finishEnrichmentRun } from '@/lib/profile/enrichment-log'
 import { computeMatchesForClient } from '@/lib/matching/engine'
 import { rescoreClientTop10 } from '@/lib/matching/ai-rescore'
+// Sprint S-CEIDG-DETAILS Day 1 (15.05.2026) — CEIDG firma details для JDG
+// (uprawnienia → brand_aliases). Lazy resolve clients.ceidg_id за NIP при
+// першому "Pełna re-analiza" run-i; cached для subsequent runs.
+import { CeidgClient } from '@/lib/ceidg/client'
+import { extractBrandAliasesFromKoncesje } from '@/lib/intelligence/extract-koncesje'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -105,9 +110,12 @@ export async function POST(req: Request) {
   }
 
   // Read API keys з params
+  // Sprint S-CEIDG-DETAILS Day 1 — додано ceidg_api_key для JDG Phase B
+  // (resolve clients.nip → firma UUID via /firmy?nip= → uprawnienia via
+  // /firma/{uuid}). Key column name: 'ceidg_api_key' per lib/ceidg/client.ts:115.
   const { data: paramsRow } = await supabase
     .from('params')
-    .select('anthropic_api_key, gus_api_key, apify_api_token, krs_rejestr_api_token, tavily_api_key')
+    .select('anthropic_api_key, gus_api_key, apify_api_token, krs_rejestr_api_token, tavily_api_key, ceidg_api_key')
     .limit(1)
     .maybeSingle()
   const params = (paramsRow ?? {}) as {
@@ -116,6 +124,7 @@ export async function POST(req: Request) {
     apify_api_token?: string
     krs_rejestr_api_token?: string
     tavily_api_key?: string
+    ceidg_api_key?: string
   }
 
   const response: LookupResponse = {
@@ -461,6 +470,11 @@ export async function POST(req: Request) {
   const tavilyWillRun = !!(params.tavily_api_key || process.env.TAVILY_API_KEY)
   const pending: string[] = ['BZP', 'persons']
   if (krsNumber) pending.push('rejestrio_v2')
+  // Sprint S-CEIDG-DETAILS Day 1 — CEIDG details (uprawnienia → brand_aliases)
+  // тільки для JDG, бо `/firma/{uuid}` endpoint покриває JDG; sp.z o.o./S.A.
+  // мають свої details у KRS (rejestrio_v2). entityType resolved у Phase A
+  // на основі GUS report (line 173-178: legal form keywords or fiz_imie1).
+  if (entityType === 'JDG' && params.ceidg_api_key) pending.push('CEIDG_details')
   if (tavilyWillRun) pending.push('tavily')
   if (params.apify_api_token) {
     pending.push('Apify_GMaps')
@@ -512,6 +526,13 @@ async function runPhaseB({
     gus_api_key?: string
     apify_api_token?: string
     krs_rejestr_api_token?: string
+    /** Sprint S5C — Tavily web search key (params first, env fallback).
+     *  Consumed у STEP 4 (web-search) via `params.tavily_api_key ||
+     *  process.env.TAVILY_API_KEY`. */
+    tavily_api_key?: string
+    /** Sprint S-CEIDG-DETAILS Day 1 — used by runCeidgDetailsStep
+     *  для JDG (entityType==='JDG'). Gated у Phase A pending list. */
+    ceidg_api_key?: string
   }
 }): Promise<void> {
   const supabase = await createClient()
@@ -1055,6 +1076,49 @@ async function runPhaseB({
     })
   }
 
+  // ─── STEP 6.4: CEIDG firma details (JDG only) ───
+  // Sprint S-CEIDG-DETAILS Day 1 (15.05.2026) — closes JDG↔brand gap.
+  // CEIDG `/firma/{uuid}` returns uprawnienia (koncesje) — `opis` field
+  // often contains brand+kind+address (e.g. "BAR KEMER KEBAB UL. MAGICZNA 6
+  // LOK.1A, 03-289 WARSZAWA"). Registry name "MARCIN BOROWY" hides це.
+  // Extracted brand_aliases feed AI ctx + future GMaps fallback.
+  //
+  // Gated to entityType==='JDG' (sp.z o.o. mają KRS, rejestrio_v2 покриває).
+  // Lazy resolve UUID: якщо clients.ceidg_id NULL → search by NIP → cache.
+  // Runs BEFORE AI_business_analysis так щоб aliases у prompt context.
+  if (entityType === 'JDG' && params.ceidg_api_key) {
+    const ceidgRunId = await startEnrichmentRun(supabase, {
+      target_type: 'company',
+      target_id: clientId,
+      source: 'CEIDG_details',
+    })
+    try {
+      const result = await runCeidgDetailsStep(supabase, params.ceidg_api_key, clientId, nip)
+      response.sources_completed.push({
+        source: 'CEIDG_details',
+        status: result.aliases_count > 0 ? 'success' : 'partial',
+        fields_added: result.aliases_count,
+        note:
+          result.aliases_count > 0
+            ? `${result.aliases_count} brand_aliases extracted z uprawnień`
+            : 'no commercial uprawnienia (e.g. JDG без alcohol/event koncesji)',
+      })
+      await finishEnrichmentRun(supabase, ceidgRunId, {
+        status: 'success',
+        raw_payload: {
+          aliases_count: result.aliases_count,
+          uprawnienia_count: result.uprawnienia_count,
+          uuid_was_cached: result.uuid_was_cached,
+        },
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      response.errors.push(`CEIDG_details: ${msg}`)
+      response.sources_completed.push({ source: 'CEIDG_details', status: 'error', error: msg })
+      await finishEnrichmentRun(supabase, ceidgRunId, { status: 'error', error_message: msg })
+    }
+  }
+
   // ─── STEP 6.5: AI business analysis (Claude Haiku) ───
   // Sprint L Phase 3 — analyze всі accumulated signals → business_profile
   // з buyer_strength_for_chm score. Drives Phase 4 score recalibration.
@@ -1540,6 +1604,68 @@ async function runRejestrioStep(
     raw_payload: { summary, errors },
     error_message: errors.length > 0 ? errors.join('; ').slice(0, 500) : undefined,
   })
+}
+
+// ─── Sprint S-CEIDG-DETAILS Day 1 — CEIDG firma details helper ───
+// Lazy resolves clients.ceidg_id (cache miss → CEIDG /firmy?nip= search →
+// pick firmy[0].id → UPDATE clients.ceidg_id). Then fetches /firma/{uuid}
+// → extracts uprawnienia → BrandAlias[] → UPDATE clients.brand_aliases.
+//
+// Returns aliases_count + uprawnienia_count + uuid_was_cached для telemetry.
+// Throws на CEIDG search miss / API error — caller traps та logs.
+async function runCeidgDetailsStep(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ceidgApiKey: string,
+  clientId: string,
+  nip: string,
+): Promise<{ aliases_count: number; uprawnienia_count: number; uuid_was_cached: boolean }> {
+  const ceidgClient = new CeidgClient(ceidgApiKey)
+
+  // ─── Step 1 — resolve UUID (cache lookup) ───
+  const { data: clientRow } = await supabase
+    .from('clients')
+    .select('ceidg_id')
+    .eq('id', clientId)
+    .maybeSingle()
+  let ceidgId = (clientRow as { ceidg_id: string | null } | null)?.ceidg_id ?? null
+  const uuidWasCached = !!ceidgId
+
+  // Cache miss → CEIDG search by NIP, pick firmy[0].id, persist
+  if (!ceidgId) {
+    const searchRes = await ceidgClient.listFirms({ nip }, 0, 2)
+    const firmy = searchRes.firmy ?? []
+    if (firmy.length === 0) {
+      throw new Error(`CEIDG search returned 0 firms для NIP=${nip}`)
+    }
+    ceidgId = firmy[0].id
+    if (!ceidgId) {
+      throw new Error('CEIDG search firmy[0].id missing у response')
+    }
+    await supabase.from('clients').update({ ceidg_id: ceidgId }).eq('id', clientId)
+  }
+
+  // ─── Step 2 — fetch firma details + extract aliases ───
+  const details = await ceidgClient.getFirmDetails(ceidgId)
+  if (!details) {
+    throw new Error(`CEIDG getFirmDetails returned null для UUID=${ceidgId}`)
+  }
+  const uprawnienia = details.uprawnienia ?? []
+  const aliases = extractBrandAliasesFromKoncesje(uprawnienia)
+
+  // ─── Step 3 — persist brand_aliases (тільки коли non-empty, щоб не overwrite
+  // майбутні sources — Day 2 GMaps/website appender) ───
+  if (aliases.length > 0) {
+    await supabase
+      .from('clients')
+      .update({ brand_aliases: aliases })
+      .eq('id', clientId)
+  }
+
+  return {
+    aliases_count: aliases.length,
+    uprawnienia_count: uprawnienia.length,
+    uuid_was_cached: uuidWasCached,
+  }
 }
 
 // ─── STEP 4 — extract persons z KRS zarząd / website ───

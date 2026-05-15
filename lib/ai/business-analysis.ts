@@ -227,6 +227,15 @@ interface CompanyContext {
     categories: string | null
     address: string | null
   } | null
+  /** Sprint S-CEIDG-DETAILS Day 1 (15.05.2026) — commercial brand names
+   *  extracted from CEIDG uprawnienia (koncesje opis). Real-world JDG:
+   *  registry name = "MARCIN BOROWY" але brand = "KEMER KEBAB" (BAR
+   *  z koncesją alkoholową). Stronger signal niż główne PKD. */
+  brand_aliases: Array<{
+    brand: string
+    kind: string | null
+    address: string | null
+  }>
 }
 
 async function gatherContext(
@@ -237,9 +246,12 @@ async function gatherContext(
 
   // Sprint S6C STEP 2 — додано krs_pkd_with_descriptions для specialization
   // detection у AI prompt.
+  // Sprint S-CEIDG-DETAILS Day 1 (15.05.2026) — додано brand_aliases для
+  // JDG koncesje (BAR/RESTAURACJA/SKLEP + brand name + address). Source =
+  // migration 067 + runCeidgDetailsStep у app/api/intelligence/lookup/route.ts.
   const { data: client } = await supabase
     .from('clients')
-    .select('title, nip, krs_legal_form, krs_number, registered_date, city, vat_status, krs_management_board, krs_pkd_with_descriptions')
+    .select('title, nip, krs_legal_form, krs_number, registered_date, city, vat_status, krs_management_board, krs_pkd_with_descriptions, brand_aliases')
     .eq('id', clientId)
     .single()
   const c = (client ?? {}) as {
@@ -252,6 +264,7 @@ async function gatherContext(
     vat_status?: string | null
     krs_management_board?: Array<{ name?: string; surname?: string; functionName?: string; funkcjaWOrganie?: string }> | null
     krs_pkd_with_descriptions?: Array<{ kod: string; opis: string | null; isMain: boolean }> | null
+    brand_aliases?: Array<{ brand: string; kind: string | null; address: string | null }> | null
   }
 
   // Profile fields для PKD codes / website
@@ -360,6 +373,10 @@ async function gatherContext(
     ? (gmapsField.value_json as unknown[]).length
     : 0
 
+  // Sprint S-CEIDG-DETAILS Day 1 — brand_aliases populate + inputSources tag
+  const brandAliases = Array.isArray(c.brand_aliases) ? c.brand_aliases : []
+  if (brandAliases.length > 0) inputSources.add('CEIDG_details')
+
   const context: CompanyContext = {
     nazwa: c.title ?? '?',
     nip: c.nip ?? '?',
@@ -382,6 +399,7 @@ async function gatherContext(
     google_maps_count: gmapsCount,
     news_mentions: news,
     apify_data: apify,
+    brand_aliases: brandAliases,
   }
 
   return { context, inputSources: Array.from(inputSources) }
@@ -466,6 +484,23 @@ function buildUserPrompt(ctx: CompanyContext): string {
     if (ctx.apify_data.address) lines.push(`  address: ${ctx.apify_data.address}`)
   }
   lines.push('')
+
+  // Sprint S-CEIDG-DETAILS Day 1 (15.05.2026) — brand aliases з CEIDG koncesji.
+  // KRYTYCZNIE: ці nazwy сигналізують REAL business operations що часто
+  // не match registry name. Block emitted ТІЛЬКИ якщо brand_aliases populated.
+  if (ctx.brand_aliases.length > 0) {
+    lines.push(`Marki / nazwy handlowe (z koncesji CEIDG):`)
+    for (const a of ctx.brand_aliases) {
+      const kindPart = a.kind ? ` (${a.kind})` : ''
+      const addrPart = a.address ? ` — ul. ${a.address}` : ''
+      lines.push(`- ${a.brand}${kindPart}${addrPart}`)
+    }
+    lines.push('')
+    lines.push(
+      `Wskazówka: jeśli powyżej zostały podane marki handlowe (BAR, RESTAURACJA, KAWIARNIA, SKLEP itp.), są one SILNIEJSZYM sygnałem rzeczywistej działalności niż główny kod PKD. PKD może być archaiczne lub błędne — koncesja na sprzedaż alkoholu w lokalu "BAR X" jednoznacznie wskazuje gastronomię.`,
+    )
+    lines.push('')
+  }
 
   if (ctx.news_mentions.length > 0) {
     lines.push(`Wzmianki w sieci:`)

@@ -257,10 +257,15 @@ export async function searchCompanyOnline(
     .replace(/\s+S\.?\s*A\.?$/i, '')
     .trim()
 
-  // Two queries: short name + business-context, NIP-only fallback
+  // Sprint S-CEIDG-DETAILS Day 1 (15.05.2026): 3rd query targets regulamin/
+  // polityka pages where NIP listed as partner. +$0.005 per analysis.
+  // Query 1 broadened: +restauracja/gastronomia keywords для gastronomy
+  // JDG/sp.z o.o. (previously missed; е.g. JDG-kebabnia not indexed via
+  // "sklep OR sieć OR firma OR hurtownia" — gastronomia keywords now caught).
   const queries = [
-    `"${shortName}" sklep OR sieć OR firma OR hurtownia`,
+    `"${shortName}" sklep OR sieć OR firma OR hurtownia OR restauracja OR gastronomia`,
     `"${shortName}" ${nip}`,
+    `"${nip}" regulamin OR "polityka prywatności" OR "podmiot partnerski"`,
   ]
   let allResults: TavilyResult[] = []
   const errors: string[] = []
