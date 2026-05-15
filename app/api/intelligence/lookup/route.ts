@@ -1336,6 +1336,9 @@ async function runPhaseB({
                 // brand_aliases address regex), не just clients.city.
                 city: resolvedCity,
                 city_source: bcr?.city ? 'clients' : (resolvedCity ? 'brand_aliases_address' : 'none'),
+                // Sprint S-MENU Day 3.1.3 — exact Tavily query string sent.
+                // Replay-able без re-run, helps tune query format.
+                query_sent: result.query_sent,
                 website_url: result.website_url,
                 candidates_considered: result.candidates_considered,
                 replaced: currentWebsite,
@@ -1354,6 +1357,14 @@ async function runPhaseB({
                 brand: primaryBrand,
                 // Sprint S-MENU Day 3.1.1 — log brandSource у partial branch теж.
                 brand_source: brandSource,
+                // Sprint S-MENU Day 3.1.3 (15.05.2026) — extended debug у partial
+                // branch. Critical для diagnosing 0-results cases (e.g. Fortuna
+                // 19:14 з old `site:.pl` query). Now includes resolved city +
+                // exact Tavily query string sent — Vadym/Cowork can replay
+                // queries directly without re-running lookup.
+                city: resolvedCity,
+                city_source: bcr?.city ? 'clients' : (resolvedCity ? 'brand_aliases_address' : 'none'),
+                query_sent: result.query_sent,
                 candidates_considered: result.candidates_considered,
               },
               // Sprint S-MENU Day 3 TSC fix: BrandSearchResult.error is

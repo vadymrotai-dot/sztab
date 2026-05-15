@@ -420,11 +420,12 @@ export async function searchCompanyOnline(
 // Why: для JDG-gastronomy clients where CEIDG koncesja provides brand name
 // (e.g. "KEMER KEBAB" from uprawnienia.opis), generic Tavily query (NIP +
 // "firma sklep") picks aggregators (monitorfirm.pb.pl, yelp). Brand-aware
-// re-query targets "${brand} ${city} menu OR jadlospis site:.pl" —
+// re-query targets "${brand} ${city} menu OR oferta OR jadlospis" —
 // strongly biased toward real restaurant сайту з menu (e.g. kemerkebab.pl).
 //
 // Strategy:
-//   1. Tavily query з brand + city + menu/oferta keywords + site:.pl
+//   1. Tavily query з brand + city + menu/oferta keywords (no site: operator —
+//      Tavily НЕ honors Google-style site: filter, kills results to 0)
 //   2. Filter results через AGGREGATOR_BLOCKLIST
 //   3. Score candidates: domain контаining brand slug substring boosts +5
 //   4. Return best-scoring non-aggregator domain
@@ -434,6 +435,10 @@ export interface BrandSearchResult {
   website_url: string | null
   search_cost_usd: number
   candidates_considered: number
+  /** Sprint S-MENU Day 3.1.3 (15.05.2026) — surfaced Tavily query string
+   *  для debug visibility. Caller (STEP 6.6 у lookup/route.ts) writes це
+   *  до enrichment_log raw_payload to diagnose 0-results / wrong-pick cases. */
+  query_sent: string | null
   error: string | null
   status: 'success' | 'partial' | 'error'
 }
@@ -460,6 +465,7 @@ async function searchCompanyByBrandInternal(
     website_url: null,
     search_cost_usd: 0,
     candidates_considered: 0,
+    query_sent: null,
     error: null,
     status: 'partial',
   }
@@ -485,7 +491,13 @@ async function searchCompanyByBrandInternal(
   // Query targeted на real restaurant sites (menu/oferta keywords PL),
   // bound to .pl ccTLD (most kebabnia/gastronomia)
   const cityPart = city ? ` ${city}` : ''
-  const query = `"${cleanBrand}"${cityPart} menu OR oferta OR jadlospis site:.pl`
+  // Sprint S-MENU Day 3.1.3 (15.05.2026) — REMOVED `site:.pl` suffix.
+  // Live probe confirmed Tavily НЕ honors Google-style site: operator —
+  // dodanie `site:.pl` literally returns 0 results. Without це, Polish
+  // keywords + Polish brand+city у query provide geographic relevance
+  // ranking naturally. Day 3 implementation was wishful thinking.
+  const query = `"${cleanBrand}"${cityPart} menu OR oferta OR jadlospis`
+  out.query_sent = query
 
   const tavilyResult = await tavilySearch(tavilyApiKey, query, 8)
   if (!tavilyResult.success || !tavilyResult.response) {
@@ -586,6 +598,10 @@ export async function searchCompanyByBrand(
         website_url: null,
         search_cost_usd: 0,
         candidates_considered: 0,
+        // Sprint S-MENU Day 3.1.3 — query_sent required by interface для debug.
+        // Timeout fires before searchCompanyByBrandInternal sets це value →
+        // null indicates "outer race won, inner never set query".
+        query_sent: null,
         error: `BRAND_SEARCH_TIMEOUT_${Math.floor(BRAND_SEARCH_TIMEOUT_MS / 1000)}S`,
         status: 'partial',
       })
