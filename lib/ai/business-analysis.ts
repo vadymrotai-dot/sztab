@@ -67,6 +67,18 @@ export interface BusinessProfile {
   classification_confidence?: number
   /** AI reasoning у polish — 1-2 zdania uzasadnienia decyzji. */
   classification_reasoning_pl?: string
+  /** Sprint S-MENU Day 3.1.1 (15.05.2026) — AI-extracted brand name from
+   *  clients.title (and context). Differs from CEIDG `brand_aliases` що derives
+   *  from alcohol/event koncesja (only ~30% gastronomy JDG). AI fallback covers
+   *  bare-brand titles ("Mixx Bar" → "Mixx Bar"), owner-prefix titles
+   *  ("Dariusz Wieczorek Fortuna" → "Fortuna"), legal-suffix titles ("SMARTBREW
+   *  Sp. z o.o." → "SMARTBREW"). Consumed by STEP 6.6 brand-aware Tavily as
+   *  fallback when CEIDG brand_aliases empty.
+   *  Optional у interface для backwards compat — older rows lack це. */
+  extracted_brand?: string | null
+  /** Sprint S-MENU Day 3.1.1 — confidence у extracted_brand. STEP 6.6 gate
+   *  fires only коли confidence !== 'low' (avoid surname false positives). */
+  extracted_brand_confidence?: 'high' | 'medium' | 'low' | null
 }
 
 /** Mapping business_format → derived client_type (legacy backfill). Used
@@ -183,6 +195,58 @@ classification_reasoning_pl: krótki tekst 1-2 zdania UZASADNIENIA. NIE pisz
 "to gastronomia bo to gastronomia". Przykład: "PKD główny 5611Z restauracje +
 nazwa 'Restauracja Włoska Continental' + Tavily potwierdza menu online".
 
+==============================
+EXTRACTED_BRAND — Sprint S-MENU Day 3.1.1 (15.05.2026)
+==============================
+
+extracted_brand: handlowa MARKA biznesu wyłuskana z pola 'nazwa' (i kontekstu),
+NIE pełna nazwa prawna ani nazwisko właściciela. Używana jako input do
+brand-aware Tavily search (znajduje rzeczywistą stronę WWW restauracji).
+
+PRZYKŁADY:
+- "Dariusz Wieczorek Fortuna" → "Fortuna" (ostatnie słowo to marka, pierwsze
+  dwa to imię+nazwisko właściciela)
+- "DEKOB - THỊ HỒNG NHUNG NGUYỄN" → "DEKOB" (przed myślnikiem marka, po
+  myślniku imię+nazwisko właściciela)
+- "Domek Sushi Przemysław Kowalski" → "Domek Sushi" (pierwsze dwa słowa
+  marka, ostatnie dwa właściciel)
+- "Restauracja Smacznego Jan Kowalski sp. z o.o." → "Smacznego" (między
+  prefixem generycznym 'Restauracja' a suffixem 'Jan Kowalski sp. z o.o.')
+- "Mixx Bar" → "Mixx Bar" (cała nazwa to marka — krótkie, bez właściciela)
+- "SMARTBREW Sp. z o.o. (taproom.wilanow)" → "SMARTBREW" (strip suffix
+  prawny + parenthetical handle internetowy)
+- "Pub Spółdzielczy Łódź" → "Pub Spółdzielczy Łódź" (krótka nazwa
+  z lokalizacją — całość to marka)
+- "HANDEL,GASTRONOMIA,TRANSPORT - MARCIN BOROWY" → null (generic legal
+  name, brak marki — null)
+- "Działalność Gospodarcza Jan Nowak" → null (puste, tylko właściciel)
+
+STRIPPUJ:
+- legal suffixes: "sp. z o.o.", "S.A.", "sp.k.", "sp.j.", "p.s.a."
+- imię+nazwisko właściciela (Polish/Ukrainian/foreign names — używaj
+  kontekstu jak CEIDG.wlasciciel jeśli dostępny)
+- generic prefixes: "Restauracja", "Bar", "Pub", "Kawiarnia", "Pizzeria",
+  "Kebabnia" — TYLKO jeśli za nimi jest konkretna marka (np. "Pub Piwoteka
+  Narodowa" → "Piwoteka Narodowa"; "Mixx Bar" zostaw bo to całość)
+- parenthetical handles: "(taproom.wilanow)", "(@instahandle)"
+- generyczne wzorce: "HANDEL,GASTRONOMIA,TRANSPORT", "Firma Handlowa",
+  "Działalność Gospodarcza" — jeśli to całość, zwróć null
+
+UŻYJ KONTEKSTU:
+- jeśli CEIDG koncesje zawierają nazwę BAR/RESTAURACJA — to silny sygnał
+  prawdziwej marki (priorytet nad title parsing)
+- jeśli nazwa firmy = imię+nazwisko ALL CAPS + 1 niepasujące słowo → to
+  niepasujące słowo prawdopodobnie marka
+- jeśli brak silnych sygnałów, zwróć null + confidence=low
+
+extracted_brand_confidence:
+- "high" — jasna marka, zidentyfikowana z wysokim prawdopodobieństwem
+  (legal suffix stripped, lub dash split, lub jednoznaczne 1-2-token brand)
+- "medium" — niepewne, ale prawdopodobne (np. owner-name suffix bez dash,
+  heurystycznie wyłuskane)
+- "low" — bardzo niepewne, może to tylko nazwisko właściciela lub generyk
+- null — brak jakiejkolwiek marki do wyłuskania
+
 OUTPUT: czysty JSON, bez preambuły, bez markdown. Dokładnie ten shape:
 {
   "business_format": "...",
@@ -196,7 +260,9 @@ OUTPUT: czysty JSON, bez preambuły, bez markdown. Dokładnie ten shape:
   "client_type": "gastronomia | hurtownia | sklep_detal | catering | hotel | instytucja | production | sieci_handlowe | inne",
   "client_subtype": "<np. 'kebabnia' lub pusty>",
   "classification_confidence": <0-100>,
-  "classification_reasoning_pl": "<1-2 zdania>"
+  "classification_reasoning_pl": "<1-2 zdania>",
+  "extracted_brand": "<marka biznesu lub null>",
+  "extracted_brand_confidence": "high | medium | low | null"
 }`
 
 interface CompanyContext {
@@ -590,6 +656,19 @@ export async function analyzeBusinessProfile(
         : aiClientType
           ? ''
           : `Derived from business_format='${businessFormat}' (AI nie wypełnił client_type — backwards compat fallback)`,
+    // Sprint S-MENU Day 3.1.1 (15.05.2026) — extracted_brand fallback для
+    // STEP 6.6 brand-aware Tavily. Older AI runs lack це поле (parsed.* буде
+    // undefined) → store як null. Confidence validation — enum guard.
+    extracted_brand:
+      typeof parsed.extracted_brand === 'string' && parsed.extracted_brand.trim().length > 0
+        ? parsed.extracted_brand.trim()
+        : null,
+    extracted_brand_confidence:
+      parsed.extracted_brand_confidence === 'high' ||
+      parsed.extracted_brand_confidence === 'medium' ||
+      parsed.extracted_brand_confidence === 'low'
+        ? parsed.extracted_brand_confidence
+        : null,
   }
 
   // Persist

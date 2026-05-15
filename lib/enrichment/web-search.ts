@@ -74,6 +74,32 @@ export const AGGREGATOR_BLOCKLIST = [
   'tripadvisor.pl',
   'foursquare.com',
   'yellowpages.com',
+  // Sprint S-MENU Day 3.1.1 (15.05.2026) — PL news / media domains. Caught
+  // у Dariusz Wieczorek Fortuna case: Tavily picked `rp.pl` (Rzeczpospolita)
+  // як "company website" бо firma was mentioned у article. News domains
+  // NIGDY = company website. Defensive layer проти "company mentioned"
+  // false positives. Coverage: top PL news/media outlets.
+  'rp.pl',
+  'rzeczpospolita.pl',
+  'wprost.pl',
+  'gazeta.pl',
+  'wpolityce.pl',
+  'wp.pl',
+  'dziennik.pl',
+  'wyborcza.pl',
+  'polskieradio.pl',
+  'tvp.pl',
+  'tvn24.pl',
+  'polsatnews.pl',
+  'tvn.pl',
+  'forsal.pl',
+  'parkiet.com',
+  'money.pl',
+  'bankier.pl',
+  'biznes.pl',
+  'interia.pl',
+  'onet.pl',
+  'o2.pl',
   // Sprint S-MENU Day 3.1 (15.05.2026) — caught у MARCIN BOROWY second-pass
   // audit. STEP 6.6 brand-aware Tavily picked jadlospis.menu (Polish digital
   // menu directory) як "company website" — clearly aggregator. Added Polish
@@ -414,12 +440,15 @@ export interface BrandSearchResult {
 
 const BRAND_SEARCH_TIMEOUT_MS = 15_000
 
-function normalizeBrandSlug(brand: string): string {
+/** Sprint S-MENU Day 3.1.1 (15.05.2026) — strip parenthetical handles before
+ *  Tavily query construction. Example: "SMARTBREW Sp. z o.o. (taproom.wilanow)"
+ *  → "SMARTBREW Sp. z o.o." Parenthetical часто містить social handle або URL
+ *  hint, шум для Tavily search. Also collapses repeated whitespace. */
+function sanitizeBrandForQuery(brand: string): string {
   return brand
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '') // strip diacritics
-    .replace(/[^a-z0-9]/g, '')
+    .replace(/\([^)]*\)/g, '') // strip everything in parens
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 async function searchCompanyByBrandInternal(
@@ -445,10 +474,18 @@ async function searchCompanyByBrandInternal(
     return out
   }
 
+  // Sprint S-MENU Day 3.1.1 — strip parenthetical handles before query.
+  const cleanBrand = sanitizeBrandForQuery(brand)
+  if (!cleanBrand) {
+    out.error = 'brand empty after sanitization (only parens?)'
+    out.status = 'error'
+    return out
+  }
+
   // Query targeted на real restaurant sites (menu/oferta keywords PL),
   // bound to .pl ccTLD (most kebabnia/gastronomia)
   const cityPart = city ? ` ${city}` : ''
-  const query = `"${brand}"${cityPart} menu OR oferta OR jadlospis site:.pl`
+  const query = `"${cleanBrand}"${cityPart} menu OR oferta OR jadlospis site:.pl`
 
   const tavilyResult = await tavilySearch(tavilyApiKey, query, 8)
   if (!tavilyResult.success || !tavilyResult.response) {
@@ -460,8 +497,35 @@ async function searchCompanyByBrandInternal(
   const results = tavilyResult.response.results ?? []
   out.candidates_considered = results.length
 
-  // Score each candidate: filter aggregators, boost domain-contains-brand
-  const brandSlug = normalizeBrandSlug(brand)
+  // Sprint S-MENU Day 3.1.1 — multi-token brand boost. Rejects "kowalski.pl"
+  // pure-surname domain коли brand="Domek Sushi Kowalski" (1/3 tokens match).
+  // Accepts "domeksushi.pl" (2/3 tokens). Single-token brands keep existing
+  // 6-char slug match.
+  const brandTokens = cleanBrand
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .split(/\s+/)
+    .map((t) => t.replace(/[^a-z0-9]/g, ''))
+    .filter((t) => t.length >= 3)
+
+  function computeBrandSlugBoost(host: string): number {
+    if (brandTokens.length === 0) return 0
+    const hostSlug = host.replace(/[^a-z0-9]/g, '')
+    if (brandTokens.length === 1) {
+      const t = brandTokens[0]
+      const slug = t.slice(0, Math.min(6, t.length))
+      return hostSlug.includes(slug) ? 5 : 0
+    }
+    // Multi-token: count distinct token matches (5-char prefix each)
+    const matched = brandTokens.filter((t) =>
+      hostSlug.includes(t.slice(0, Math.min(5, t.length))),
+    ).length
+    if (matched >= 2) return 5
+    if (matched === 1 && brandTokens.length === 2) return 3
+    return 0
+  }
+
   let best: { url: string; score: number } | null = null
   for (const r of results) {
     let host: string
@@ -485,10 +549,7 @@ async function searchCompanyByBrandInternal(
     if (host.includes('google.com') || host.includes('goo.gl')) continue
 
     let score = typeof r.score === 'number' ? r.score : 0.5
-    const hostSlug = host.replace(/[^a-z0-9]/g, '')
-    if (brandSlug.length >= 4 && hostSlug.includes(brandSlug.slice(0, 6))) {
-      score += 5 // strong boost — domain contains brand
-    }
+    score += computeBrandSlugBoost(host)
     // Tavily score range typically 0-1; brand bonus dominates коли it fires
     if (!best || score > best.score) {
       try {
@@ -504,7 +565,7 @@ async function searchCompanyByBrandInternal(
     out.website_url = best.url
     out.status = 'success'
   } else {
-    out.error = `no non-aggregator results matching brand "${brand}"`
+    out.error = `no non-aggregator results matching brand "${cleanBrand}"`
     out.status = 'partial'
   }
   return out

@@ -1223,12 +1223,41 @@ async function runPhaseB({
         .maybeSingle()
       type BrandClientRow = {
         brand_aliases?: Array<{ brand: string; kind: string | null; address: string | null }> | null
-        business_profile?: { client_type?: string; client_subtype?: string } | null
+        business_profile?: {
+          client_type?: string
+          client_subtype?: string
+          // Sprint S-MENU Day 3.1.1 (15.05.2026) — AI-extracted brand fallback.
+          extracted_brand?: string | null
+          extracted_brand_confidence?: 'high' | 'medium' | 'low' | null
+        } | null
         city?: string | null
       }
       const bcr = brandClientRow as BrandClientRow | null
       const brandAliases = Array.isArray(bcr?.brand_aliases) ? bcr.brand_aliases : []
-      const primaryBrand = brandAliases[0]?.brand ?? null
+
+      // Sprint S-MENU Day 3.1.1 — cascading brand lookup.
+      // PRIMARY: CEIDG koncesja brand (high quality — alcohol license signal).
+      // FALLBACK: AI-extracted brand from clients.title (covers 70-95% gap —
+      // gastronomy JDG without koncesja + sp.z o.o. без CEIDG data). Confidence
+      // gate excludes 'low' (surname false-positive guard).
+      let primaryBrand: string | null = null
+      let brandSource: 'ceidg_koncesja' | 'ai_extracted' | 'none' = 'none'
+      const ceidgBrand = brandAliases[0]?.brand
+      if (ceidgBrand && ceidgBrand.trim().length > 0) {
+        primaryBrand = ceidgBrand.trim()
+        brandSource = 'ceidg_koncesja'
+      } else {
+        const aiBrand = bcr?.business_profile?.extracted_brand
+        const aiConf = bcr?.business_profile?.extracted_brand_confidence
+        if (
+          typeof aiBrand === 'string' &&
+          aiBrand.trim().length > 0 &&
+          (aiConf === 'high' || aiConf === 'medium')
+        ) {
+          primaryBrand = aiBrand.trim()
+          brandSource = 'ai_extracted'
+        }
+      }
 
       // Current website з canonical (active row у company_profile_fields)
       const { data: currentWebField } = await supabase
@@ -1300,6 +1329,9 @@ async function runPhaseB({
               status: 'success',
               raw_payload: {
                 brand: primaryBrand,
+                // Sprint S-MENU Day 3.1.1 — log brandSource ('ceidg_koncesja'
+                // vs 'ai_extracted') для debug coverage analysis.
+                brand_source: brandSource,
                 // Sprint S-MENU Day 3.1 — log resolvedCity (fallback from
                 // brand_aliases address regex), не just clients.city.
                 city: resolvedCity,
@@ -1320,6 +1352,8 @@ async function runPhaseB({
               status: result.status === 'error' ? 'error' : 'partial',
               raw_payload: {
                 brand: primaryBrand,
+                // Sprint S-MENU Day 3.1.1 — log brandSource у partial branch теж.
+                brand_source: brandSource,
                 candidates_considered: result.candidates_considered,
               },
               // Sprint S-MENU Day 3 TSC fix: BrandSearchResult.error is
@@ -1334,8 +1368,15 @@ async function runPhaseB({
           await finishEnrichmentRun(supabase, brandRunId, { status: 'error', error_message: msg })
         }
       } else {
+        // Sprint S-MENU Day 3.1.1 — skip reason now reflects both brand sources
+        // (CEIDG koncesja + AI extracted_brand). Empty means BOTH failed.
+        const aiBrand = bcr?.business_profile?.extracted_brand
+        const aiConf = bcr?.business_profile?.extracted_brand_confidence
+        const aiBrandLow = typeof aiBrand === 'string' && aiBrand.trim().length > 0 && aiConf === 'low'
         const skipReason = !primaryBrand
-          ? 'brand_aliases empty (CEIDG не extracted koncesja)'
+          ? aiBrandLow
+            ? `AI extracted_brand="${aiBrand}" but confidence=low (treated as surname/generic)`
+            : 'brand_aliases empty (CEIDG no koncesja) AND AI extracted_brand=null'
           : websiteIsManual
             ? `website set manually (source=${currentSource})`
             : currentWebsite && !websiteIsAggregator
