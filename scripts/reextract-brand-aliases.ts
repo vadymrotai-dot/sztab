@@ -8,12 +8,17 @@
 // CEIDG koncesja text НE matched legacy Format A regex.
 //
 // Scope filter:
-//   - entity_type = 'JDG'  (CEIDG covers only JDG, not sp.z o.o.)
-//   - ceidg_id IS NOT NULL (we have UUID cached for direct API fetch)
-//   - brand_aliases IS NULL OR jsonb_array_length(brand_aliases) = 0
+//   - ceidg_id IS NOT NULL (JDG clients — CEIDG covers only sole proprietors;
+//     sp.z o.o./S.A. registered у KRS не CEIDG, ceidg_id залишається NULL)
+//   - brand_aliases empty/null (filtered client-side bo PostgREST jsonb-eq
+//     не parses literal '[]' reliably)
+// Day 3.1.2 bugfix (15.05.2026) — removed misleading `entity_type='JDG'`
+// filter (clients.entity_type stores 'client'/'prospect' CRM scope, not legal
+// form) і `brand_aliases=eq.[]` (returned 0 для всіх real empty arrays).
 //
-// Estimated impact (per ad-hoc count): ~50-100 affected clients. CEIDG API
-// quota cost: $0.0001 × N ≈ $0.005-0.010 total. Rate-limit: 1 req/sec.
+// Estimated impact (live count 15.05.2026): 2 affected clients (Fortuna,
+// DEKOB). May grow as new JDG analyses populate ceidg_id. CEIDG API quota:
+// $0.0001 × N. Rate-limit: 1 req/sec.
 //
 // CLI:
 //   pnpm exec tsx scripts/reextract-brand-aliases.ts          # full backfill
@@ -100,23 +105,33 @@ async function main() {
   })
   const ceidgKey = await loadCeidgApiKey()
 
-  // Fetch candidates — JDG + ceidg_id IS NOT NULL + brand_aliases empty/null.
-  // PostgREST filter for jsonb_array_length(brand_aliases) = 0:
-  // use `brand_aliases=eq.[]` (matches literal empty JSONB array).
-  const { data: candidates, error: selErr } = await supabase
+  // Fetch candidates: clients з ceidg_id present (JDG proxy — CEIDG covers
+  // only sole proprietors; sp.z o.o./S.A. registered у KRS, не CEIDG).
+  // Brand_aliases empty/null check done client-side because PostgREST jsonb
+  // equality з '[]' literal не matches `[]::jsonb` reliably. Day 3.1.2 bugfix
+  // (15.05.2026) — removed `.eq('entity_type','JDG')` (clients.entity_type =
+  // 'client'/'prospect' CRM scope, NOT legal form) і `.eq('brand_aliases','[]')`
+  // (was returning 0 rows для all known empty-array clients).
+  const SERVER_FETCH_CAP = 500
+  const { data: rawRows, error: selErr } = await supabase
     .from('clients')
-    .select('id, nip, title, ceidg_id, entity_type')
-    .eq('entity_type', 'JDG')
+    .select('id, nip, title, ceidg_id, entity_type, brand_aliases')
     .not('ceidg_id', 'is', null)
-    .eq('brand_aliases', '[]')
-    .limit(effectiveLimit)
+    .limit(SERVER_FETCH_CAP)
 
   if (selErr) {
     console.error('Candidates fetch failed:', selErr.message)
     process.exit(1)
   }
-  const list = (candidates ?? []) as unknown as CandidateRow[]
-  console.log(`\nFound ${list.length} candidate(s) (entity_type=JDG, ceidg_id present, brand_aliases=[]).`)
+  type RawRow = CandidateRow & { brand_aliases: unknown }
+  const candidates = ((rawRows ?? []) as unknown as RawRow[]).filter((c) =>
+    !c.brand_aliases ||
+    (Array.isArray(c.brand_aliases) && c.brand_aliases.length === 0),
+  )
+  const list = candidates.slice(0, effectiveLimit) as CandidateRow[]
+  console.log(
+    `\nFound ${candidates.length} candidate(s) з ceidg_id + empty brand_aliases (server-fetched ${(rawRows ?? []).length}, capped to ${effectiveLimit}).`,
+  )
   if (list.length === 0) {
     console.log('Nothing to backfill. Exiting.')
     return
