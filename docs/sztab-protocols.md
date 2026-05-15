@@ -1747,6 +1747,53 @@ fast-fail logic — 49 NIPs × 4s retry = ~200s wasted на impossible runs
 - `lib/enrichment/apify-batch.ts` — abort batch після 1-го NIP коли
   billing/auth error detected
 
+---
+
+## Sprint S-MENU lessons learned (15.05.2026)
+
+### Cleanup backlog (post-Sprint-S-MENU)
+
+1. **Consolidate 3 duplicate DishesSource type unions** → single `lib/predictions/types.ts`
+   - Current drift: `AggregatedPrediction.dishes_source` (lib/predictions/aggregate-ingredients.ts), `DishesSource` (components/clients/predictions-section.tsx), `MenuDishesSource` (components/clients/menu-section.tsx — slightly different, includes 'manual' | 'mixed')
+   - Day 3.2 lesson: extending one union without updating others = TS2322 у consumer
+   - Refactor: extract до shared `lib/predictions/types.ts`, import у всі 3 consumers
+2. **Factory helper `makeEmptyBrandSearchResult()`** для consistent object literal у `lib/enrichment/web-search.ts`
+   - Day 3.1.3 TS2345 lesson: BrandSearchResult interface extension missed 1-of-2 hand-built object literals (line 597 outer Promise.race timeout)
+   - Single-source pattern eliminates drift коли interface evolves
+3. **sp. z o.o. KRS nazwa_skrocona brand extraction** (analog CEIDG koncesje для spółek)
+   - Partial coverage через Day 3.1.1 AI `extracted_brand`, але explicit KRS short-name parsing був би authoritative для sp.z o.o./S.A. (нема CEIDG koncesji)
+   - Source: `clients.krs_data?.shortName` або equivalent
+4. **City extraction fallback chain expansion**:
+   - Current: `clients.city ?? brand_aliases[0].address regex parse`
+   - Extend: `clients.city ?? brand_aliases[0].city ?? gus_data.miejscowosc ?? vat_data.subject.residenceAddress parse`
+   - Fortuna debug lesson — `clients.city = NULL` для many JDG, GUS data not extracted до canonical
+5. **Apify async mode investigation** (Phase B optimization)
+   - Current 30s hard cap (Sprint S-CEIDG-DETAILS Day 2 fix) leaves money on table коли cold-start <30s
+   - Async pattern: start run + poll з longer total budget — but harder to fit у 120s Vercel ceiling
+
+### Sprint S-MENU lessons (15.05.2026)
+
+1. **Tavily НЕ honors Google-style `site:` operator.** Live probe (Day 3.1.3) confirmed `"FABRYKA SUSHI" Warszawa menu site:.pl` → 0 results, без `site:.pl` → 5 results включаючи real restaurant. PL keywords у query content already provide geographic context naturally. Always probe Tavily query format перш ніж assume — Tavily syntax ≠ Google syntax.
+
+2. **CEIDG koncesja text є authoritative source для real brand name placówki** (commercial name on government-registered alcohol/event license). Always превалює над title-derived AI guess. AI prompt updated з PRIORYTET block (Day 3.1.2) — "if CEIDG mentions 'lokal gastronomiczny X', use X as brand regardless of title".
+
+3. **CEIDG koncesje має multi-format text.** Minimum 2 patterns у production data:
+   - **Format A**: `"BAR/RESTAURACJA/... [BRAND] UL.[ADDRESS]"` (uppercase, business-kind anchored)
+   - **Format B**: `'lokal gastronomiczny "[BRAND]", ul.[ADDRESS]'` (lowercase, quoted brand)
+   Defensive parser cascades both. Quote-char class supports 6 variants (straight + curly + smart). Test з real live CEIDG data перш ніж ship parser changes.
+
+4. **Stale `tavily_brand` `company_profile_fields[website]` rows блокують re-discovery** коли brand_aliases backfilled.
+   - Day 3.1.2 added Format B parser → brand_aliases changed
+   - But прошлий wrong-brand `tavily_brand` website (priority 5) залишався active
+   - STEP 6.6 gate checked "is website aggregator" — fortuna.info.pl (Pensjonat) wasn't у blocklist → gate skipped → no re-discovery
+   - **Fix**: Backfill script must also invalidate stale `tavily_brand` rows via `superseded_at` + clear canonical `clients.website` (defensive only-if-matches)
+
+5. **Universal intelligence layer principle:** brand discovery + website finder + menu extractor + ingredient prediction = foundation для будь-якого продукту. Per-product matching (buyer_strength scoring) — окремий шар. **Не змішувати.** Phase B pipeline shared. Product-specific scoring lives у `/produkty/[id]` + `product_match_runs` table per (client, product) pair.
+
+6. **PostgREST jsonb equality gotcha**: `.eq('brand_aliases', '[]')` does NOT match `[]::jsonb` literal arrays — returns 0 rows навіть коли empty arrays exist у DB. Use client-side filter `Array.isArray(c.brand_aliases) && c.brand_aliases.length === 0` after fetching all candidates. Day 3.1.2 hotfix lesson.
+
+7. **`clients.entity_type` column ≠ legal form.** Column stores CRM scope (`'client'` / `'prospect'`), NOT legal form (`'JDG'` / `'sp.z o.o.'`). Filter `.eq('entity_type', 'JDG')` matches 0 rows ever. Use `ceidg_id IS NOT NULL` proxy для JDG identification (CEIDG covers only sole proprietors). Day 3.1.2 hotfix lesson.
+
 ### Subscription пороги
 
 - **Free $5/міс** — exhausts на 80-100 fully-enriched NIPs

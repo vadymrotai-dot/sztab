@@ -634,3 +634,107 @@ S-CORE.2 plan-vision не materialized як unified engine call — S2B Phase 2 
 - middleware → proxy migration (Next.js 16 deprecation)
 - Helper extraction для shared AI patterns (product-analysis, business-analysis convergence)
 
+---
+
+## Sprint S-MENU — Gastronomy auto-discovery pipeline (started 13.05.2026, completed 15.05.2026)
+
+**Goal:** automated brand → website → menu → ingredients pipeline для 2705 prospекtів, без manual intervention.
+
+**Outcome:** ~95% gastronomy coverage projected. Manual override UI for remaining 5% edge cases. Universal intelligence layer principle established — НЕ CzM-specific.
+
+### Day 1 (13.05) — CEIDG_details Phase B integration
+
+- Wire `getFirmDetails(uuid)` into `lookup/route.ts` Phase B (was dead code per audit finding)
+- Format A `brand_aliases` extraction (BUSINESS_KIND_RE anchored): `BAR/RESTAURACJA/...[BRAND] UL.[ADDRESS]`
+- Migration `067_clients_ceidg_id.sql` — adds `ceidg_id UUID` + `brand_aliases JSONB` columns
+- Lazy UUID cache pattern (Option C з 3-decision matrix) — first analysis resolves via NIP search, subsequent runs use cached UUID
+- `extractBrandAliasesFromKoncesje()` pure function з 14/14 inline smoke tests
+- AI ctx integration — `business-analysis.ts` reads brand_aliases у gatherCompanyContext, adds до prompt з "Wskazówка про priorytet marek nad PKD"
+- Tavily 3rd query for regulamin/polityka pages (где NIP listed як partner)
+- diag-ceidg-details.ts multi-NIP test script (4 cases — JDG з koncesja, JDG bez koncesji, sp.z o.o. skip x2)
+
+### Day 2 (15.05 morning) — Restaumatic + Phase B mechanics
+
+- **Restaumatic JSON-LD extractor** (`lib/enrichment/restaumatic-menu.ts`, ~340 LOC, $0 cost, 20s Promise.race timeout)
+  - Parallel fetch [homepage, /sitemap.xml] @ 12s each
+  - Detect Restaumatic signature: `'restaumatic'` substring у HTML
+  - Walk `schema.org/Restaurant` JSON-LD blocks recursively (handles @graph wrapper)
+  - Extract `hasMenuSection[].hasMenuItem[]` → emit dishes з name/description/price/section
+- **Day 2 STEP order fix** — wrap STEP 5.5/5.6 у async closure `runDeferredMenuAndKrs()`, invoke AFTER STEP 6.5 AI_business_analysis. Reason: gate `isGastronomia` read STALE `business_profile.client_type` — JDG-gastronomy clients classified post-CEIDG missed www_menu step.
+- **Volume formula baseline** — `BASELINE_VISITS_PER_LOCATION` subtype-aware (kebabnia 500, sushi_bar 350, pizzeria 600, kawiarnia 800, fine_dining 200, inne 400). Coverage tier `'baseline_no_traffic_data'` коли `gmaps_reviews_count=0` (Apify timeout). Без цього branch ingredient prediction = 0g (visits_mid множить на 0).
+- **Apify 30s hard timeout** — Promise.race wrapper у `lib/enrichment/apify.ts`. Was 240s — killed Phase B budget. Hard cap returns `status='partial'` з error 'APIFY_TIMEOUT_30S'. route.ts handles partial gracefully.
+
+### Day 3 (15.05) — Brand-aware Tavily + WebsiteOverrideCard UI
+
+- AGGREGATOR_BLOCKLIST +13 entries: monitorfirm.pb.pl, pb.pl, yelp.com/pl, tripadvisor.com/pl, etc.
+- NEW `searchCompanyByBrand(brand, city, tavilyKey)` у `web-search.ts` — 15s Promise.race, brand-slug scoring (+5 boost для domain з brand-substring match), filters aggregators + socials + Google
+- NEW STEP 6.6 у `lookup/route.ts` — fires when `brand_aliases.length > 0 AND !manualSet AND (currentWebsite null OR isAggregator)`. Logs до enrichment_log як `tavily_brand_search`
+- NEW `app/api/clients/[id]/website/route.ts` POST endpoint — validates URL, normalizes (https:// prefix, strip path/query), upserts `company_profile_fields[website]` з `source='manual_override'` (priority 5), mirrors до `clients.website` canonical
+- NEW `components/clients/website-override-card.tsx` — 3-state UI (empty/present/edit), source badge, "Zapisz" + "Zapisz і przeanalizuj" buttons, toast progress, `router.refresh()`
+- SOURCE_PRIORITIES: `manual_override: 5`, `tavily_brand: 2` (later raised до 5 у Day 3.1)
+
+### Day 3.1 — Bug fixes (live MARCIN BOROWY post-deploy)
+
+- AGGREGATOR_BLOCKLIST +13 (jadlospis.menu, menu.pl, pyszne.pl, foodora.pl, glovoapp.com, bolt.eu, etc.)
+- Mirror successful STEP 6.6 website до `clients.website` canonical column (parity з manual_override endpoint)
+- enrichment_log audit log dynamic source update — `dbSource` (e.g. `restaumatic_menu`) replaces initial `'www_menu'` placeholder after extraction completes
+- `tavily_brand` priority 2 → 5 (=manual_override). Reason: naive Tavily writes under `source='WWW'` priority 4, so `tavily_brand=2` was IGNORED by merge.ts. Priority collision з manual_override impossible because STEP 6.6 gate checks `websiteIsManual=true` first
+- City extraction з `brand_aliases[0].address` regex: `/,\s*\d{2}-\d{3}\s+([A-ZŁŚŻŹĆĘŚŁĄÓŃ\s\-]+)/i`
+
+### Day 3.1.1 — AI extracted_brand fallback (Option D-integrated)
+
+- `BusinessProfile` interface +2 fields: `extracted_brand?: string | null`, `extracted_brand_confidence?: 'high' | 'medium' | 'low' | null`
+- AI prompt extended з 8 example titles ("Dariusz Wieczorek Fortuna" → "Fortuna", "Mixx Bar" → "Mixx Bar", etc.) + extraction rules (strip legal suffixes, owner names, generic prefixes, parens)
+- STEP 6.6 cascading lookup: `ceidg_koncesja` (priority 1) → `ai_extracted` (priority 2 fallback, high/medium confidence only)
+- AGGREGATOR_BLOCKLIST +21 PL news domains (rp.pl, wp.pl, gazeta.pl, tvn24.pl, money.pl, etc.) — caught Dariusz Wieczorek Fortuna case де Tavily picked `rp.pl` (Rzeczpospolita) як website
+
+### Day 3.1.2 — Format B koncesja parser + backfill script
+
+- `LOKAL_GASTRO_RE` regex catches `"lokal gastronomiczny '[BRAND]'"` pattern (6 quote variants)
+- Universal `POSTAL_CITY_RE` для both Format A + Format B
+- `BrandAlias` interface +`kind?: string` (e.g. 'LOKAL GASTRONOMICZNY'), +`city?: string | null`, +`postal_code?: string | null`
+- `scripts/reextract-brand-aliases.ts` CLI — historical backfill, fetches CEIDG `/firma/{uuid}` per affected client
+- 7/7 smoke tests pass (Format A, Format B straight quotes, Format B curly quotes, dedupe, admin filter, empty input, no-address)
+
+### Day 3.1.2 hotfix — backfill filter bugs
+
+- Removed wrong filter `.eq('entity_type', 'JDG')` (`clients.entity_type` stores `'client'/'prospect'` CRM scope, not legal form — matched 0 rows ever)
+- Removed broken PostgREST `.eq('brand_aliases', '[]')` jsonb-eq compare (returned 0 rows для real empty arrays)
+- Client-side filter post-fetch: `Array.isArray(c.brand_aliases) && c.brand_aliases.length === 0`
+
+### Day 3.1.2.1 — Stale tavily_brand website invalidation
+
+- `invalidateStaleTavilyBrandWebsite()` helper — mirrors `merge.ts:158-165` supersede pattern
+- CLI flags `--force` (process ALL ceidg_id clients regardless of brand_aliases state) + `--skip-invalidation` (Vadym opt-out)
+- Dedupe detection via `JSON.stringify` — distinguishes "fixed" vs "no-change-but-force-invalidated" vs "no koncesja"
+- Defensive `clients.website` canonical clear (only-if-matches superseded value — preserves Vadym manual edits)
+
+### Day 3.1.3 — Drop site:.pl from Tavily query
+
+- Live Tavily probe confirmed `site:.pl` returns 0 results — Tavily НЕ honors Google-style site: operator
+- `BrandSearchResult` interface +`query_sent: string | null` field для debug visibility
+- Both `partial` AND `success` branches log `city` + `query_sent` у raw_payload
+- TS2345 hotfix: outer Promise.race timeout fallback object literal also needed new field
+
+### Day 3.2 (parallel із 3.1.x) — Restaumatic downstream consumers
+
+- 5 files updated for `restaumatic_menu` source enum recognition:
+  - `lib/predictions/aggregate-ingredients.ts` — query filter + chosenDishes priority branch (Restaumatic > wedo > www > gmaps)
+  - `components/clients/menu-section.tsx` — `MenuDishesSource` type + `SOURCE_LABELS_PL` entry
+  - `app/(dashboard)/clients/[id]/page.tsx` — query filter + dishes selection priority
+  - `components/clients/predictions-section.tsx` — `DishesSource` type + `SOURCE_LABELS` entry
+  - `app/api/intelligence/lookup/route.ts` — enrichment_log audit source post-extraction update
+
+### Verified live cases (15.05.2026)
+
+| Client | NIP | Pipeline outcome |
+|---|---|---|
+| MARCIN BOROWY (Kemer Kebab) | 1250825446 | brand_aliases ✓ Format A, manual override fortuna→kemerkebab.pl, 65 Restaumatic dishes, score 5→25 |
+| Fortuna / Fabryka Sushi | 8381175797 | **FULL AUTO**: CEIDG Format B → brand_aliases → STEP 6.6 picks fabrykasushi.com → Restaumatic **100 dishes**, score 5 (sushi не fit CzM correct) |
+| DEKOB / OKEH BAKERY | 5242823191 | brand_aliases backfilled (awaiting re-analiza verification) |
+
+### Architecture verified
+
+Universal intelligence layer foundation для всіх продуктів. ~95% gastronomy coverage projected. Per-product matching (buyer_strength scoring) — окремий шар, реалізація у Sprint S-CORE.3.B + Sprint S6B (planned).
+
+

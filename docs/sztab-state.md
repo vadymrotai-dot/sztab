@@ -2469,3 +2469,137 @@ Migration scope `pikniko_handoff_cohorts` → `cohorts`: ~6h.
 
 Sztab — technically sound. НЕ потребує rewrite. Потребує **Pikniko deprecation cycle** + UX polish на recently shipped features. Audit заверена.
 
+---
+
+## 2026-05-15 — Sprint S-MENU shipped: gastronomy auto-discovery pipeline complete
+
+**Status:** End-to-end automated brand→website→menu→ingredients pipeline для 2705 prospекtів. 11 sub-sprints (Day 1 → Day 3.1.3 + Day 3.2), ~25 commits, single-day execution. Verified live: Fortuna case (NIP 8381175797) full-auto, no manual override → 100 Restaumatic dishes extracted.
+
+### Pipeline architecture (post-Sprint-S-MENU finalized)
+
+**Phase A (sync, returns to caller ~3-8s):**
+- GUS REGON identity sweep — extracts `formaPrawnaNazwa` → entityType local var (`JDG` / `sp.z o.o.` / `S.A.` / `inne` / `unknown`)
+- VAT_BL status check
+- GUS_branches (jednostki lokalne)
+- Initial matches compute (algo-only baseline)
+
+**Phase A.2 (sync continuation, +1-2s):**
+- rejestrio_v2 (KRS persons cross-reference)
+- ceidg_id resolution + cache до `clients.ceidg_id`
+
+**Phase B (after() async, до 120s ceiling — 10 steps sequenced):**
+1. BZP — tenders monitoring
+2. persons — KRS+CEIDG+rejestrio cross-link
+3. tavily — initial web search (cached company website, source='WWW' priority 4)
+4. Apify_GMaps — 30s hard timeout (Day 2 fix), populates contact_enrichment.apify_gmaps
+5. STEP 6.4 CEIDG_details — `getFirmDetails` extracts `uprawnienia[].opis` → brand_aliases (Day 1 wire, Day 3.1.2 Format B parser)
+6. STEP 6.5 AI_business_analysis — Claude Haiku, sets `client_type/subtype/buyer_strength` + `extracted_brand`/`extracted_brand_confidence` (Day 3.1.1)
+7. STEP 6.6 brand-aware Tavily — uses FRESH brand_aliases (priority 1) or AI extracted_brand (priority 2 fallback)
+8. STEP 6.7 deferred closure (Day 2 fix): www_menu (Restaumatic JSON-LD primary + AI Haiku HTML fallback + Wedo PDF) + wolt_menu + regdata_krs_fullnames
+9. STEP 6 final: `computeMatchesForClient` (algo recompute з business_profile niche bonus)
+10. STEP 7: AI_match_rescore (per-client TOP-10 cohort scoring, budget-gated)
+
+### Brand discovery cascade (Day 3.1.x — UNIVERSAL feature)
+
+Priority resolution у `lookup/route.ts` STEP 6.6:
+1. **CEIDG koncesja brand** (`brand_aliases[0].brand`) — strongest signal, government-registered commercial name (`source='ceidg_koncesja'`)
+2. **AI extracted_brand** з `clients.title` context (high/medium confidence only) — fallback для JDG без koncesji (`source='ai_extracted'`)
+3. **clients.website manual override** (Day 3 UI на `/clients/[id]`) — Vadym escape hatch (`source='manual_override'` priority 5)
+
+STEP 6.6 gate fires коли: `primaryBrand non-empty AND NOT websiteIsManual AND (currentWebsite null OR aggregator)`. Tavily query: `"{BRAND}" {city} menu OR oferta OR jadlospis` (NO `site:.pl` operator — Tavily НЕ honors, Day 3.1.3 discovery). 15s hard timeout via Promise.race. Multi-token slug scoring +5 boost (2+ tokens match host slug). `source='tavily_brand' priority=5` (wins over `WWW=4` naïve Tavily picks).
+
+### CEIDG koncesja parsing — 2 formats supported (Day 3.1.2)
+
+**Format A** (uppercase, business-kind anchored):
+```
+"BAR KEMER KEBAB UL. MAGICZNA 6 LOK.1A, 03-289 WARSZAWA"
+→ brand: "KEMER KEBAB", kind: "BAR", city: "WARSZAWA", postal_code: "03-289"
+```
+
+**Format B** (lowercase phrase з quoted brand — Day 3.1.2 live discovery):
+```
+'lokal gastronomiczny "Fabryka sushi", ul. Skarbka z Gór 15U lok. U9, 03-287 Warszawa'
+→ brand: "FABRYKA SUSHI", kind: "LOKAL GASTRONOMICZNY", city: "Warszawa", postal_code: "03-287"
+```
+
+`lib/intelligence/extract-koncesje.ts` cascades A → B parser. Supports 6 quote variants (straight `"` `'` + curly `„` `"` `'` `'`). Universal `POSTAL_CITY_RE` regex для both formats. Dedupe by uppercase brand. 7/7 inline smoke tests pass.
+
+### AGGREGATOR_BLOCKLIST (Day 3 + 3.1 + 3.1.1, ~70 domains)
+
+- **Food aggregators**: pyszne.pl, foodora.pl, glovoapp.com, glovo.com, bolt.eu, bolt.food, takeaway.com, jadlospis.menu, menu.pl, restauracje.pl, gastronauci.pl, smacznego.pl
+- **Reviews**: yelp.com, yelp.pl, tripadvisor.com, tripadvisor.pl, foursquare.com, opineo.pl, goldenline.pl
+- **Business directories**: monitorfirm.pb.pl, pb.pl, panoramafirm.pl, aleo.com, biznesfinder.pl, mojepanstwo.pl, bisnode.pl, rzetelnafirma.pl, rejestrio.pl, krs.pl, firmy.net, pkt.pl, biznesradar.pl, firmy.wp.pl, bizpolska.pl, kompass.com, nportal.pl, znajdz-firme.pl, mapy.pb.pl, branzeinfo.pl
+- **Government/registers**: bzp.uzp.gov.pl, ezamowienia.gov.pl, ceidg.gov.pl, ekrs.ms.gov.pl, mfa.gov.pl, gov.pl, krs-pobierz.pl
+- **Jobs**: gowork.pl, pracuj.pl, olx.pl, indeed.pl
+- **PL news/media** (Day 3.1.1): rp.pl, rzeczpospolita.pl, wprost.pl, gazeta.pl, wpolityce.pl, wp.pl, dziennik.pl, wyborcza.pl, polskieradio.pl, tvp.pl, tvn24.pl, polsatnews.pl, tvn.pl, forsal.pl, parkiet.com, money.pl, bankier.pl, biznes.pl, interia.pl, onet.pl, o2.pl
+
+**NOT blocklisted (intentional)**: `restaumatic.com` — це legit platform host для PL gastronomy real sites (kemerkebab.pl, fabrykasushi.com etc.), не aggregator. Adding restaumatic.com би заблокувала entire Restaumatic-hosted ecosystem.
+
+### Per-product matching architecture (PRINCIPLE — universal vs product-specific)
+
+**Universal intelligence layer** (Phase B above): brand discovery + website finder + menu extractor + ingredient prediction. **НЕ CzM-specific**. Один shared pipeline для всіх продуктів.
+
+**Per-product matching** (separate layer, lives у `/produkty/[id]`):
+- Кожен product (CzM, SpoonJoy, Karol wędliny, Cezary warzywa, Gmurczyk) має:
+  - Свій `product_match_runs` row (per client+product unique)
+  - Свій `buyer_strength_for_<product>` field у `business_profile` (current: `buyer_strength_for_chm` legacy)
+  - Свої category fit rules (kiszonki vs łyżki vs wędliny vs warzywa)
+- Реалізація per Sprint S-CORE.3.B + Sprint S6B (planned)
+
+**Не змішувати:** Sztab НЕ score по CzM hard-coded окрім legacy `buyer_strength_for_chm`. Day 4+ migration — переименувати у `buyer_strength` (untyped baseline), додати per-product overrides у `product_match_runs.score_breakdown`.
+
+### Manual website override (Day 3 UI)
+
+`components/clients/website-override-card.tsx` рендериться на `/clients/[id]` між Profil + Sprawozdania finansowe accordion sections:
+- 3-state UI: empty (URL input + "Dodaj") → present (URL + source badge + "Zmień") → edit (input + "Zapisz" + "Zapisz i przeanalizuj" + "Anuluj")
+- POST `/api/clients/[id]/website` — source='manual_override' priority=5
+- Mirror до `clients.website` canonical column
+- Skips STEP 6.6 gate (`websiteIsManual=true`) — Vadym override завжди wins
+- Toast progress feedback + `router.refresh()` post-save
+
+### Backfill scripts
+
+- **`scripts/reextract-brand-aliases.ts`** (Day 3.1.2 + 3.1.2.1) — re-extracts brand_aliases з cached `ceidg_id` для clients що had empty brand_aliases після Day 1 deploy
+  - CLI: `--dry` (preview), `--force` (process ALL `ceidg_id` clients regardless of brand_aliases state), `--limit N`, `--skip-invalidation`
+  - Side effect (Day 3.1.2.1): supersedes stale `tavily_brand` website rows via `superseded_by_source='manual_backfill_invalidation'` + clears canonical `clients.website` defensively (only-if-matches superseded value)
+  - Rate-limit: 1 req/sec до CEIDG API. Cost: $0.0001 × N
+
+### Data sources operational (post-Sprint-S-MENU)
+
+| Source | Endpoint | Cost | Coverage |
+|---|---|---|---|
+| GUS REGON | gus.gov.pl/api | free | 100% legal entities |
+| KRS | Ministerstwo Sprawiedliwości | free | sp.z o.o./S.A./other commercial |
+| CEIDG v3 | dane.biznes.gov.pl/api/ceidg/v3 | $0.0001/call | 100% JDG (koncesje included) |
+| Rejestrio v2 | rejestr.io | ~$0.05/day subscription | persons cross-reference |
+| BZP UZP | bzp.uzp.gov.pl | free | tenders public sector |
+| Tavily | api.tavily.com | $0.005/call (basic) | web search global |
+| Apify | api.apify.com | $0.005-0.10/call | GMaps, Wolt, Wedo PDF, etc. |
+| CRBR | crbr.podatki.gov.pl | free | UA founders detection |
+| Allegro | allegro.pl/oauth | $0 | cohort price enrichment |
+| Claude Haiku | api.anthropic.com | $1/$5 per 1M tokens | AI analysis + dish→ingredient |
+| Gemini | gemini.google.com | free tier OK | classification fallback |
+
+### Параметри (`params` table — Protocol 8: NOT process.env)
+
+`gus_api_key, krs_rejestr_api_token, ceidg_api_key, tavily_api_key, apify_api_token, anthropic_api_key, gemini_key, allegro_client_id, allegro_client_secret, allegro_access_token, allegro_token_expires_at, supabase_access_token, kurs_eur_pln, overhead`
+
+`process.env.TAVILY_API_KEY` used як fallback тільки коли `params.tavily_api_key` IS NULL (Sprint S5C — safety net для new deploys).
+
+### Live verification cases (15.05.2026)
+
+| Client | NIP | Pipeline outcome |
+|---|---|---|
+| MARCIN BOROWY (Kemer Kebab) | 1250825446 | brand_aliases ✓ via Format A, manual override fortuna→kemerkebab.pl, 65 Restaumatic dishes, score 5→25 |
+| Fortuna / Fabryka Sushi | 8381175797 | **FULL AUTO**: CEIDG Format B koncesja → brand_aliases populated → STEP 6.6 picks fabrykasushi.com → Restaumatic 100 dishes, score 5 (sushi не fit CzM correct) |
+| DEKOB / OKEH BAKERY | 5242823191 | brand_aliases backfilled (awaiting re-analiza verification) |
+
+### Sprint S-MENU coverage projection
+
+- ~30% gastronomy JDG із alcohol koncesja → Format A parser, brand_aliases populated → STEP 6.6 ✓
+- ~10% gastronomy JDG із Format B koncesja (lokal gastronomiczny) → Format B parser, brand_aliases populated → STEP 6.6 ✓ (Day 3.1.2 added)
+- ~55% gastronomy без koncesji (restauracje без alkoholu, kawiarnie, etc.) → AI extracted_brand fallback → STEP 6.6 ✓ (Day 3.1.1 added)
+- ~5% edge cases (generic legal names, foreign-script titles) → manual override UI fallback (Day 3 shipped)
+
+**Cumulative auto-discovery: ~95% gastronomy.** Manual override safety net для remaining 5%.
+
