@@ -28,14 +28,25 @@ export const SOURCE_PRIORITIES: Record<string, number> = {
   // automated sources, але distinct у DB audit trail.
   manual: 5,
   manual_override: 5,
+  // Sprint S-MENU Day 3.1 (15.05.2026) — RAISED tavily_brand from 2 to 5.
+  // Day 3 bug: naive Tavily (STEP 4.5) writes website pod source='WWW'
+  // priority 4, so 'tavily_brand' priority 2 was IGNORED by merge.ts
+  // (priority < existing). Раining до 5 (= manual_override) дозволяє
+  // brand-aware discovery wins над naive 'WWW' (4). Priority collision
+  // з manual_override impossible because STEP 6.6 gate checks
+  // websiteIsManual=true і skips entirely. CASCADE:
+  //   10  KRS / sprawozdania_KRS / MSiG  (official registries)
+  //    9  GUS
+  //    8  CEIDG
+  //    7  VAT_BL
+  //    6  BZP
+  //    5  manual_override / manual_legacy / tavily_brand  (CEIDG-driven)
+  //    4  WWW / Apify_GMaps  (naive Tavily + Apify)
+  //    3  AI
+  tavily_brand: 5,
   Apify_GMaps: 4,
   AI: 3,
   WWW: 4, // Website extraction — same tier as Apify
-  // Sprint S-MENU Day 3 — 'tavily_brand' = brand-aware Tavily re-query
-  // (after CEIDG brand_aliases populated). Higher than default tavily=1
-  // (unknown source) бо CEIDG-derived brand є strong evidence — але
-  // нижче manual_override щоб Vadym override завжди wins.
-  tavily_brand: 2,
   sprawozdania_KRS: 9, // Same as GUS — official filings
   MSiG: 9, // Same as GUS — official Monitor publication
 }

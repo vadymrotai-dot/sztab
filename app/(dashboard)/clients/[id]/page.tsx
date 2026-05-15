@@ -132,7 +132,9 @@ export default async function ClientDetailPage({
       .select('source, status, raw_payload, enriched_at')
       .eq('target_id', id)
       .eq('target_type', 'client')
-      .in('source', ['wedo_pdf_menu', 'www_menu', 'www_menu_blocked']),
+      // Sprint S-MENU Day 3.2 (15.05.2026) — added 'restaumatic_menu' (top
+      // priority JSON-LD source from Restaumatic-hosted PL gastronomy).
+      .in('source', ['restaumatic_menu', 'wedo_pdf_menu', 'www_menu', 'www_menu_blocked']),
   ])
 
   if (!client) notFound()
@@ -314,6 +316,10 @@ export default async function ClientDetailPage({
     enriched_at: string | null
   }
   const menuRowsTyped = ((menuRows ?? []) as unknown) as MenuRow[]
+  // Sprint S-MENU Day 3.2 (15.05.2026) — restaumaticRow checked FIRST.
+  // Restaumatic JSON-LD = highest quality source (structured sections,
+  // prices, descriptions; zero AI cost). MARCIN BOROWY case: 65 dishes.
+  const restaumaticRow = menuRowsTyped.find((r) => r.source === 'restaumatic_menu' && (r.raw_payload?.dishes?.length ?? 0) > 0)
   const wedoRow = menuRowsTyped.find((r) => r.source === 'wedo_pdf_menu' && r.status !== 'partial' && (r.raw_payload?.dishes?.length ?? 0) > 0)
   const wwwRow = menuRowsTyped.find((r) => r.source === 'www_menu' && (r.raw_payload?.dishes?.length ?? 0) > 0)
   const upMenuBlockedRow = menuRowsTyped.find((r) => r.source === 'www_menu_blocked')
@@ -323,7 +329,13 @@ export default async function ClientDetailPage({
   let menuSource: MenuDishesSource = 'manual'
   let menuLastUpdated: string | null = null
 
-  if (wedoRow) {
+  // Sprint S-MENU Day 3.2 — Restaumatic checked first (top priority).
+  if (restaumaticRow) {
+    menuDishes = restaumaticRow.raw_payload?.dishes ?? []
+    menuSource = 'restaumatic_menu'
+    menuCoverage = menuDishes.length > 10 ? 'full_menu' : 'popular_only'
+    menuLastUpdated = restaumaticRow.enriched_at
+  } else if (wedoRow) {
     menuDishes = wedoRow.raw_payload?.dishes ?? []
     menuSource = 'wedo_pdf_menu'
     menuCoverage = menuDishes.length > 10 ? 'full_menu' : 'popular_only'

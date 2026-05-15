@@ -29,7 +29,10 @@ export interface MenuDish {
 }
 
 export type MenuCoverage = 'full_menu' | 'popular_only' | 'none'
+// Sprint S-MENU Day 3.2 (15.05.2026) — 'restaumatic_menu' added (top priority,
+// JSON-LD structured extraction, zero AI cost).
 export type MenuDishesSource =
+  | 'restaumatic_menu'
   | 'www_menu'
   | 'wedo_pdf_menu'
   | 'gmaps_menu'
@@ -53,6 +56,7 @@ const COVERAGE_LABELS_PL: Record<MenuCoverage, { label: string; tone: string }> 
 }
 
 const SOURCE_LABELS_PL: Record<MenuDishesSource, string> = {
+  restaumatic_menu: 'Restaumatic (JSON-LD)',
   www_menu: 'WWW menu (HTML)',
   wedo_pdf_menu: 'PDF menu (OCR)',
   gmaps_menu: 'Google Maps (popularne)',

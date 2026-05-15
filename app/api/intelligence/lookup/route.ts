@@ -872,6 +872,21 @@ async function runPhaseB({
           status: result.dishes.length > 0 ? 'success' : 'partial',
           note: `${result.dishes.length} dań via ${result.source} (${result.matched_path ?? 'no match'}), $${result.cost_usd.toFixed(4)}`,
         })
+        // Sprint S-MENU Day 3.2 (15.05.2026) — update enrichment_log row
+        // source from initial 'www_menu' placeholder до actual dbSource
+        // ('restaumatic_menu' / 'wedo_pdf_menu' / 'www_menu_blocked' / 'www_menu').
+        // Audit trail тепер reflects ACTUAL extraction path. Wrapped у try-catch
+        // — update failure NOT thrown (primary path вже succeeded).
+        if (dbSource !== 'www_menu') {
+          try {
+            await supabase
+              .from('enrichment_log')
+              .update({ source: dbSource })
+              .eq('id', wwwRunId)
+          } catch (auditErr) {
+            console.warn('[www_menu] audit log source update failed:', auditErr)
+          }
+        }
         await finishEnrichmentRun(supabase, wwwRunId, {
           status: result.dishes.length > 0 ? 'success' : 'partial',
           raw_payload: result,
@@ -1236,13 +1251,28 @@ async function runPhaseB({
         (currentWebsite === null || websiteIsAggregator)
 
       if (shouldRun && primaryBrand) {
+        // Sprint S-MENU Day 3.1 (15.05.2026) — city extraction з brand_aliases
+        // address. CEIDG koncesja `opis` field містить "BAR KEMER KEBAB UL.
+        // MAGICZNA 6 LOK.1A, 03-289 WARSZAWA" — postal code prefix "XX-XXX"
+        // followed by city. clients.city = null for many JDG (GUS не populates),
+        // тому brand_aliases.address є primary signal.
+        let resolvedCity: string | null = bcr?.city ?? null
+        if (!resolvedCity) {
+          const addr = brandAliases[0]?.address
+          if (addr) {
+            const m = addr.match(/,\s*\d{2}-\d{3}\s+([A-ZŁŚŻŹĆĘŚŁĄÓŃ][A-ZŁŚŻŹĆĘŚŁĄÓŃ\s\-]+)/i)
+            if (m && m[1]) {
+              resolvedCity = m[1].trim().split(/\s{2,}/)[0]
+            }
+          }
+        }
         const brandRunId = await startEnrichmentRun(supabase, {
           target_type: 'company',
           target_id: clientId,
           source: 'tavily_brand_search',
         })
         try {
-          const result = await searchCompanyByBrand(primaryBrand, bcr?.city ?? null, brandSearchKey)
+          const result = await searchCompanyByBrand(primaryBrand, resolvedCity, brandSearchKey)
           if (result.status === 'success' && result.website_url) {
             await upsertFields(
               supabase,
@@ -1250,6 +1280,17 @@ async function runPhaseB({
               [{ field_key: 'website', value: { value_text: result.website_url } }],
               'tavily_brand',
             )
+            // Sprint S-MENU Day 3.1 — also mirror до clients.website canonical
+            // column. Day 3 POST endpoint for manual_override did це; STEP 6.6
+            // automation must matcch для consistency (UI/AI read both).
+            try {
+              await supabase
+                .from('clients')
+                .update({ website: result.website_url })
+                .eq('id', clientId)
+            } catch (mirrorErr) {
+              console.warn('[STEP 6.6] clients.website mirror failed:', mirrorErr)
+            }
             response.sources_completed.push({
               source: 'tavily_brand_search',
               status: 'success',
@@ -1259,7 +1300,10 @@ async function runPhaseB({
               status: 'success',
               raw_payload: {
                 brand: primaryBrand,
-                city: bcr?.city ?? null,
+                // Sprint S-MENU Day 3.1 — log resolvedCity (fallback from
+                // brand_aliases address regex), не just clients.city.
+                city: resolvedCity,
+                city_source: bcr?.city ? 'clients' : (resolvedCity ? 'brand_aliases_address' : 'none'),
                 website_url: result.website_url,
                 candidates_considered: result.candidates_considered,
                 replaced: currentWebsite,

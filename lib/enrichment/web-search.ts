@@ -74,6 +74,25 @@ export const AGGREGATOR_BLOCKLIST = [
   'tripadvisor.pl',
   'foursquare.com',
   'yellowpages.com',
+  // Sprint S-MENU Day 3.1 (15.05.2026) — caught у MARCIN BOROWY second-pass
+  // audit. STEP 6.6 brand-aware Tavily picked jadlospis.menu (Polish digital
+  // menu directory) як "company website" — clearly aggregator. Added Polish
+  // menu directories + food delivery platforms missing from Day 3 list.
+  // NOTE: NOT adding restaumatic.com — це platform host для legit restaurant
+  // sites (kemerkebab.pl uses Restaumatic engine). Adding restaumatic.com би
+  // заблокувала entire Restaumatic-hosted PL gastronomy ecosystem.
+  'jadlospis.menu',
+  'menu.pl',
+  'restauracje.pl',
+  'gastronauci.pl',
+  'smacznego.pl',
+  'pyszne.pl',
+  'takeaway.com',
+  'foodora.pl',
+  'glovoapp.com',
+  'glovo.com',
+  'bolt.eu',
+  'bolt.food',
 ]
 
 export function isAggregator(host: string): boolean {

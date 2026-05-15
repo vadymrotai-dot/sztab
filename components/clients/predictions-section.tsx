@@ -34,7 +34,15 @@ import {
 import { savePredictionCorrection } from '@/app/clients/[id]/actions/save-prediction-correction'
 
 export type CoverageTier = 'full_menu' | 'popular_only' | 'subtype_only'
-export type DishesSource = 'www_menu' | 'wedo_pdf_menu' | 'gmaps_menu' | 'subtype_default'
+// Sprint S-MENU Day 3.2 (15.05.2026) — 'restaumatic_menu' added (top
+// priority, JSON-LD structured, zero AI cost). Must match aggregate-
+// ingredients.ts AggregatedPrediction.dishes_source union.
+export type DishesSource =
+  | 'restaumatic_menu'
+  | 'www_menu'
+  | 'wedo_pdf_menu'
+  | 'gmaps_menu'
+  | 'subtype_default'
 
 export interface AggregatedIngredient {
   name: string
@@ -79,6 +87,7 @@ const COVERAGE_LABELS: Record<CoverageTier, { label: string; tone: string }> = {
 }
 
 const SOURCE_LABELS: Record<DishesSource, string> = {
+  restaumatic_menu: 'Restaumatic (JSON-LD)',
   www_menu: 'WWW menu (HTML)',
   wedo_pdf_menu: 'PDF menu (OCR)',
   gmaps_menu: 'Google Maps (popularne)',

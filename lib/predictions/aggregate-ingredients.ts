@@ -52,7 +52,14 @@ export interface AggregatedPrediction {
   coverage_tier: CoverageTier
   prediction_confidence: number
   dishes_count: number
-  dishes_source: 'www_menu' | 'wedo_pdf_menu' | 'gmaps_menu' | 'subtype_default'
+  // Sprint S-MENU Day 3.2 (15.05.2026) — 'restaumatic_menu' added на top
+  // priority (highest data quality: JSON-LD structured, $0 cost, sectioned).
+  dishes_source:
+    | 'restaumatic_menu'
+    | 'www_menu'
+    | 'wedo_pdf_menu'
+    | 'gmaps_menu'
+    | 'subtype_default'
   volume: VolumePrediction
   ingredients: AggregatedIngredient[]
   ai_calls_made: number
@@ -142,16 +149,21 @@ export async function aggregateMonthlyIngredients(
   const gmaps = (gmapsRaw ?? null) as ApifyGmapsRow | null
 
   // ─── 3. Fetch menu enrichment rows ───
+  // Sprint S-MENU Day 3.2 (15.05.2026) — added 'restaumatic_menu' до filter.
+  // Restaumatic JSON-LD = highest priority (zero AI cost, structured prices
+  // + descriptions + sections, ~70+ dishes typical у Polish gastronomy).
   const { data: menuRawsRaw } = await supabase
     .from('contact_enrichment')
     .select('source, status, raw_payload, enriched_at')
     .eq('target_id', clientId)
     .eq('target_type', 'client')
-    .in('source', ['www_menu', 'wedo_pdf_menu', 'gmaps_menu'])
+    .in('source', ['restaumatic_menu', 'www_menu', 'wedo_pdf_menu', 'gmaps_menu'])
     .order('enriched_at', { ascending: false })
   const menuRows = ((menuRawsRaw ?? []) as unknown) as MenuEnrichmentRow[]
 
   // Pick best menu source (priority order)
+  // Sprint S-MENU Day 3.2 — restaumaticRow на top (Restaumatic > wedo > www > gmaps)
+  const restaumaticRow = menuRows.find((r) => r.source === 'restaumatic_menu' && (r.raw_payload?.dishes?.length ?? 0) > 0)
   const wedoRow = menuRows.find((r) => r.source === 'wedo_pdf_menu' && (r.raw_payload?.dishes?.length ?? 0) > 0)
   const wwwRow = menuRows.find((r) => r.source === 'www_menu' && (r.raw_payload?.dishes?.length ?? 0) > 0)
   // Fallback gmaps_menu з apify_gmaps row (raw_payload.best.menu may be array)
@@ -179,7 +191,12 @@ export async function aggregateMonthlyIngredients(
 
   let chosenDishes: MenuDish[] = []
   let dishesSource: AggregatedPrediction['dishes_source'] = 'subtype_default'
-  if (wedoRow) {
+  // Sprint S-MENU Day 3.2 (15.05.2026) — restaumaticRow checked FIRST.
+  // Highest quality: JSON-LD structured price+description+section, no AI.
+  if (restaumaticRow) {
+    chosenDishes = restaumaticRow.raw_payload?.dishes ?? []
+    dishesSource = 'restaumatic_menu'
+  } else if (wedoRow) {
     chosenDishes = wedoRow.raw_payload?.dishes ?? []
     dishesSource = 'wedo_pdf_menu'
   } else if (wwwRow) {
