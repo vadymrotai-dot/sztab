@@ -32,9 +32,20 @@
 
 const APIFY_BASE = 'https://api.apify.com/v2'
 const ACTOR_ID = 'compass~crawler-google-places'
-// Compass actor: cold-start ~30-60s + per-place scraping. 90s був надто тісним
-// (Sprint H smoke показав timeouts). Bumped до 4 хв.
-const REQUEST_TIMEOUT_MS = 240_000
+// Sprint S-CEIDG-DETAILS Day 1 PATCH (15.05.2026) — was 240_000 (4 хв) для
+// крайніх slow runs. Але це блокувало CEIDG_details + AI_business_analysis
+// step якщо Apify timeouted (Vercel function ceiling 120s). Lower до 25s.
+// Outer guard `APIFY_HARD_TIMEOUT_MS` (Promise.race у public entry) — 30s,
+// захищає від всіх retry edge cases. Trade-off: rare cold-start slow Apify
+// runs (40-60s) тепер abort у 25s, повертають status='partial'. Acceptable —
+// AI ще може run з CEIDG brand_aliases замість GMaps signals.
+const REQUEST_TIMEOUT_MS = 25_000
+/** Sprint S-CEIDG-DETAILS Day 1 (15.05.2026) — hard ceiling для всього
+ *  enrichContactsApify (Promise.race у public entry). Захищає Phase B
+ *  budget — CEIDG_details + AI кроки після Apify обов'язково run. Якщо
+ *  Apify не вкладається у 30s → повертаємо status='partial' з error_message
+ *  'APIFY_TIMEOUT_30S'. Caller (route.ts:696-712) handles partial gracefully. */
+const APIFY_HARD_TIMEOUT_MS = 30_000
 const RATE_LIMIT_PER_MIN = 30
 const RATE_WINDOW_MS = 60_000
 const COST_PER_RESULT_USD = 0.007
@@ -306,7 +317,39 @@ function pickBestMatch(
 }
 
 // ─── Public entry ───
+// Sprint S-CEIDG-DETAILS Day 1 (15.05.2026) — wrapped з Promise.race для
+// hard 30s ceiling. Внутрішня логіка (fetch + retry chain) залишається
+// як було; outer race просто скорочує wall-clock budget якщо щось затягне
+// (cold-start, 5xx retry chain, polling stuck). Public signature unchanged
+// → 9 callers (route.ts, apify-batch.ts, scripts/smoke-test-apify, etc.)
+// continue working без edits. Timeout return shape = zeroResult('partial',
+// ...) — route.ts:696-712 уже handles partial без падіння.
 export async function enrichContactsApify(
+  apiKey: string,
+  target: ApifyTarget,
+): Promise<ApifyEnrichResult> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeoutPromise = new Promise<ApifyEnrichResult>((resolve) => {
+    timeoutId = setTimeout(() => {
+      resolve(
+        zeroResult(
+          'partial',
+          0,
+          `APIFY_TIMEOUT_${Math.floor(APIFY_HARD_TIMEOUT_MS / 1000)}S — Apify exceeded ${APIFY_HARD_TIMEOUT_MS / 1000}s hard budget, skipped to protect Phase B (CEIDG_details + AI_business_analysis run next)`,
+          { timeout: true, target_name: target.name ?? null, target_nip: target.nip ?? null },
+        ),
+      )
+    }, APIFY_HARD_TIMEOUT_MS)
+  })
+  const result = await Promise.race([
+    enrichContactsApifyInternal(apiKey, target),
+    timeoutPromise,
+  ])
+  if (timeoutId !== undefined) clearTimeout(timeoutId)
+  return result
+}
+
+async function enrichContactsApifyInternal(
   apiKey: string,
   target: ApifyTarget,
 ): Promise<ApifyEnrichResult> {
