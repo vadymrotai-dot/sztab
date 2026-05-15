@@ -728,6 +728,16 @@ async function runPhaseB({
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  // Sprint S-MENU Day 2 (15.05.2026) — STEP 5.5/5.6 WRAPPED у async closure
+  // та DEFERRED до post-STEP-6.5. Reason: gates `isGastronomia` /
+  // `isHurtowniaLike` read `business_profile.client_type` — це поле AI
+  // WRITES у STEP 6.5. Original order had stale-read bug: new JDG-gastronomy
+  // clients (e.g. MARCIN BOROWY = Kemer Kebab via CEIDG koncesja) classified
+  // ПО STEP 6.5, але www_menu гасnув ще на STEP 5.5 — гате read stale/null
+  // client_type. Closure scope captures всі outer vars (params, supabase,
+  // clientId, nip, krsNumber, response, etc.) — JavaScript free-variable
+  // closures handle this automatically. Invoked after STEP 6.5 — line ~1180+.
+  const runDeferredMenuAndKrs = async (): Promise<void> => {
   // STEP 5.5/5.6 — Sprint S6D Day 2 conditional sources за client_type
   // ═══════════════════════════════════════════════════════════════════
   //
@@ -738,10 +748,7 @@ async function runPhaseB({
   // Gating logic uses business_profile.client_type якщо classified, else
   // falls back до PKD-based heuristic (lib/pkd/getHorecaCategory).
   //
-  // NOTE: AI Business Analysis runs у STEP 6.5 (нижче) — на момент Day 2
-  // execution, business_profile.client_type вже buв (а) backfilled через
-  // keyword script, або (б) додано через попередній Phase B run, або (в)
-  // null (нові клієнти). PKD fallback handles випадок (в).
+  // Sprint S-MENU Day 2: fresh re-fetch tep — AI just wrote business_profile.
 
   // Load client business_profile + pkd_main для gating decisions.
   const { data: clientGate } = await supabase
@@ -823,12 +830,18 @@ async function runPhaseB({
         // Sprint S6D Day 3 — source reflects extraction path для UI
         // transparency. 'www_menu' для static_html_ai, 'wedo_pdf_menu'
         // для pdf_wedo, 'www_menu_blocked' для upmenu_blocked.
+        // Sprint S-MENU Day 2 (15.05.2026) — added 'restaumatic_menu' branch
+        // для new JSON-LD fast path (zero AI cost). enrichment_log буде
+        // показувати source='restaumatic_menu' замість generic 'www_menu',
+        // що дозволяє track impact Restaumatic-driven extractions.
         const dbSource =
-          result.source === 'pdf_wedo'
-            ? 'wedo_pdf_menu'
-            : result.source === 'upmenu_blocked'
-              ? 'www_menu_blocked'
-              : 'www_menu'
+          result.source === 'restaumatic_jsonld'
+            ? 'restaumatic_menu'
+            : result.source === 'pdf_wedo'
+              ? 'wedo_pdf_menu'
+              : result.source === 'upmenu_blocked'
+                ? 'www_menu_blocked'
+                : 'www_menu'
         await supabase.from('contact_enrichment').upsert(
           {
             target_type: 'client',
@@ -1075,6 +1088,7 @@ async function runPhaseB({
           : 'gating skipped',
     })
   }
+  } // end runDeferredMenuAndKrs (Sprint S-MENU Day 2 — invoked post STEP 6.5)
 
   // ─── STEP 6.4: CEIDG firma details (JDG only) ───
   // Sprint S-CEIDG-DETAILS Day 1 (15.05.2026) — closes JDG↔brand gap.
@@ -1167,6 +1181,22 @@ async function runPhaseB({
     }
   } catch (err) {
     response.errors.push(`AI: ${err instanceof Error ? err.message : err}`)
+  }
+
+  // ─── STEP 6.7: deferred menu + KRS-fullnames (Sprint S-MENU Day 2 fix) ───
+  // Gates `isGastronomia`/`isHurtowniaLike` read FRESH business_profile.client_type
+  // (just written by AI у STEP 6.5). Wraps existing 5.5/5.6 logic як closure
+  // defined ~line 731. JDG gastronomy clients (CEIDG-classified) тепер catch
+  // www_menu/Wolt/Restaumatic menu extraction. Hurtownia clients catch
+  // krs-fullnames deanonymization correctly. Try/catch protects STEP 6/7
+  // from any closure-throw.
+  try {
+    await runDeferredMenuAndKrs()
+  } catch (err) {
+    console.error('[PhaseB] runDeferredMenuAndKrs failed:', err)
+    response.errors.push(
+      `deferred menu/krs: ${err instanceof Error ? err.message : String(err)}`,
+    )
   }
 
   // ─── STEP 6 final: re-compute matches (тепер з business_profile niche bonus) ───

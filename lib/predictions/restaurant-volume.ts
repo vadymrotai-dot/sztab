@@ -47,6 +47,29 @@ const CONVERSION_HIGH = 25
 const MIN_MONTHS_OPEN = 3
 const MAX_MONTHS_OPEN = 60
 
+// Sprint S-MENU Day 2 (15.05.2026) — baseline visits-per-location-per-month
+// фallback для cases де gmaps_reviews_count=0 (Apify timeout, актор fail,
+// чи маленька restauracja без Google reviews). Subtype-aware bo:
+//   - kawiarnia: ранкові кофеїни + ланчі = висока частота
+//   - kebabnia: middle (квартирна + delivery)
+//   - pizzeria: трохи більше (family dinners, big orders)
+//   - sushi_bar: lower frequency (premium positioning)
+//   - bar_mleczny: high (cheap daily lunch regulars)
+//   - fine_dining: low (occasional/special)
+// Formula: visits_baseline = BASELINE × location_count × subtype_freq
+// Tagged як confidence_tier='baseline_no_traffic_data' у formula_params —
+// UI може show tooltip "Brak danych GMaps — szacunek baseline".
+const BASELINE_VISITS_PER_LOCATION: Record<RestaurantSubtype, number> = {
+  sushi_bar: 350,
+  pizzeria: 600,
+  kebabnia: 500,
+  bar_mleczny: 700,
+  kawiarnia: 800,
+  restauracja: 450,
+  fine_dining: 200,
+  inne: 400,
+}
+
 export interface VolumeInput {
   client_type: 'gastronomia' | string
   client_subtype: string | null
@@ -68,13 +91,23 @@ export interface VolumePrediction {
   subtype_used: RestaurantSubtype
   /** Effective months used after clamping. */
   months_used: number
-  formula_version: 'v1.0'
+  /** Sprint S-MENU Day 2 (15.05.2026) — formula version bump v1.0 → v1.1
+   *  бо новий baseline branch може return non-review-based estimates. */
+  formula_version: 'v1.0' | 'v1.1'
+  /** Sprint S-MENU Day 2 — track which branch produced the result:
+   *  - 'gmaps_reviews': normal flow (reviews_count > 0)
+   *  - 'baseline_no_traffic_data': fallback з BASELINE_VISITS_PER_LOCATION
+   *    (gmaps_reviews_count=0 or null, e.g. Apify timeout).
+   *  UI може show low-confidence badge для baseline tier. */
+  confidence_tier: 'gmaps_reviews' | 'baseline_no_traffic_data'
   formula_params: {
     conversion_low: number
     conversion_mid: number
     conversion_high: number
     subtype_frequency: number
     location_multiplier: number
+    /** Sprint S-MENU Day 2 — baseline used (when confidence_tier='baseline'). */
+    baseline_visits_per_location?: number
   }
 }
 
@@ -104,21 +137,54 @@ function normalizeSubtype(raw: string | null | undefined): RestaurantSubtype {
   return 'inne'
 }
 
-/** Public entry — calculate monthly volume prediction from review velocity. */
+/** Public entry — calculate monthly volume prediction from review velocity.
+ *  Sprint S-MENU Day 2 (15.05.2026) — added baseline fallback branch для
+ *  cases де reviews_count=0 (Apify timeout, нова restauracja без Google
+ *  reviews). Returns confidence_tier= 'baseline_no_traffic_data' з visits
+ *  obliczоnym з BASELINE_VISITS_PER_LOCATION map. */
 export function calculateMonthlyVolume(input: VolumeInput): VolumePrediction {
   const subtype = normalizeSubtype(input.client_subtype)
   const months = clampMonths(input.months_since_open)
   const reviews = Number.isFinite(input.reviews_count) ? Math.max(0, input.reviews_count) : 0
-  const monthlyReviews = reviews / months
+  const locationMultiplier = Math.max(1, input.location_count || 1)
+  const subtypeFreq = SUBTYPE_FREQUENCY[subtype]
 
+  // Sprint S-MENU Day 2 — baseline branch коли reviews missing/zero.
+  // Без цього branch вся ingredient prediction = 0g (visits_mid множить на 0).
+  if (reviews === 0) {
+    const baseline = BASELINE_VISITS_PER_LOCATION[subtype] ?? BASELINE_VISITS_PER_LOCATION.inne
+    const visits_baseline = Math.round(baseline * locationMultiplier)
+    // Customers approximation (reverse formula): visits / subtypeFreq
+    const customers_baseline = Math.round(visits_baseline / Math.max(0.1, subtypeFreq))
+    return {
+      // Span low/mid/high ±40% wider бо baseline less precise
+      customers_low: Math.round(customers_baseline * 0.6),
+      customers_mid: customers_baseline,
+      customers_high: Math.round(customers_baseline * 1.4),
+      visits_mid: visits_baseline,
+      monthly_reviews: 0,
+      subtype_used: subtype,
+      months_used: months,
+      formula_version: 'v1.1',
+      confidence_tier: 'baseline_no_traffic_data',
+      formula_params: {
+        conversion_low: CONVERSION_LOW,
+        conversion_mid: CONVERSION_MID,
+        conversion_high: CONVERSION_HIGH,
+        subtype_frequency: subtypeFreq,
+        location_multiplier: locationMultiplier,
+        baseline_visits_per_location: baseline,
+      },
+    }
+  }
+
+  // Normal flow — reviews-driven estimate
+  const monthlyReviews = reviews / months
   const customers_low = Math.round(monthlyReviews * CONVERSION_LOW)
   const customers_mid = Math.round(monthlyReviews * CONVERSION_MID)
   const customers_high = Math.round(monthlyReviews * CONVERSION_HIGH)
-
   // Location multiplier — chain з N locations expected N× visits per location.
   // Apply на final visits, не customers (each location attracts own clientele).
-  const locationMultiplier = Math.max(1, input.location_count || 1)
-  const subtypeFreq = SUBTYPE_FREQUENCY[subtype]
   const visits_mid = Math.round(customers_mid * subtypeFreq * locationMultiplier)
 
   return {
@@ -129,7 +195,8 @@ export function calculateMonthlyVolume(input: VolumeInput): VolumePrediction {
     monthly_reviews: Math.round(monthlyReviews * 10) / 10,
     subtype_used: subtype,
     months_used: months,
-    formula_version: 'v1.0',
+    formula_version: 'v1.1',
+    confidence_tier: 'gmaps_reviews',
     formula_params: {
       conversion_low: CONVERSION_LOW,
       conversion_mid: CONVERSION_MID,

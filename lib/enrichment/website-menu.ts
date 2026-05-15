@@ -29,6 +29,12 @@
 //   - Result.source enum tells UI which path produced dishes.
 
 import { callAI, AI_MODELS, extractJSON } from '@/lib/ai-providers'
+// Sprint S-MENU Day 2 (15.05.2026) — Restaumatic JSON-LD fast path.
+// Restaumatic powers ~30-50% PL gastronomia; sites embed full schema.org
+// Restaurant з hasMenu inline у HTML. NO AI cost, ZERO Apify dependency.
+// MUST be tried PERSE UpMenu detector (Restaumatic + UpMenu false-positive
+// risk у footer scripts).
+import { extractRestaumaticMenu } from '@/lib/enrichment/restaumatic-menu'
 
 const MENU_PATHS = [
   '/menu',
@@ -60,12 +66,20 @@ export interface WebsiteMenuExtractResult {
   content_type: 'html' | 'pdf' | 'unknown' | null
   /** Sprint S6D Day 3 — track which extraction path produced dishes,
    *  exposed do UI для transparency.
+   *  - 'restaumatic_jsonld': Sprint S-MENU Day 2 — Restaumatic platform
+   *     detected, JSON-LD з hasMenu parsed inline (no AI, no Apify)
    *  - 'static_html_ai': existing path (HTML → AI Haiku)
    *  - 'pdf_wedo': PDF detected → wedo_software actor OCR
    *  - 'upmenu_blocked': UpMenu iframe detected → no extraction (defer to GMaps)
    *  - 'no_match': no path returned dishes
    *  - 'error': fatal */
-  source: 'static_html_ai' | 'pdf_wedo' | 'upmenu_blocked' | 'no_match' | 'error'
+  source:
+    | 'restaumatic_jsonld'
+    | 'static_html_ai'
+    | 'pdf_wedo'
+    | 'upmenu_blocked'
+    | 'no_match'
+    | 'error'
   dishes: WebsiteMenuDish[]
   cost_usd: number
   error?: string
@@ -303,6 +317,45 @@ export async function extractMenuFromWebsite(
     result.source = 'error'
     result.error = `invalid URL: ${websiteUrl.slice(0, 80)}`
     return result
+  }
+
+  // Sprint S-MENU Day 2 (15.05.2026) — Restaumatic JSON-LD fast path.
+  // Try BEFORE existing path loop (Vadym constraint: Restaumatic check first,
+  // UpMenu check second — avoid false-positive UpMenu signature inside
+  // Restaumatic-hosted sites' footer scripts).
+  // - status='success' → return immediately з parsed dishes
+  // - status='not_restaumatic' → fall through до existing path-walking
+  // - status='partial' OR 'error' (timeout, fetch fail) → log error,
+  //   fall through (Restaumatic detected але pipeline incomplete — give
+  //   AI Haiku path a chance)
+  try {
+    const restaumatic = await extractRestaumaticMenu(base.origin)
+    if (restaumatic.status === 'success' && restaumatic.dishes.length > 0) {
+      result.source = 'restaumatic_jsonld'
+      result.matched_path = restaumatic.source_url
+        ? new URL(restaumatic.source_url).pathname
+        : null
+      result.content_type = 'html'
+      result.pages_fetched.push(result.matched_path ?? '/')
+      result.dishes = restaumatic.dishes.map((d) => ({
+        name_pl: d.name,
+        price_pln: d.price_pln,
+        category: d.section,
+        description: d.description,
+        confidence: 0.95, // JSON-LD structured data — high confidence
+      }))
+      // No AI cost — JSON-LD parse is free (just HTTP fetch). Leave 0.
+      return result
+    }
+    // status='not_restaumatic' OR 'partial'/'error' — preserve error context
+    // for downstream debugging, then proceed з existing logic
+    if (restaumatic.status !== 'not_restaumatic' && restaumatic.error) {
+      console.warn('[website-menu] Restaumatic fast path failed:', restaumatic.error)
+    }
+  } catch (err) {
+    // Defensive — extractRestaumaticMenu has its own Promise.race, але
+    // якщо unexpected throw — continue до slow path замість crash
+    console.warn('[website-menu] Restaumatic extractor threw:', err)
   }
 
   let matchedHtml: string | null = null
