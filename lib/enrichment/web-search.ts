@@ -119,6 +119,15 @@ export const AGGREGATOR_BLOCKLIST = [
   'glovo.com',
   'bolt.eu',
   'bolt.food',
+  // Sprint S-MENU Day 4.1 (16.05.2026) — Day 4 WWW=4 audit найшов pollution
+  // у active company_profile_fields[website] rows. Pre-emptive cleanup перш
+  // ніж mass bulk-reanalyze run — щоб нові analyses не pick same junk.
+  // Sample: 5 з 15 WWW=4 active rows = aggregator (33% pollution rate).
+  'krs-online.com.pl',   // KRS reseller scraper aggregator
+  'yellowpages.pl',      // PL parallel до global yellowpages.com
+  'wiadomoscihandlowe.pl', // PL B2B trade publication, mention-based
+  'nipregon.pl',         // registry aggregator
+  'targeo.pl',           // map service aggregator (covers mapa.targeo.pl etc.)
 ]
 
 export function isAggregator(host: string): boolean {
