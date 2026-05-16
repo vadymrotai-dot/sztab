@@ -34,19 +34,28 @@ export const SOURCE_PRIORITIES: Record<string, number> = {
   // (priority < existing). Раining до 5 (= manual_override) дозволяє
   // brand-aware discovery wins над naive 'WWW' (4). Priority collision
   // з manual_override impossible because STEP 6.6 gate checks
-  // websiteIsManual=true і skips entirely. CASCADE:
+  // websiteIsManual=true і skips entirely.
+  //
+  // Sprint S-MENU Day 4.1.1 (16.05.2026) — BUMPED Apify_GMaps from 4 to 5.
+  // Day 4.1 batch 1 revealed Domek Sushi case: Apify_GMaps wrote real website
+  // (domeksushi.pl) at t=14:32, later WWW=4 wrote krs-online.com.pl at t=18:00.
+  // Tie-break "newer wins" дозволив pollution супер sede real data. Apify GMaps
+  // website = Google Business Profile self-reported by owner → high trust, same
+  // tier як user manual override та brand-aware Tavily.
+  //
+  // CASCADE (after Day 4.1.1):
   //   10  KRS / sprawozdania_KRS / MSiG  (official registries)
   //    9  GUS
   //    8  CEIDG
   //    7  VAT_BL
   //    6  BZP
-  //    5  manual_override / manual_legacy / tavily_brand  (CEIDG-driven)
-  //    4  WWW / Apify_GMaps  (naive Tavily + Apify)
+  //    5  manual_override / manual_legacy / tavily_brand / Apify_GMaps
+  //    4  WWW  (naive Tavily only)
   //    3  AI
   tavily_brand: 5,
-  Apify_GMaps: 4,
+  Apify_GMaps: 5,
   AI: 3,
-  WWW: 4, // Website extraction — same tier as Apify
+  WWW: 4, // Naive Tavily (no brand context) — lowest auto tier
   sprawozdania_KRS: 9, // Same as GUS — official filings
   MSiG: 9, // Same as GUS — official Monitor publication
 }

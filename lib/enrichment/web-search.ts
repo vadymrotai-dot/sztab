@@ -128,6 +128,14 @@ export const AGGREGATOR_BLOCKLIST = [
   'wiadomoscihandlowe.pl', // PL B2B trade publication, mention-based
   'nipregon.pl',         // registry aggregator
   'targeo.pl',           // map service aggregator (covers mapa.targeo.pl etc.)
+  // Sprint S-MENU Day 4.1.1 (16.05.2026) — Day 4.1 batch 1 (3 candidates) revealed
+  // gaps. Recent enrichment_log scan: oceniamy.to 2x + bizraport.pl 2x recurring
+  // як WWW=4 picks across clients. restauracja.pl picked для PJ Rawa via
+  // tavily_brand path — missing variant of restauracje.pl (plural was blocked,
+  // singular not). All three confirmed як aggregators, NOT speculative.
+  'restauracja.pl',      // food directory aggregator (singular variant of restauracje.pl)
+  'oceniamy.to',         // review aggregator (PL business ratings)
+  'bizraport.pl',        // business report aggregator
 ]
 
 export function isAggregator(host: string): boolean {
