@@ -1366,6 +1366,11 @@ async function runPhaseB({
                 city_source: bcr?.city ? 'clients' : (resolvedCity ? 'brand_aliases_address' : 'none'),
                 query_sent: result.query_sent,
                 candidates_considered: result.candidates_considered,
+                // Sprint S-MENU Day 4.2 (16.05.2026) — top 3 non-aggregator
+                // candidates з brand_slug_boost breakdown. Visible коли floor
+                // rejection (boost=0) — explains чому brand search failed.
+                // PJ Rawa example: znanylekarz.pl tavily=0.85 boost=0 → rejected.
+                top_candidates: result.top_candidates ?? null,
               },
               // Sprint S-MENU Day 3 TSC fix: BrandSearchResult.error is
               // `string | null`, finishEnrichmentRun expects `string | undefined`.

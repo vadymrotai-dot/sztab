@@ -444,8 +444,13 @@ export async function searchCompanyOnline(
 //   1. Tavily query з brand + city + menu/oferta keywords (no site: operator —
 //      Tavily НЕ honors Google-style site: filter, kills results to 0)
 //   2. Filter results через AGGREGATOR_BLOCKLIST
-//   3. Score candidates: domain контаining brand slug substring boosts +5
-//   4. Return best-scoring non-aggregator domain
+//   3. Score candidates: domain контаining brand slug substring boosts +3/+5
+//   4. Sprint S-MENU Day 4.2 (16.05.2026) — REQUIRE brandSlugBoost > 0 floor.
+//      Day 4.1.1 PJ Rawa case proved blocklist alone insufficient: znanylekarz.pl
+//      (medical aggregator missing з list) won over restauracja.pl pollution. Now
+//      ВСІ candidates з boost=0 (zero brand similarity) rejected. Returns status=
+//      partial + top_candidates debug. Prevents whack-a-mole blocklist additions.
+//   5. Return best-scoring brand-matching non-aggregator domain
 //
 // Outer Promise.race(15s) — захист Phase B budget.
 export interface BrandSearchResult {
@@ -456,6 +461,11 @@ export interface BrandSearchResult {
    *  для debug visibility. Caller (STEP 6.6 у lookup/route.ts) writes це
    *  до enrichment_log raw_payload to diagnose 0-results / wrong-pick cases. */
   query_sent: string | null
+  /** Sprint S-MENU Day 4.2 (16.05.2026) — top 3 non-aggregator candidates з
+   *  scoring breakdown. Surfaced у raw_payload коли status=partial з floor=0
+   *  rejection (no brand-matching domain). Allows debug чому brand search
+   *  failed — e.g. "all candidates were medical/legal aggregators". */
+  top_candidates?: Array<{ host: string; tavily_score: number; brand_slug_boost: number }>
   error: string | null
   status: 'success' | 'partial' | 'error'
 }
@@ -555,7 +565,14 @@ async function searchCompanyByBrandInternal(
     return 0
   }
 
-  let best: { url: string; score: number } | null = null
+  // Sprint S-MENU Day 4.2 (16.05.2026) — collect all scored non-aggregator
+  // candidates first, потім apply brandSlugBoost > 0 FLOOR. Day 4.1.1 PJ Rawa
+  // case proved "best non-aggregator" дозволяє ЛЮБОМУ domain win, навіть з
+  // ZERO brand similarity (znanylekarz.pl won over real restaurants для
+  // "RAWA GASTRO" — medical "gastro" specialty collision). Floor = require
+  // host to contain at least one brand token slice (boost > 0).
+  type Scored = { url: string; host: string; tavilyScore: number; brandSlugBoost: number; totalScore: number }
+  const scored: Scored[] = []
   for (const r of results) {
     let host: string
     try {
@@ -577,22 +594,45 @@ async function searchCompanyByBrandInternal(
     // Google Maps / search aggregator
     if (host.includes('google.com') || host.includes('goo.gl')) continue
 
-    let score = typeof r.score === 'number' ? r.score : 0.5
-    score += computeBrandSlugBoost(host)
-    // Tavily score range typically 0-1; brand bonus dominates коли it fires
-    if (!best || score > best.score) {
-      try {
-        const u = new URL(r.url)
-        best = { url: `${u.protocol}//${u.host}`, score }
-      } catch {
-        continue
-      }
+    const tavilyScore = typeof r.score === 'number' ? r.score : 0.5
+    const brandSlugBoost = computeBrandSlugBoost(host)
+    let normalizedUrl = r.url
+    try {
+      const u = new URL(r.url)
+      normalizedUrl = `${u.protocol}//${u.host}`
+    } catch {
+      continue
     }
+    scored.push({
+      url: normalizedUrl,
+      host,
+      tavilyScore,
+      brandSlugBoost,
+      totalScore: tavilyScore + brandSlugBoost,
+    })
   }
 
-  if (best) {
+  // Sort all candidates desc для debug surfacing (top 3 у partial branch)
+  scored.sort((a, b) => b.totalScore - a.totalScore)
+  out.top_candidates = scored.slice(0, 3).map((s) => ({
+    host: s.host,
+    tavily_score: Number(s.tavilyScore.toFixed(3)),
+    brand_slug_boost: s.brandSlugBoost,
+  }))
+
+  // FLOOR — only candidates з brandSlugBoost > 0 (домен містить brand token)
+  const brandMatching = scored.filter((s) => s.brandSlugBoost > 0)
+
+  if (brandMatching.length > 0) {
+    const best = brandMatching[0] // already sorted desc by totalScore
     out.website_url = best.url
     out.status = 'success'
+  } else if (scored.length > 0) {
+    // Sprint S-MENU Day 4.2 — non-empty candidate pool, але всі мали boost=0.
+    // Це pollution mode (PJ Rawa-style): blocklist passed, але ZERO brand sim.
+    // Return partial з top_candidates для visibility.
+    out.error = `no brand-matching domain for "${cleanBrand}" (${scored.length} non-aggregator candidates, all з brand_slug_boost=0)`
+    out.status = 'partial'
   } else {
     out.error = `no non-aggregator results matching brand "${cleanBrand}"`
     out.status = 'partial'
