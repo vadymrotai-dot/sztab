@@ -134,6 +134,18 @@ export interface ApifyEnrichResult {
    *  3-5 dishes typical (Google rendert "popular" subset). Full menu — WWW
    *  fallback. */
   menu_dishes: ApifyMenuDish[]
+  /** Sprint S-DISCOVERY.1 (16.05.2026) — extracted brand name from Google
+   *  Business Profile title. Cleaned (legal forms + trailing city stripped).
+   *  Source: best.title коли status='success' AND name_similarity > 0.5.
+   *  Use case: brand cascade fallback у STEP 6.6 (lookup/route.ts) коли CEIDG
+   *  no koncesja AND AI extracted_brand low confidence (Domek Sushi class).
+   *  null коли status≠success або similarity threshold не passed або title
+   *  empty after cleaning. */
+  business_name: string | null
+  /** Sprint S-DISCOVERY.1 — Google verified business category (e.g. "Sushi",
+   *  "Hurtownia owoców i warzyw"). Bonus signal for product matching algo.
+   *  null коли Apify не повертає або status≠success. */
+  business_category: string | null
   raw_payload: unknown
   cost_usd: number
   error_message?: string
@@ -411,6 +423,16 @@ async function enrichContactsApifyInternal(
     status = hasContact ? 'success' : 'partial'
   }
 
+  // Sprint S-DISCOVERY.1 (16.05.2026) — extract business_name з best.title
+  // Gates: status='success' AND name_similarity >= 0.5. Skip коли phone-match
+  // override (different location, brand may differ). Cleaning strips PL legal
+  // forms + trailing city. business_category = Google verified category.
+  const business_name =
+    status === 'success' && picked.name_similarity >= NAME_SIMILARITY_THRESHOLD
+      ? cleanBusinessName(best.title ?? '', target.city ?? null)
+      : null
+  const business_category = best.categoryName ?? null
+
   return {
     status,
     phone,
@@ -420,6 +442,8 @@ async function enrichContactsApifyInternal(
     gmaps_rating,
     gmaps_reviews_count,
     menu_dishes,
+    business_name,
+    business_category,
     raw_payload: {
       query,
       best,
@@ -441,6 +465,27 @@ function parsePricePln(raw: number | string | null | undefined): number | null {
   const cleaned = raw.replace(/[^\d,.\-]/g, '').replace(',', '.')
   const n = parseFloat(cleaned)
   return Number.isFinite(n) ? n : null
+}
+
+/** Sprint S-DISCOVERY.1 (16.05.2026) — clean Apify GMaps title для use as
+ *  brand_aliases cascade entry. Strips:
+ *    1. Polish legal forms: "Sp. z o.o.", "S.A.", "Spółka z ogr...", etc.
+ *    2. Trailing city suffix (e.g. "Domek Sushi Piaseczno" → "Domek Sushi")
+ *  Returns null коли empty after cleaning. */
+function cleanBusinessName(rawTitle: string, city: string | null): string | null {
+  if (!rawTitle?.trim()) return null
+  let s = rawTitle.trim()
+  // Strip PL legal forms (case-insensitive, anywhere — usually trailing)
+  s = s.replace(/\s+(sp\.?\s*z\s*o\.?\s*o\.?|s\.?\s*a\.?|spółka\s+z\s+ograniczoną\s+odpowiedzialnością)\.?$/iu, '')
+  // Strip 1 inner "Sp. z o.o." якщо followed by suffix (e.g. "Foo Sp. z o.o. Warszawa")
+  s = s.replace(/\s+(sp\.?\s*z\s*o\.?\s*o\.?|s\.?\s*a\.?|spółka\s+z\s+ograniczoną\s+odpowiedzialnością)\.?\s+/iu, ' ')
+  // Strip trailing city (case-insensitive, with optional comma)
+  if (city) {
+    const cityEscaped = city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    s = s.replace(new RegExp(`[,\\s]+${cityEscaped}\\s*$`, 'iu'), '')
+  }
+  s = s.replace(/\s+/g, ' ').trim()
+  return s.length > 0 ? s : null
 }
 
 /** Defensive menu extraction — actor schema for menus undocumented.
@@ -477,6 +522,8 @@ function zeroResult(
     gmaps_rating: null,
     gmaps_reviews_count: null,
     menu_dishes: [],
+    business_name: null,
+    business_category: null,
     raw_payload: raw ?? null,
     cost_usd: Math.round(cost * 10000) / 10000,
     error_message: error,

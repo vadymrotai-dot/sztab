@@ -559,6 +559,14 @@ async function runPhaseB({
     errors: [],
   }
 
+  // Sprint S-DISCOVERY.1 (16.05.2026) — Apify GMaps title surfaced for brand
+  // cascade у STEP 6.6. Set у STEP 5 (Apify block) коли status='success' AND
+  // name_similarity ≥ 0.5. Used у STEP 6.6 cascade між CEIDG koncesja (priority
+  // 1) і AI extracted_brand (priority 3). Domek Sushi-style cases (no CEIDG
+  // koncesja, real GMaps presence) tepr win brand-aware Tavily.
+  let apifyBusinessName: string | null = null
+  let apifyBusinessCategory: string | null = null
+
   // ─── STEP 3: Buying signals (BZP + rejestr.io v2 comprehensive, parallel) ───
   // Sprint S1 Phase 4: replaced legacy fetchSprawozdania/fetchMsigChanges
   // з comprehensive runRejestrioStep що handles wszystkie 9 v2 endpoints.
@@ -704,6 +712,12 @@ async function runPhaseB({
             if (result.website) fields.push({ field_key: 'website', value: { value_text: result.website } })
             if (fields.length > 0) await upsertFields(supabase, { type: 'client', id: clientId }, fields, 'Apify_GMaps')
           }
+          // Sprint S-DISCOVERY.1 — surface Apify business_name + category для
+          // brand cascade у STEP 6.6. business_name gated на success+similarity у
+          // apify.ts mapper, тому null для partial/no_match/error без додаткової
+          // logic тут. Persists у scope-level let-variable across runPhaseB.
+          apifyBusinessName = result.business_name
+          apifyBusinessCategory = result.business_category
           response.sources_completed.push({
             source: 'Apify_GMaps',
             status: result.status === 'success' || result.status === 'partial' ? 'success' : 'partial',
@@ -1237,15 +1251,24 @@ async function runPhaseB({
 
       // Sprint S-MENU Day 3.1.1 — cascading brand lookup.
       // PRIMARY: CEIDG koncesja brand (high quality — alcohol license signal).
-      // FALLBACK: AI-extracted brand from clients.title (covers 70-95% gap —
-      // gastronomy JDG without koncesja + sp.z o.o. без CEIDG data). Confidence
-      // gate excludes 'low' (surname false-positive guard).
+      // FALLBACK 1: Apify GMaps business_name (Sprint S-DISCOVERY.1, 16.05.2026)
+      //   — Google verified business name, cleaned legal forms + city. Used коли
+      //   CEIDG no koncesja (sushi, kawiarnia, etc. без alcohol license). Domek
+      //   Sushi class: Apify title "Domek Sushi Piaseczno" → brand "Domek Sushi"
+      //   → Tavily knows domeksushi.pl з slug boost 5 (Day 4.2 floor passes).
+      // FALLBACK 2: AI-extracted brand from clients.title (covers remaining gap
+      //   — gastronomy JDG без CEIDG + без Apify match). Confidence gate excludes
+      //   'low' (surname false-positive guard).
       let primaryBrand: string | null = null
-      let brandSource: 'ceidg_koncesja' | 'ai_extracted' | 'none' = 'none'
+      let brandSource: 'ceidg_koncesja' | 'apify_gmaps' | 'ai_extracted' | 'none' = 'none'
       const ceidgBrand = brandAliases[0]?.brand
       if (ceidgBrand && ceidgBrand.trim().length > 0) {
         primaryBrand = ceidgBrand.trim()
         brandSource = 'ceidg_koncesja'
+      } else if (apifyBusinessName && apifyBusinessName.trim().length > 0) {
+        // Sprint S-DISCOVERY.1 — Apify GMaps title (gated на success+similarity)
+        primaryBrand = apifyBusinessName.trim()
+        brandSource = 'apify_gmaps'
       } else {
         const aiBrand = bcr?.business_profile?.extracted_brand
         const aiConf = bcr?.business_profile?.extracted_brand_confidence
@@ -1386,13 +1409,14 @@ async function runPhaseB({
       } else {
         // Sprint S-MENU Day 3.1.1 — skip reason now reflects both brand sources
         // (CEIDG koncesja + AI extracted_brand). Empty means BOTH failed.
+        // Sprint S-DISCOVERY.1 (16.05.2026) — also mentions Apify (3rd source).
         const aiBrand = bcr?.business_profile?.extracted_brand
         const aiConf = bcr?.business_profile?.extracted_brand_confidence
         const aiBrandLow = typeof aiBrand === 'string' && aiBrand.trim().length > 0 && aiConf === 'low'
         const skipReason = !primaryBrand
           ? aiBrandLow
-            ? `AI extracted_brand="${aiBrand}" but confidence=low (treated as surname/generic)`
-            : 'brand_aliases empty (CEIDG no koncesja) AND AI extracted_brand=null'
+            ? `AI extracted_brand="${aiBrand}" but confidence=low (treated as surname/generic); CEIDG empty; Apify business_name empty`
+            : 'brand_aliases empty (CEIDG no koncesja) AND Apify business_name=null AND AI extracted_brand=null'
           : websiteIsManual
             ? `website set manually (source=${currentSource})`
             : currentWebsite && !websiteIsAggregator
