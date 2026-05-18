@@ -86,14 +86,44 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   }
   const input = parsed.data
 
-  const supabase = createAdminClient()
+  let supabase
+  try {
+    supabase = createAdminClient()
+  } catch (e: any) {
+    console.error('[orders][token][POST] admin client init failed', {
+      message: e?.message,
+      key_set: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      url_set: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+    })
+    return NextResponse.json(
+      { ok: false, error: 'Configuration error', debug: e?.message },
+      { status: 500 },
+    )
+  }
 
   // Load order draft
-  const { data: order } = await supabase
+  const { data: order, error: loadErr } = await supabase
     .from('orders')
     .select('id, status')
     .eq('access_token', token)
     .maybeSingle()
+  if (loadErr) {
+    console.error('[orders][token][POST] DB load failed', {
+      token: token.substring(0, 8) + '...',
+      error_code: (loadErr as any).code,
+      error_message: loadErr.message,
+      error_details: (loadErr as any).details,
+      error_hint: (loadErr as any).hint,
+      key_length: process.env.SUPABASE_SERVICE_ROLE_KEY?.length,
+      key_dots: process.env.SUPABASE_SERVICE_ROLE_KEY?.split('.').length,
+      key_prefix: process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20),
+      url_set: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+    })
+    return NextResponse.json(
+      { ok: false, error: 'Błąd bazy danych', debug: loadErr.message },
+      { status: 500 },
+    )
+  }
   if (!order) {
     return NextResponse.json(
       { ok: false, error: 'Zamówienie nie zostało znalezione' },

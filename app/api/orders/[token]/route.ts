@@ -31,7 +31,20 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     )
   }
 
-  const supabase = createAdminClient()
+  let supabase
+  try {
+    supabase = createAdminClient()
+  } catch (e: any) {
+    console.error('[orders][token][GET] admin client init failed', {
+      message: e?.message,
+      key_set: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      url_set: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+    })
+    return NextResponse.json(
+      { ok: false, error: 'Configuration error', debug: e?.message },
+      { status: 500 },
+    )
+  }
 
   // Load order draft by access_token
   const { data: order, error: orderErr } = await supabase
@@ -42,8 +55,19 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     .eq('access_token', token)
     .maybeSingle()
   if (orderErr) {
+    console.error('[orders][token][GET] DB query failed', {
+      token: token.substring(0, 8) + '...',
+      error_code: (orderErr as any).code,
+      error_message: orderErr.message,
+      error_details: (orderErr as any).details,
+      error_hint: (orderErr as any).hint,
+      key_length: process.env.SUPABASE_SERVICE_ROLE_KEY?.length,
+      key_dots: process.env.SUPABASE_SERVICE_ROLE_KEY?.split('.').length,
+      key_prefix: process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20),
+      url_set: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+    })
     return NextResponse.json(
-      { ok: false, error: 'Błąd bazy danych' },
+      { ok: false, error: 'Błąd bazy danych', debug: orderErr.message },
       { status: 500 },
     )
   }
