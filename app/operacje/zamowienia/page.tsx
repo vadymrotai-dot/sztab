@@ -3,6 +3,7 @@
 // Server Component fetches all orders + clients JOIN, delegates UI до OrdersList.
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { OrdersList } from '@/components/operacje/orders-list'
 
@@ -10,13 +11,16 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export default async function ZamowieniaPage() {
+  // Auth check через anon client (cookies-based session)
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  const { data: orders, error } = await supabase
+  // Data fetch через admin client (bypass RLS — admin view має бачити всі orders)
+  const admin = createAdminClient()
+  const { data: orders, error } = await admin
     .from('orders')
     .select(
       `
