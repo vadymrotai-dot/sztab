@@ -598,6 +598,15 @@ export function OrderForm({
             {submitResult.order_number}
           </div>
 
+          {contactEmail && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-left mb-4">
+              <div className="text-sm text-emerald-900">
+                📧 Faktura proforma została wysłana na adres{' '}
+                <strong className="break-all">{contactEmail}</strong>
+              </div>
+            </div>
+          )}
+
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-left mb-4">
             <div className="text-xs font-semibold text-slate-900 mb-2">Co dalej?</div>
             <ul className="text-xs text-slate-600 space-y-1.5">
