@@ -1,9 +1,10 @@
 // components/operacje/order-detail.tsx
 // Sprint S-ORDER.1.C.2 (19.05.2026) — admin order detail з status change + internal notes.
+// Sprint S-ORDER.1.C.3 (19.05.2026) — inline edit pozycji: qty change, delete, add new SKU.
 
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -26,6 +27,23 @@ type Item = {
   unit_price: number
   line_total: number
 }
+
+type AvailableProduct = {
+  id: string
+  name: string
+  display_name: string | null
+  gramatura: string | null
+  order_form_sort: number | null
+  price_maly_opt: number
+  price_sredni: number
+  price_duzy: number
+}
+
+const EDITABLE_STATUSES: OrderStatus[] = [
+  'submitted',
+  'confirmed',
+  'in_realization',
+]
 
 type Order = {
   id: string
@@ -111,13 +129,74 @@ function fmtDateOnly(iso: string | null): string {
   return new Date(iso).toLocaleDateString('pl-PL')
 }
 
-export function OrderDetail({ order }: { order: Order }) {
+export function OrderDetail({
+  order,
+  availableProducts,
+}: {
+  order: Order
+  availableProducts: AvailableProduct[]
+}) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [notes, setNotes] = useState(order.internal_notes || '')
   const [notesSaving, setNotesSaving] = useState(false)
   const [notesSaved, setNotesSaved] = useState(false)
   const [statusError, setStatusError] = useState<string | null>(null)
+  const [editMode, setEditMode] = useState(false)
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [itemBusy, setItemBusy] = useState<string | null>(null)
+
+  const canEdit = EDITABLE_STATUSES.includes(order.status)
+  const tier = order.tier_at_submit || 'maly'
+
+  const updateQty = async (itemId: string, newQty: number) => {
+    if (newQty < 1) return
+    setItemBusy(itemId)
+    const res = await fetch(`/api/orders/admin/${order.id}/items`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_id: itemId, qty: newQty }),
+    })
+    setItemBusy(null)
+    if (res.ok) {
+      router.refresh()
+    } else {
+      const data = await res.json().catch(() => ({}))
+      alert(data.error || 'Błąd zmiany ilości')
+    }
+  }
+
+  const deleteItem = async (itemId: string) => {
+    if (!confirm('Usunąć pozycję z zamówienia?')) return
+    setItemBusy(itemId)
+    const res = await fetch(`/api/orders/admin/${order.id}/items`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_id: itemId }),
+    })
+    setItemBusy(null)
+    if (res.ok) {
+      router.refresh()
+    } else {
+      const data = await res.json().catch(() => ({}))
+      alert(data.error || 'Błąd usuwania')
+    }
+  }
+
+  const addItem = async (productId: string, qty: number) => {
+    const res = await fetch(`/api/orders/admin/${order.id}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product_id: productId, qty }),
+    })
+    if (res.ok) {
+      setShowAddModal(false)
+      router.refresh()
+    } else {
+      const data = await res.json().catch(() => ({}))
+      alert(data.error || 'Błąd dodawania pozycji')
+    }
+  }
 
   const changeStatus = (newStatus: OrderStatus) => {
     if (!confirm(`Zmienić status na "${STATUS_INFO[newStatus].label}"?`)) return
@@ -195,8 +274,30 @@ export function OrderDetail({ order }: { order: Order }) {
         <div className="lg:col-span-2 space-y-4">
           {/* Items */}
           <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-2">
               <h2 className="font-semibold text-slate-900">Pozycje zamówienia</h2>
+              {canEdit && (
+                <div className="flex items-center gap-2">
+                  {editMode && (
+                    <button
+                      onClick={() => setShowAddModal(true)}
+                      className="text-xs px-3 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 font-semibold"
+                    >
+                      + Dodaj pozycję
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setEditMode(!editMode)}
+                    className={`text-xs px-3 py-1 rounded font-semibold transition ${
+                      editMode
+                        ? 'bg-slate-200 text-slate-900 hover:bg-slate-300'
+                        : 'bg-slate-900 text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    {editMode ? 'Zakończ edycję' : 'Edytuj pozycje'}
+                  </button>
+                </div>
+              )}
             </div>
             <table className="w-full text-sm">
               <thead className="text-xs text-slate-600 uppercase tracking-wider">
@@ -205,35 +306,79 @@ export function OrderDetail({ order }: { order: Order }) {
                   <th className="px-4 py-2 text-right">Ilość</th>
                   <th className="px-4 py-2 text-right">Cena</th>
                   <th className="px-4 py-2 text-right">Suma</th>
+                  {editMode && <th className="px-2 py-2 w-10"></th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {order.items.map((item) => (
-                  <tr key={item.id}>
-                    <td className="px-4 py-3">
-                      <div className="text-slate-900">{item.product_name_snapshot}</div>
-                      {item.gramatura_snapshot && (
-                        <div className="text-xs text-slate-500">
-                          {item.gramatura_snapshot}
+                {order.items.map((item) => {
+                  const busy = itemBusy === item.id
+                  return (
+                    <tr key={item.id} className={busy ? 'opacity-50' : ''}>
+                      <td className="px-4 py-3">
+                        <div className="text-slate-900">
+                          {item.product_name_snapshot}
                         </div>
+                        {item.gramatura_snapshot && (
+                          <div className="text-xs text-slate-500">
+                            {item.gramatura_snapshot}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right text-slate-900">
+                        {editMode ? (
+                          <div className="flex items-center gap-1 justify-end">
+                            <button
+                              onClick={() => updateQty(item.id, item.qty - 1)}
+                              disabled={item.qty <= 1 || busy}
+                              className="w-7 h-7 border border-slate-300 rounded text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+                            >
+                              −
+                            </button>
+                            <span className="w-12 text-center font-mono text-sm font-semibold">
+                              {item.qty}
+                            </span>
+                            <button
+                              onClick={() => updateQty(item.id, item.qty + 1)}
+                              disabled={busy}
+                              className="w-7 h-7 border border-slate-300 rounded text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+                            >
+                              +
+                            </button>
+                          </div>
+                        ) : (
+                          <>{item.qty} szt</>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right text-slate-600">
+                        {fmt(Number(item.unit_price))}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                        {fmt(Number(item.line_total))}
+                      </td>
+                      {editMode && (
+                        <td className="px-2 py-3 text-center">
+                          <button
+                            onClick={() => deleteItem(item.id)}
+                            disabled={busy || order.items.length <= 1}
+                            title={
+                              order.items.length <= 1
+                                ? 'Nie można usunąć ostatniej pozycji'
+                                : 'Usuń pozycję'
+                            }
+                            className="w-7 h-7 text-rose-600 hover:bg-rose-50 rounded disabled:opacity-30"
+                          >
+                            ×
+                          </button>
+                        </td>
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-right text-slate-900">
-                      {item.qty} szt
-                    </td>
-                    <td className="px-4 py-3 text-right text-slate-600">
-                      {fmt(Number(item.unit_price))}
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold text-slate-900">
-                      {fmt(Number(item.line_total))}
-                    </td>
-                  </tr>
-                ))}
+                    </tr>
+                  )
+                })}
               </tbody>
               <tfoot className="bg-slate-50 border-t-2 border-slate-300">
                 <tr>
                   <td
-                    colSpan={3}
+                    colSpan={editMode ? 4 : 3}
                     className="px-4 py-2 text-right text-sm text-slate-600"
                   >
                     Suma netto
@@ -244,7 +389,7 @@ export function OrderDetail({ order }: { order: Order }) {
                 </tr>
                 <tr>
                   <td
-                    colSpan={3}
+                    colSpan={editMode ? 4 : 3}
                     className="px-4 py-2 text-right text-sm text-slate-600"
                   >
                     VAT 5%
@@ -255,7 +400,7 @@ export function OrderDetail({ order }: { order: Order }) {
                 </tr>
                 <tr className="border-t border-slate-300">
                   <td
-                    colSpan={3}
+                    colSpan={editMode ? 4 : 3}
                     className="px-4 py-3 text-right font-bold text-slate-900"
                   >
                     Razem brutto
@@ -442,6 +587,147 @@ export function OrderDetail({ order }: { order: Order }) {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {showAddModal && (
+        <AddItemModal
+          availableProducts={availableProducts}
+          tier={tier}
+          onClose={() => setShowAddModal(false)}
+          onAdd={addItem}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── AddItemModal ──────────────────────────────────────────────────────────
+// 17 SKU list з search + qty input + click "Dodaj".
+
+function AddItemModal({
+  availableProducts,
+  tier,
+  onClose,
+  onAdd,
+}: {
+  availableProducts: AvailableProduct[]
+  tier: Tier
+  onClose: () => void
+  onAdd: (productId: string, qty: number) => Promise<void>
+}) {
+  const [search, setSearch] = useState('')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [qty, setQty] = useState(1)
+  const [submitting, setSubmitting] = useState(false)
+
+  const priceKey: 'price_maly_opt' | 'price_sredni' | 'price_duzy' =
+    tier === 'maly' ? 'price_maly_opt' : tier === 'sredni' ? 'price_sredni' : 'price_duzy'
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim()
+    if (!q) return availableProducts
+    return availableProducts.filter((p) => {
+      const name = (p.display_name || p.name).toLowerCase()
+      return name.includes(q) || (p.gramatura || '').toLowerCase().includes(q)
+    })
+  }, [availableProducts, search])
+
+  const submit = async () => {
+    if (!selectedId || qty < 1) return
+    setSubmitting(true)
+    await onAdd(selectedId, qty)
+    setSubmitting(false)
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+          <h2 className="font-semibold text-slate-900">Dodaj pozycję</h2>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="p-4 border-b border-slate-200">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Szukaj produktu..."
+            className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:border-slate-900"
+            autoFocus
+          />
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {filtered.length === 0 ? (
+            <div className="p-6 text-center text-sm text-slate-500">
+              Brak produktów pasujących do "{search}"
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {filtered.map((p) => {
+                const isSelected = selectedId === p.id
+                const price = Number((p as any)[priceKey])
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setSelectedId(p.id)}
+                    className={`w-full text-left px-4 py-3 hover:bg-slate-50 transition ${
+                      isSelected ? 'bg-amber-50' : ''
+                    }`}
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <div className="flex-1">
+                        <div className="text-sm text-slate-900 font-medium">
+                          {p.display_name || p.name}
+                        </div>
+                        {p.gramatura && (
+                          <div className="text-xs text-slate-500">{p.gramatura}</div>
+                        )}
+                      </div>
+                      <div className="text-sm font-semibold text-slate-900 whitespace-nowrap">
+                        {price.toLocaleString('pl-PL', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}{' '}
+                        zł
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="px-4 py-3 border-t border-slate-200 flex items-center gap-2">
+          <label className="text-xs text-slate-600">Ilość:</label>
+          <input
+            type="number"
+            min={1}
+            max={9999}
+            value={qty}
+            onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
+            className="w-20 px-2 py-1 border border-slate-300 rounded text-sm text-center"
+          />
+          <button
+            onClick={submit}
+            disabled={!selectedId || submitting}
+            className="ml-auto px-4 py-2 bg-slate-900 text-white rounded text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
+          >
+            {submitting ? 'Dodawanie...' : 'Dodaj do zamówienia'}
+          </button>
         </div>
       </div>
     </div>

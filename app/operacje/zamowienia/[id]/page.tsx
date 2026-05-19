@@ -46,5 +46,19 @@ export default async function OrderDetailPage({
 
   if (!order) notFound()
 
-  return <OrderDetail order={order as any} />
+  // S-ORDER.1.C.3 — fetch 17 SKU для add-item modal у edit mode
+  const { data: availableProducts } = await admin
+    .from('products')
+    .select(
+      'id, name, display_name, gramatura, order_form_sort, price_maly_opt, price_sredni, price_duzy',
+    )
+    .eq('show_in_orders', true)
+    .order('order_form_sort', { ascending: true })
+
+  return (
+    <OrderDetail
+      order={order as any}
+      availableProducts={(availableProducts as any) || []}
+    />
+  )
 }
