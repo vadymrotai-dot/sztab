@@ -90,13 +90,9 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   try {
     supabase = createAdminClient()
   } catch (e: any) {
-    console.error('[orders][token][POST] admin client init failed', {
-      message: e?.message,
-      key_set: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-      url_set: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-    })
+    console.error('[orders][token] admin client init failed:', e?.message)
     return NextResponse.json(
-      { ok: false, error: 'Configuration error', debug: e?.message },
+      { ok: false, error: 'Configuration error' },
       { status: 500 },
     )
   }
@@ -108,19 +104,9 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     .eq('access_token', token)
     .maybeSingle()
   if (loadErr) {
-    console.error('[orders][token][POST] DB load failed', {
-      token: token.substring(0, 8) + '...',
-      error_code: (loadErr as any).code,
-      error_message: loadErr.message,
-      error_details: (loadErr as any).details,
-      error_hint: (loadErr as any).hint,
-      key_length: process.env.SUPABASE_SERVICE_ROLE_KEY?.length,
-      key_dots: process.env.SUPABASE_SERVICE_ROLE_KEY?.split('.').length,
-      key_prefix: process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20),
-      url_set: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-    })
+    console.error('[orders][token][POST] DB load failed:', loadErr.message)
     return NextResponse.json(
-      { ok: false, error: 'Błąd bazy danych', debug: loadErr.message },
+      { ok: false, error: 'Błąd bazy danych' },
       { status: 500 },
     )
   }
