@@ -28,16 +28,11 @@ if (!SUBDOMAIN || !API_TOKEN) {
 
 const BASE_URL = SUBDOMAIN ? `https://${SUBDOMAIN}.fakturownia.pl` : ''
 
-// Seller info (Ziomek Fish) — hardcoded, НЕ з env, НЕ з Fakturownia konfiguracji
-const SELLER = {
-  seller_name: 'Ziomek Fish Sp. z o.o.',
-  seller_tax_no: '5223239864',
-  seller_street: 'ul. Szczęsna 26',
-  seller_post_code: '02-454',
-  seller_city: 'Warszawa',
-  seller_country: 'PL',
-  seller_bank_account: '', // TODO: get from Vadym якщо потрібно у proforma
-}
+// S-ORDER.2.A.2.1 (19.05.2026): seller_* fields removed.
+// Fakturownia security ("Poziom zabezpieczenia przed zmianą konta bankowego")
+// blocks per-invoice seller override → uses account-default seller automatically.
+// Seller config managed у Fakturownia dashboard (Ziomek Fish Sp. z o.o.,
+// NIP 5223239864, ul. Szczęsna 26, 02-454 Warszawa).
 
 export type FakturowniaPosition = {
   name: string
@@ -104,14 +99,19 @@ export async function createInvoice(
   const isVAT = input.kind === 'vat'
   const sendToKsef = input.send_to_ksef ?? isVAT // дефолт: send VAT до KSeF, не proforma
 
+  // S-ORDER.2.A.2.1 — compute payment_to as ISO date (Fakturownia rejects payment_to_days field)
+  const paymentToDays = input.payment_to_days ?? 14
+  const paymentToDate = new Date()
+  paymentToDate.setDate(paymentToDate.getDate() + paymentToDays)
+  const paymentToISO = paymentToDate.toISOString().split('T')[0]
+
   const body = {
     api_token: API_TOKEN,
     gov_save_and_send: sendToKsef,
     invoice: {
       kind: input.kind === 'vat' ? 'vat' : 'proforma',
 
-      // Seller (hardcoded)
-      ...SELLER,
+      // Seller: uses Fakturownia account default (security blocks per-invoice override)
 
       // Buyer
       buyer_name: input.buyer.name,
@@ -125,27 +125,31 @@ export async function createInvoice(
       buyer_company: input.buyer.tax_no ? true : false,
 
       // Payment terms
-      payment_to_days: input.payment_to_days ?? 14,
+      payment_to: paymentToISO,
       payment_type: 'transfer',
 
       // Notes
       description: input.description || null,
       oid: input.external_order_id || null,
 
-      // Positions
-      positions: input.positions.map((p) => ({
-        name: p.name,
-        quantity: p.quantity,
-        unit: p.unit || 'szt',
-        tax: p.tax,
-        ...(p.total_price_gross !== undefined
-          ? { total_price_gross: p.total_price_gross }
-          : {}),
-        ...(p.total_price_net !== undefined
-          ? { total_price_net: p.total_price_net }
-          : {}),
-        ...(p.code ? { code: p.code } : {}),
-      })),
+      // Positions — Fakturownia requires total_price_gross.
+      // Якщо callee passed total_price_net, обчислюємо gross = net × (1 + tax/100).
+      // Drop `unit` поле — Fakturownia rejects.
+      positions: input.positions.map((p) => {
+        const grossPrice =
+          p.total_price_gross !== undefined
+            ? p.total_price_gross
+            : p.total_price_net !== undefined
+              ? Math.round(p.total_price_net * (1 + p.tax / 100) * 100) / 100
+              : 0
+        return {
+          name: p.name,
+          quantity: p.quantity,
+          tax: p.tax,
+          total_price_gross: grossPrice,
+          ...(p.code ? { code: p.code } : {}),
+        }
+      }),
     },
   }
 
