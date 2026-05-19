@@ -24,6 +24,7 @@ import { PersonsSectionV2 } from '@/components/clients/persons-section-v2'
 import { SignalsSection } from '@/components/clients/signals-section'
 import { ContactSectionV2 } from '@/components/clients/contact-section-v2'
 import { ClientDetailActions } from '@/components/clients/client-detail-actions'
+import { OrderLinkButton } from '@/components/clients/order-link-button'
 import { ClientTypeBadge } from '@/components/clients/client-type-badge'
 import { MenuSection, type MenuDish, type MenuCoverage, type MenuDishesSource } from '@/components/clients/menu-section'
 import { PredictionsSection } from '@/components/clients/predictions-section'
@@ -138,6 +139,16 @@ export default async function ClientDetailPage({
   ])
 
   if (!client) notFound()
+
+  // S-ORDER.1.D — resolve cohort_id для tracking order leads
+  const { data: cohortMember } = await supabase
+    .from('cohort_members')
+    .select('cohort_id')
+    .eq('subject_id', id)
+    .eq('subject_type', 'client')
+    .limit(1)
+    .maybeSingle()
+  const orderCohortId = cohortMember?.cohort_id ?? null
 
   const c = client as Record<string, unknown> & {
     id: string
@@ -416,13 +427,20 @@ export default async function ClientDetailPage({
         title={c.title}
         breadcrumbs={[{ label: 'Klienci', href: '/clients' }, { label: c.title }]}
         actions={
-          <ClientDetailActions
-            clientId={id}
-            nip={c.nip}
-            hasProfile={Boolean(
-              (c.business_profile as { business_format?: string } | null)?.business_format,
-            )}
-          />
+          <div className="flex items-center gap-2 flex-wrap">
+            <OrderLinkButton
+              clientId={id}
+              clientName={c.title}
+              cohortId={orderCohortId}
+            />
+            <ClientDetailActions
+              clientId={id}
+              nip={c.nip}
+              hasProfile={Boolean(
+                (c.business_profile as { business_format?: string } | null)?.business_format,
+              )}
+            />
+          </div>
         }
       />
 
