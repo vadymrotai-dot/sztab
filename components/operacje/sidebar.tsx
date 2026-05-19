@@ -145,7 +145,7 @@ export function OperacjeSidebar({ user, counts = {} }: OperacjeSidebarProps) {
       href: '/operacje/zamowienia',
       icon: PackageIcon,
       badgeCount: counts.zamowienia,
-      disabled: true, // S-CLEAN — route 404, plan future
+      // S-ORDER.1.C.1 (19.05.2026) — list view live, detail route у 1.C.2.
     },
     { name: 'Klienci', href: '/operacje/klienci', icon: UsersIcon },
     {
