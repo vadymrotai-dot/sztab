@@ -134,7 +134,9 @@ export async function createInvoice(
 
       // Positions — Fakturownia requires total_price_gross.
       // Якщо callee passed total_price_net, обчислюємо gross = net × (1 + tax/100).
-      // Drop `unit` поле — Fakturownia rejects.
+      // S-ORDER.2.A.3.1: unit field name is `quantity_unit` (НЕ `unit` чи `unit_name`).
+      // Per Fakturownia API: position.quantity_unit зберігається + рендериться на PDF
+      // у колонці "j.m." (jednostka miary). Без цього показує "(brak)".
       positions: input.positions.map((p) => {
         const grossPrice =
           p.total_price_gross !== undefined
@@ -145,6 +147,7 @@ export async function createInvoice(
         return {
           name: p.name,
           quantity: p.quantity,
+          quantity_unit: p.unit || 'szt',
           tax: p.tax,
           total_price_gross: grossPrice,
           ...(p.code ? { code: p.code } : {}),
