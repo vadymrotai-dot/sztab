@@ -37,6 +37,8 @@ export default async function OrderDetailPage({
       customer_notes, internal_notes,
       created_at, link_opened_at, submitted_at, confirmed_at, updated_at,
       access_token,
+      proforma_fakturownia_id, proforma_fakturownia_number, proforma_pdf_url, proforma_created_at,
+      vat_fakturownia_id, vat_fakturownia_number, vat_pdf_url, vat_created_at,
       client:clients!inner(id, title, nip, city, address, region),
       items:order_items(id, product_name_snapshot, gramatura_snapshot, qty, unit_price, line_total)
     `,

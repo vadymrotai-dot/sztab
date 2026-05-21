@@ -67,6 +67,15 @@ type Order = {
   confirmed_at: string | null
   updated_at: string
   access_token: string
+  // S-ORDER.2.A — Fakturownia tracking
+  proforma_fakturownia_id: number | null
+  proforma_fakturownia_number: string | null
+  proforma_pdf_url: string | null
+  proforma_created_at: string | null
+  vat_fakturownia_id: number | null
+  vat_fakturownia_number: string | null
+  vat_pdf_url: string | null
+  vat_created_at: string | null
   client: {
     id: string
     title: string
@@ -145,6 +154,10 @@ export function OrderDetail({
   const [editMode, setEditMode] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
   const [itemBusy, setItemBusy] = useState<string | null>(null)
+  // S-ORDER.2.A.4 — VAT invoice issue state
+  const [vatLoading, setVatLoading] = useState(false)
+  const [vatNotice, setVatNotice] = useState<string | null>(null)
+  const [vatError, setVatError] = useState<string | null>(null)
 
   const canEdit = EDITABLE_STATUSES.includes(order.status)
   const tier = order.tier_at_submit || 'maly'
@@ -214,6 +227,33 @@ export function OrderDetail({
         setStatusError(data.error || 'Błąd zmiany statusu')
       }
     })
+  }
+
+  const issueVatInvoice = async () => {
+    if (
+      !confirm(
+        `Wystawić fakturę VAT dla ${order.order_number}?\n\nFaktura zostanie automatycznie wysłana do KSeF oraz na adres ${order.contact_email}.`,
+      )
+    )
+      return
+    setVatLoading(true)
+    setVatError(null)
+    setVatNotice(null)
+    const res = await fetch(
+      `/api/orders/admin/${order.id}/issue-vat-invoice`,
+      { method: 'POST' },
+    )
+    const data = await res.json().catch(() => ({}))
+    setVatLoading(false)
+    if (res.ok) {
+      setVatNotice(
+        'Wystawianie faktury VAT uruchomione w tle (~30s). Status zaktualizuje się automatycznie po odświeżeniu.',
+      )
+      // Background task ~10-30s. Polling cheap — refresh раз через 8s.
+      setTimeout(() => router.refresh(), 8000)
+    } else {
+      setVatError(data.error || 'Błąd wystawiania faktury VAT')
+    }
   }
 
   const saveNotes = async () => {
@@ -483,6 +523,90 @@ export function OrderDetail({
                   )
                 })}
               </div>
+            </div>
+          )}
+
+          {/* S-ORDER.2.A.4 — Faktura VAT block */}
+          {order.vat_fakturownia_id ? (
+            // VAT already issued — show summary з link
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+              <div className="text-xs font-semibold text-emerald-900 uppercase tracking-wider mb-2">
+                Faktura VAT
+              </div>
+              <div className="font-mono text-sm font-semibold text-slate-900 mb-1">
+                {order.vat_fakturownia_number}
+              </div>
+              <div className="text-xs text-emerald-800 mb-2">
+                Wysłana do KSeF · {fmtDate(order.vat_created_at)}
+              </div>
+              {order.vat_pdf_url && (
+                <a
+                  href={order.vat_pdf_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block text-xs px-3 py-1.5 bg-emerald-700 text-white rounded hover:bg-emerald-800 font-semibold"
+                >
+                  Zobacz fakturę PDF →
+                </a>
+              )}
+            </div>
+          ) : (
+            order.status === 'shipped' &&
+            order.proforma_fakturownia_id && (
+              // Eligible to issue VAT — show button
+              <div className="bg-white border border-slate-200 rounded-lg p-4">
+                <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-3">
+                  Faktura VAT
+                </div>
+                <button
+                  onClick={issueVatInvoice}
+                  disabled={vatLoading}
+                  className="w-full px-3 py-2 rounded-lg text-sm font-semibold transition bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-50"
+                >
+                  {vatLoading
+                    ? 'Wystawianie...'
+                    : '📄 Wystaw fakturę VAT'}
+                </button>
+                <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                  Automatyczna wysyłka do KSeF + email do klienta z PDF
+                  w załączniku.
+                </p>
+                {vatNotice && (
+                  <div className="mt-3 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5">
+                    {vatNotice}
+                  </div>
+                )}
+                {vatError && (
+                  <div className="mt-3 text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded px-2 py-1.5">
+                    {vatError}
+                  </div>
+                )}
+              </div>
+            )
+          )}
+
+          {/* Proforma summary (read-only — pokazuj завжди коли existуй) */}
+          {order.proforma_fakturownia_id && (
+            <div className="bg-white border border-slate-200 rounded-lg p-4">
+              <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                Faktura proforma
+              </div>
+              <div className="font-mono text-sm font-semibold text-slate-900 mb-1">
+                {order.proforma_fakturownia_number}
+              </div>
+              <div className="text-xs text-slate-500 mb-2">
+                {fmtDate(order.proforma_created_at)}
+              </div>
+              {order.proforma_pdf_url && (
+                <a
+                  href={order.proforma_pdf_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block text-xs px-3 py-1.5 bg-slate-200 text-slate-900 rounded hover:bg-slate-300 font-semibold"
+                >
+                  Zobacz PDF →
+                </a>
+              )}
             </div>
           )}
 

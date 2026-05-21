@@ -19,6 +19,7 @@ export type NotificationTemplate =
   | 'order_cancelled' // якщо anulowano
   | 'payment_reminder' // якщо overdue
   | 'offer_cennik' // S-OFFER.1 — sales outreach з xlsx cennik + order link
+  | 'order_vat_invoice' // S-ORDER.2.A.4 — VAT faktura з PDF attached, KSeF auto-sent
 
 export type NotificationStatus =
   | 'pending' // queued, не sent

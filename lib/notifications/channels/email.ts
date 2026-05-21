@@ -16,6 +16,7 @@ import { Resend } from 'resend'
 import type { NotificationRequest, NotificationResult } from '../types'
 import { renderProformaEmail } from '../templates/proforma-email'
 import { renderOfferEmail } from '../templates/offer-email'
+import { renderVatEmail } from '../templates/vat-email'
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@sztabapp.com'
@@ -81,6 +82,8 @@ function renderTemplate(
       return renderProformaEmail(req.data as any)
     case 'offer_cennik':
       return renderOfferEmail(req.data as any)
+    case 'order_vat_invoice':
+      return renderVatEmail(req.data as any)
     // other templates TBD
     default:
       return {
