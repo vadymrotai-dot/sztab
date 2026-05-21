@@ -25,6 +25,7 @@ import { SignalsSection } from '@/components/clients/signals-section'
 import { ContactSectionV2 } from '@/components/clients/contact-section-v2'
 import { ClientDetailActions } from '@/components/clients/client-detail-actions'
 import { OrderLinkButton } from '@/components/clients/order-link-button'
+import { SendOfferButton } from '@/components/clients/send-offer-button'
 import { ClientTypeBadge } from '@/components/clients/client-type-badge'
 import { MenuSection, type MenuDish, type MenuCoverage, type MenuDishesSource } from '@/components/clients/menu-section'
 import { PredictionsSection } from '@/components/clients/predictions-section'
@@ -432,6 +433,11 @@ export default async function ClientDetailPage({
               clientId={id}
               clientName={c.title}
               cohortId={orderCohortId}
+            />
+            <SendOfferButton
+              clientId={id}
+              clientTitle={c.title}
+              clientEmail={(c.email as string | null) ?? null}
             />
             <ClientDetailActions
               clientId={id}

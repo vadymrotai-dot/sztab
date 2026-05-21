@@ -18,6 +18,7 @@ export type NotificationTemplate =
   | 'order_invoiced' // після payment received
   | 'order_cancelled' // якщо anulowano
   | 'payment_reminder' // якщо overdue
+  | 'offer_cennik' // S-OFFER.1 — sales outreach з xlsx cennik + order link
 
 export type NotificationStatus =
   | 'pending' // queued, не sent
