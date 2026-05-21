@@ -33,16 +33,38 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     )
   }
 
-  // Auth gate (mirror /api/orders/admin/[id]/route.ts)
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
+  // Test mode detection: query param ?testMode=true + x-test-token header
+  // matching env SZTAB_TEST_TOKEN. Bypasses auth + forces send_to_ksef=false
+  // у processVatInvoice. Дозволяє smoke test без real KSeF submission.
+  // Both query AND header required — neither alone enables test mode.
+  const testModeParam = req.nextUrl.searchParams.get('testMode') === 'true'
+  const testTokenHeader = req.headers.get('x-test-token')
+  const expectedTestToken = process.env.SZTAB_TEST_TOKEN
+  const isTestMode =
+    testModeParam &&
+    !!testTokenHeader &&
+    !!expectedTestToken &&
+    testTokenHeader === expectedTestToken
+
+  if (testModeParam && !isTestMode) {
     return NextResponse.json(
-      { ok: false, error: 'Nieautoryzowany' },
+      { ok: false, error: 'Test mode requires valid x-test-token header' },
       { status: 401 },
     )
+  }
+
+  // Auth gate — bypass якщо test mode authenticated через TEST_TOKEN
+  if (!isTestMode) {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json(
+        { ok: false, error: 'Nieautoryzowany' },
+        { status: 401 },
+      )
+    }
   }
 
   // Validate order state перед launching background task
@@ -110,20 +132,31 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   // reliability — guarantees task до ~30s post-response).
   after(async () => {
     try {
-      await processVatInvoice(id)
+      await processVatInvoice(id, { testMode: isTestMode })
     } catch (err: any) {
       console.error('[issue-vat] processVatInvoice background task failed', {
         orderId: id,
         orderNumber: order.order_number,
+        testMode: isTestMode,
         code: err?.code,
         error: err?.message,
       })
     }
   })
 
+  if (isTestMode) {
+    console.warn('[issue-vat] TEST MODE active — bypassing auth + KSeF skip', {
+      orderId: id,
+      orderNumber: order.order_number,
+    })
+  }
+
   return NextResponse.json({
     ok: true,
-    message: 'Wystawianie faktury VAT uruchomione w tle',
+    message: isTestMode
+      ? 'TEST MODE — Wystawianie faktury VAT uruchomione w tle (KSeF skip)'
+      : 'Wystawianie faktury VAT uruchomione w tle',
     order_number: order.order_number,
+    test_mode: isTestMode,
   })
 }

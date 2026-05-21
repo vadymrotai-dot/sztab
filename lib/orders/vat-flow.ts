@@ -57,8 +57,19 @@ export class ProcessVatError extends Error {
   }
 }
 
-export async function processVatInvoice(orderId: string): Promise<void> {
+export async function processVatInvoice(
+  orderId: string,
+  options?: { testMode?: boolean },
+): Promise<void> {
   const admin = createAdminClient()
+  const isTestMode = options?.testMode === true
+
+  if (isTestMode) {
+    console.warn(
+      '[vat-flow] TEST MODE — send_to_ksef forced to false, KSeF submission skipped',
+      { orderId },
+    )
+  }
 
   // 1. Fetch order
   const { data: order, error } = await admin
@@ -123,7 +134,10 @@ export async function processVatInvoice(orderId: string): Promise<void> {
     )
   }
 
-  // 3. Create Fakturownia VAT (KSeF auto-enabled via send_to_ksef default = isVAT=true)
+  // 3. Create Fakturownia VAT.
+  // Production: send_to_ksef defaults to isVAT=true (KSeF auto-enabled per Feb 2026 ustawa).
+  // Test mode: explicit `send_to_ksef: false` — VAT created у Fakturownia (real запис),
+  // але НЕ submitted до KSeF (фіскальний registry — не можна заповнити test data).
   let vat
   try {
     vat = await createInvoice({
@@ -141,6 +155,7 @@ export async function processVatInvoice(orderId: string): Promise<void> {
       payment_to_days: 14,
       external_order_id: o.order_number,
       description: `Faktura VAT do zamówienia ${o.order_number}`,
+      ...(isTestMode ? { send_to_ksef: false } : {}),
     })
   } catch (e: any) {
     console.error('[vat] Fakturownia createInvoice failed', {
