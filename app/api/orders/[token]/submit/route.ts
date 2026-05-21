@@ -12,7 +12,7 @@
 //
 // Service-role bypasses RLS. Authorization = access_token UUID match.
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processProforma } from '@/lib/orders/proforma-flow'
@@ -219,14 +219,21 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     )
   }
 
-  // Fire-and-forget: create proforma + send email через background task.
-  // Sprint S-ORDER.2.A.3 (19.05.2026) — caller (Vadym customer) sees confirm
-  // immediately. Failures logged до notification_log + console.error, не throw.
-  processProforma(order.id).catch((err) => {
-    console.error('[submit] processProforma background task failed', {
-      orderId: order.id,
-      error: err?.message,
-    })
+  // Background task: create proforma + send email після response.
+  // Sprint S-ORDER.2.A.3 (19.05.2026) — caller sees confirm immediately.
+  // Sprint S-ORDER.2.A.3.2 (21.05.2026) — switched fire-and-forget → after()
+  // from 'next/server'. Guarantees task completes до ~30s post-response на
+  // Vercel (без `after` Vercel може kill function після response). Local dev:
+  // no-op wrapper, executes inline.
+  after(async () => {
+    try {
+      await processProforma(order.id)
+    } catch (err: any) {
+      console.error('[submit] processProforma background task failed', {
+        orderId: order.id,
+        error: err?.message,
+      })
+    }
   })
 
   return NextResponse.json({
