@@ -654,7 +654,59 @@ async function runPhaseB({
   // Sprint L Phase 1D fix: actually invoke Apify if entity має no existing
   // contact (Sprint J pre-flight check). Earlier orchestrator unconditionally
   // skipped — bug.
-  if (params.apify_api_token) {
+  //
+  // ─── STEP 6.8 (S-DATA.2.A.6.8, 22.05.2026): b2b_bad_fit skip ───
+  // Phase 1 spike (22.05) confirmed Apify GMaps wrong tool для B2B —
+  // 23% success rate у cohort UC_HURT_WARZYWA_OWOCE, plus fuzzy name match
+  // подбирає consumer-facing businesses з similar prefix (Continental Opony
+  // case). Skip apify_gmaps для clients з existing classification
+  // hurtownia/sklep_detal/sieci_handlowe (AI-classified у STEP 6.5 попередніх
+  // analyses). First-ever analyses (без classification) ще запускають GMaps.
+  // Replacement path = Panorama/ALEO (S-DATA.2.A, currently deferred per
+  // Phase 1 fail closure 22.05).
+  const { data: existingClassRow } = await supabase
+    .from('clients')
+    .select('business_profile')
+    .eq('id', clientId)
+    .maybeSingle()
+  const existingClientTypeForGmaps =
+    (existingClassRow as { business_profile?: { client_type?: string } } | null)
+      ?.business_profile?.client_type ?? null
+  const skipApifyGmapsForB2B =
+    existingClientTypeForGmaps === 'hurtownia' ||
+    existingClientTypeForGmaps === 'sklep_detal' ||
+    existingClientTypeForGmaps === 'sieci_handlowe'
+
+  if (skipApifyGmapsForB2B) {
+    console.warn('[apify_gmaps] skipped — b2b_bad_fit (Step 6.8)', {
+      clientId,
+      client_type: existingClientTypeForGmaps,
+    })
+    await supabase.from('contact_enrichment').upsert(
+      {
+        target_type: 'client',
+        target_id: clientId,
+        source: 'apify_gmaps',
+        status: 'skipped',
+        error_message: `b2b_bad_fit: client_type=${existingClientTypeForGmaps}`,
+        raw_payload: {
+          skip_reason: 'b2b_bad_fit',
+          client_type: existingClientTypeForGmaps,
+          step: '6.8',
+          cowork_session: 'S-DATA.2.A.6.8 22.05.2026',
+        },
+        cost_usd: 0,
+        enriched_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
+      },
+      { onConflict: 'target_type,target_id,source' },
+    )
+    response.sources_completed.push({
+      source: 'Apify_GMaps',
+      status: 'skipped',
+      note: `b2b_bad_fit: client_type=${existingClientTypeForGmaps}`,
+    })
+  } else if (params.apify_api_token) {
     const existing = await findExistingContact(supabase, 'client', clientId)
     if (existing) {
       response.sources_completed.push({
@@ -683,6 +735,23 @@ async function runPhaseB({
             voivodeship: t.region,
             nip,
           })
+          // ─── COST GUARD (S-DATA.2.A.6.8, 22.05.2026) ───
+          // Phase 1 spike lesson — PAY_PER_EVENT actors можуть billed per-result
+          // (Panorama spike: 100 results × $0.004 ≈ $0.40 = 16x expected).
+          // GMaps normally $0.02-0.03/call з maxCrawledPlaces=3. Якщо single
+          // call > $0.10 — skip promotion to dedicated cols + canonical
+          // fields, mark як 'partial' з cost_guard note. Data залишається у
+          // contact_enrichment.raw_payload для audit, але НЕ propagates до
+          // clients table. Phase B continues для remaining steps.
+          const COST_GUARD_USD = 0.10
+          const costGuardTripped = (result.cost_usd ?? 0) > COST_GUARD_USD
+          if (costGuardTripped) {
+            console.warn('[apify_gmaps] COST GUARD TRIPPED — single call > $0.10', {
+              clientId,
+              cost_usd: result.cost_usd,
+              threshold: COST_GUARD_USD,
+            })
+          }
           // Upsert contact_enrichment
           await supabase.from('contact_enrichment').upsert(
             {
@@ -695,17 +764,24 @@ async function runPhaseB({
               gmaps_url: result.gmaps_url,
               gmaps_rating: result.gmaps_rating,
               gmaps_reviews_count: result.gmaps_reviews_count,
-              raw_payload: result.raw_payload,
-              status: result.status,
-              error_message: result.error_message ?? null,
+              raw_payload: costGuardTripped
+                ? { ...((result.raw_payload as object) || {}), cost_guard_tripped: true, cost_guard_threshold: COST_GUARD_USD }
+                : result.raw_payload,
+              status: costGuardTripped ? 'partial' : result.status,
+              error_message: costGuardTripped
+                ? `cost_guard_tripped: $${result.cost_usd} > $${COST_GUARD_USD} — promotion skipped`
+                : (result.error_message ?? null),
               cost_usd: result.cost_usd,
               enriched_at: new Date().toISOString(),
               expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
             },
             { onConflict: 'target_type,target_id,source' },
           )
-          // Write to canonical (when found)
-          if (result.status === 'success' || result.status === 'partial') {
+          // Write to canonical (when found AND cost guard не tripped)
+          if (
+            !costGuardTripped &&
+            (result.status === 'success' || result.status === 'partial')
+          ) {
             const fields = []
             if (result.phone) fields.push({ field_key: 'phone', value: { value_text: result.phone } })
             if (result.email) fields.push({ field_key: 'email', value: { value_text: result.email } })
@@ -716,18 +792,33 @@ async function runPhaseB({
           // brand cascade у STEP 6.6. business_name gated на success+similarity у
           // apify.ts mapper, тому null для partial/no_match/error без додаткової
           // logic тут. Persists у scope-level let-variable across runPhaseB.
-          apifyBusinessName = result.business_name
-          apifyBusinessCategory = result.business_category
+          // Cost guard tripped → НЕ propagate (untrusted match).
+          if (!costGuardTripped) {
+            apifyBusinessName = result.business_name
+            apifyBusinessCategory = result.business_category
+          }
           response.sources_completed.push({
             source: 'Apify_GMaps',
-            status: result.status === 'success' || result.status === 'partial' ? 'success' : 'partial',
-            note: `${result.status} (cost $${result.cost_usd})`,
+            status: costGuardTripped
+              ? 'partial'
+              : result.status === 'success' || result.status === 'partial'
+                ? 'success'
+                : 'partial',
+            note: costGuardTripped
+              ? `cost_guard_tripped: $${result.cost_usd} (promotion skipped)`
+              : `${result.status} (cost $${result.cost_usd})`,
           })
           await finishEnrichmentRun(supabase, runId, {
-            status: result.status === 'success' ? 'success' : 'partial',
+            status: costGuardTripped
+              ? 'partial'
+              : result.status === 'success'
+                ? 'success'
+                : 'partial',
             raw_payload: result.raw_payload,
             cost_usd: result.cost_usd,
-            error_message: result.error_message,
+            error_message: costGuardTripped
+              ? `cost_guard_tripped: $${result.cost_usd}`
+              : result.error_message,
           })
         }
       } catch (err) {
