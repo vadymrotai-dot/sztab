@@ -437,7 +437,7 @@ export default async function ClientDetailPage({
             <SendOfferButton
               clientId={id}
               clientTitle={c.title}
-              clientEmail={(c.email as string | null) ?? null}
+              clientEmail={emailValue ?? null}
             />
             <ClientDetailActions
               clientId={id}
