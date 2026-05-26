@@ -80,7 +80,7 @@ async function main() {
     .insert({
       client_id: client.id,
       cohort_id: COHORT_ID,
-      order_number: 'DRAFT-TEMP',
+      order_number: `DRAFT-${Date.now()}-${client.id.slice(0, 8)}`,
       status: 'draft',
     })
     .select('id, access_token')

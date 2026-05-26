@@ -102,7 +102,7 @@ export async function POST(
         .insert({
           client_id: clientId,
           cohort_id: cohortId,
-          order_number: 'DRAFT-TEMP',
+          order_number: `DRAFT-${Date.now()}-${clientId.slice(0, 8)}`,
           status: 'draft',
         })
         .select('id, access_token')

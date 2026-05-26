@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
     .insert({
       client_id: parsed.data.client_id,
       cohort_id: parsed.data.cohort_id || null,
-      order_number: 'DRAFT-TEMP',
+      order_number: `DRAFT-${Date.now()}-${parsed.data.client_id.slice(0, 8)}`,
       status: 'draft',
     })
     .select('id, access_token')
