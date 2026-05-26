@@ -19,6 +19,9 @@ export type OfferEmailData = {
   custom_message: string // Vadym edited text from modal (order_link уже replaced)
   order_link: string // auto-generated link (display only, у footer)
   client_name: string
+  // Sprint S-CENNIK-WH.1 (26.05.2026) — attachment filename branches by tier.
+  // Defaults to standard cennik if not provided (backward compat).
+  attachment_filename?: string
 }
 
 export function renderOfferEmail(data: OfferEmailData): {
@@ -26,6 +29,9 @@ export function renderOfferEmail(data: OfferEmailData): {
   html: string
   text: string
 } {
+  // Sprint S-CENNIK-WH.1 — attachment filename driven by tier (parametrized).
+  const attachmentFilename =
+    data.attachment_filename || 'Ziomek_Fish_Cennik_B2B_2026.xlsx'
   const subject = 'Oferta hurtowa Czudowa Marka  ·  Ziomek Fish'
 
   // Convert plain text → HTML (paragraph splitting + make URLs clickable)
@@ -64,7 +70,7 @@ export function renderOfferEmail(data: OfferEmailData): {
   </div>
   ${messageHtml}
   <div class="attachment-note">
-    <strong>Załącznik:</strong> Ziomek_Fish_Cennik_B2B_2026.xlsx
+    <strong>Załącznik:</strong> ${attachmentFilename}
   </div>
   <div class="footer">
     Ziomek Fish Sp. z o.o.<br>

@@ -43,10 +43,11 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
   }
 
   // Load order draft by access_token
+  // Sprint S-CENNIK-WH.1 — also fetch cennik_tier (locked at offer-send).
   const { data: order, error: orderErr } = await supabase
     .from('orders')
     .select(
-      'id, status, order_number, contact_person, contact_phone, contact_email, delivery_address, preferred_delivery_date, customer_notes, client_id, cohort_id, link_opened_at, submitted_at',
+      'id, status, order_number, contact_person, contact_phone, contact_email, delivery_address, preferred_delivery_date, customer_notes, client_id, cohort_id, link_opened_at, submitted_at, cennik_tier',
     )
     .eq('access_token', token)
     .maybeSingle()
@@ -85,10 +86,11 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     .maybeSingle()
 
   // Load 17 SKU available для orders
+  // Sprint S-CENNIK-WH.1 — also fetch price_duzi_gracze для wielki_hurt tier.
   const { data: products, error: prodErr } = await supabase
     .from('products')
     .select(
-      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, order_form_sort, category',
+      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, order_form_sort, category',
     )
     .eq('show_in_orders', true)
     .order('order_form_sort', { ascending: true })
@@ -118,6 +120,10 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       delivery_address: order.delivery_address,
       preferred_delivery_date: order.preferred_delivery_date,
       customer_notes: order.customer_notes,
+      // Sprint S-CENNIK-WH.1 — expose tier для UI branching
+      cennik_tier: (order.cennik_tier === 'wielki_hurt' ? 'wielki_hurt' : 'standard') as
+        | 'standard'
+        | 'wielki_hurt',
     },
     client: client
       ? {
@@ -139,6 +145,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         maly: Number(p.price_maly_opt),
         sredni: Number(p.price_sredni),
         duzy: Number(p.price_duzy),
+        wielki_hurt: Number(p.price_duzi_gracze),
       },
     })),
   })

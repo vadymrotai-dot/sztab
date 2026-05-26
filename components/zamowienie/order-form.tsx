@@ -8,7 +8,10 @@
 import { useMemo, useState } from 'react'
 import { Minus, Plus, ChevronRight, ChevronLeft, CheckCircle2, Loader2 } from 'lucide-react'
 
-type Tier = 'maly' | 'sredni' | 'duzy'
+// Sprint S-CENNIK-WH.1 (26.05.2026) — wielki_hurt 4-й tier (locked).
+type StandardTier = 'maly' | 'sredni' | 'duzy'
+type Tier = StandardTier | 'wielki_hurt'
+type CennikTier = 'standard' | 'wielki_hurt'
 
 type Product = {
   id: string
@@ -16,7 +19,7 @@ type Product = {
   gramatura: string | null
   category: string | null
   sort: number | null
-  prices: { maly: number; sredni: number; duzy: number }
+  prices: { maly: number; sredni: number; duzy: number; wielki_hurt: number }
 }
 
 export type OrderInitial = {
@@ -30,6 +33,8 @@ export type OrderInitial = {
     delivery_address: string | null
     preferred_delivery_date: string | null
     customer_notes: string | null
+    // Sprint S-CENNIK-WH.1 — tier locked at offer-send.
+    cennik_tier: CennikTier
   }
   client: {
     title: string
@@ -55,9 +60,10 @@ const TIER_LABEL: Record<Tier, string> = {
   maly: 'Mały opt',
   sredni: 'Średni',
   duzy: 'Duży gracz',
+  wielki_hurt: 'Wielki Hurt',
 }
 
-const TIER_NEXT_THRESHOLD: Record<Tier, number | null> = {
+const TIER_NEXT_THRESHOLD: Record<StandardTier, number | null> = {
   maly: 2000,
   sredni: 4000,
   duzy: null,
@@ -67,11 +73,24 @@ function fmt(n: number): string {
   return n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+// Sprint S-CENNIK-WH.1 — branch by cennikTier:
+//   wielki_hurt → locked single tier, no iteration
+//   standard    → iterative 3-tier
 function computeTierAndTotal(
   cart: Record<string, number>,
   products: Product[],
+  cennikTier: CennikTier,
 ): { tier: Tier; total: number } {
-  let tier: Tier = 'maly'
+  if (cennikTier === 'wielki_hurt') {
+    const total = Object.entries(cart).reduce((sum, [id, qty]) => {
+      if (qty <= 0) return sum
+      const p = products.find((pp) => pp.id === id)
+      if (!p) return sum
+      return sum + qty * p.prices.wielki_hurt
+    }, 0)
+    return { tier: 'wielki_hurt', total }
+  }
+  let tier: StandardTier = 'maly'
   let total = 0
   for (let i = 0; i < 4; i++) {
     total = Object.entries(cart).reduce((sum, [id, qty]) => {
@@ -80,7 +99,8 @@ function computeTierAndTotal(
       if (!p) return sum
       return sum + qty * p.prices[tier]
     }, 0)
-    const newTier: Tier = total < 2000 ? 'maly' : total <= 4000 ? 'sredni' : 'duzy'
+    const newTier: StandardTier =
+      total < 2000 ? 'maly' : total <= 4000 ? 'sredni' : 'duzy'
     if (newTier === tier) return { tier, total }
     tier = newTier
   }
@@ -95,6 +115,9 @@ export function OrderForm({
   initial: OrderInitial
 }) {
   const { client, products } = initial
+  // Sprint S-CENNIK-WH.1 — cennik_tier locked at offer-send.
+  const cennikTier: CennikTier = initial.order.cennik_tier ?? 'standard'
+  const isWielkiHurt = cennikTier === 'wielki_hurt'
   const clientName = client?.title ?? ''
   const firstWord = clientName.split(' ')[0] || 'Kliencie'
 
@@ -116,7 +139,10 @@ export function OrderForm({
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitResult, setSubmitResult] = useState<SubmitOk | null>(null)
 
-  const { tier, total } = useMemo(() => computeTierAndTotal(cart, products), [cart, products])
+  const { tier, total } = useMemo(
+    () => computeTierAndTotal(cart, products, cennikTier),
+    [cart, products, cennikTier],
+  )
   const itemsCount = useMemo(
     () => Object.values(cart).reduce((s, q) => s + (q > 0 ? 1 : 0), 0),
     [cart],
@@ -241,7 +267,11 @@ export function OrderForm({
             <div className="text-xs font-semibold text-amber-900 mb-2">Co warto wiedzieć:</div>
             <ul className="text-xs text-amber-900/80 space-y-1.5">
               <li>• 17 SKU kiszonek, sałatek, surówek</li>
-              <li>• 3 progi cenowe (mały / średni / duży gracz)</li>
+              {isWielkiHurt ? (
+                <li>• <strong>Cennik Wielki Hurt</strong> — najniższa cena (1 próg, zablokowana)</li>
+              ) : (
+                <li>• 3 progi cenowe (mały / średni / duży gracz)</li>
+              )}
               <li>• Pierwsze zamówienie bez przedpłaty</li>
               <li>• Dostawa 3-5 dni roboczych</li>
             </ul>
@@ -264,14 +294,18 @@ export function OrderForm({
           <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 py-3 shadow-sm">
             <div className="flex items-baseline justify-between mb-2">
               <div>
-                <div className="text-[10px] uppercase tracking-wide text-slate-500">Próg cenowy</div>
+                <div className="text-[10px] uppercase tracking-wide text-slate-500">
+                  {isWielkiHurt ? 'Cennik (zablokowany)' : 'Próg cenowy'}
+                </div>
                 <div
                   className={`text-sm font-bold ${
-                    tier === 'duzy'
-                      ? 'text-emerald-600'
-                      : tier === 'sredni'
-                        ? 'text-amber-600'
-                        : 'text-slate-700'
+                    isWielkiHurt
+                      ? 'text-violet-700'
+                      : tier === 'duzy'
+                        ? 'text-emerald-600'
+                        : tier === 'sredni'
+                          ? 'text-amber-600'
+                          : 'text-slate-700'
                   }`}
                 >
                   {TIER_LABEL[tier]}
@@ -282,8 +316,16 @@ export function OrderForm({
                 <div className="text-base font-bold text-slate-900">{fmt(total)} zł</div>
               </div>
             </div>
-            <TierProgressBar tier={tier} total={total} />
-            <TierHint tier={tier} total={total} />
+            {isWielkiHurt ? (
+              <div className="text-[10px] text-violet-700 mt-1">
+                Ceny zablokowane — najniższe w cenniku, niezależnie od wielkości zamówienia.
+              </div>
+            ) : (
+              <>
+                <TierProgressBar tier={tier as StandardTier} total={total} />
+                <TierHint tier={tier as StandardTier} total={total} />
+              </>
+            )}
           </div>
 
           {/* Product list */}
@@ -297,6 +339,8 @@ export function OrderForm({
                   {items.map((p) => {
                     const isPomidor = /pomidor/i.test(p.name)
                     const price = p.prices[tier]
+                    // Sprint S-CENNIK-WH.1 — line-through показуємо vs maly (retail anchor).
+                    // For wielki_hurt також показуємо economy vs maly.
                     const originalPrice = p.prices.maly
                     const qty = cart[p.id] ?? 0
                     return (
@@ -516,7 +560,7 @@ export function OrderForm({
           {/* Totals */}
           <div className="bg-[#1F2B4A] text-white rounded-lg p-4 space-y-1.5">
             <div className="flex justify-between text-xs opacity-80">
-              <span>Próg końcowy</span>
+              <span>{isWielkiHurt ? 'Cennik' : 'Próg końcowy'}</span>
               <span className="font-bold">{TIER_LABEL[tier]}</span>
             </div>
             <div className="flex justify-between text-sm">
@@ -646,7 +690,7 @@ function Field({
   )
 }
 
-function TierProgressBar({ tier, total }: { tier: Tier; total: number }) {
+function TierProgressBar({ tier, total }: { tier: StandardTier; total: number }) {
   // Progress within current tier window
   const thresholds = [0, 2000, 4000]
   const idx = tier === 'maly' ? 0 : tier === 'sredni' ? 1 : 2
@@ -670,7 +714,7 @@ function TierProgressBar({ tier, total }: { tier: Tier; total: number }) {
   )
 }
 
-function TierHint({ tier, total }: { tier: Tier; total: number }) {
+function TierHint({ tier, total }: { tier: StandardTier; total: number }) {
   const nextThreshold = TIER_NEXT_THRESHOLD[tier]
   if (nextThreshold === null) {
     return <div className="text-[10px] text-emerald-700 mt-1.5">Najlepsza cena · Duży gracz</div>

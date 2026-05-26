@@ -49,10 +49,11 @@ export default async function OrderDetailPage({
   if (!order) notFound()
 
   // S-ORDER.1.C.3 — fetch 17 SKU для add-item modal у edit mode
+  // Sprint S-CENNIK-WH.1 — also price_duzi_gracze для wielki_hurt orders
   const { data: availableProducts } = await admin
     .from('products')
     .select(
-      'id, name, display_name, gramatura, order_form_sort, price_maly_opt, price_sredni, price_duzy',
+      'id, name, display_name, gramatura, order_form_sort, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze',
     )
     .eq('show_in_orders', true)
     .order('order_form_sort', { ascending: true })

@@ -41,18 +41,26 @@ const SubmitSchema = z.object({
 
 type RouteContext = { params: Promise<{ token: string }> }
 
-type Tier = 'maly' | 'sredni' | 'duzy'
+// Sprint S-CENNIK-WH.1 (26.05.2026) — wielki_hurt додано як 4-й tier (locked).
+// calcTier() використовується ТІЛЬКИ для standard cennik (3-tier auto).
+// wielki_hurt = fixed at order load time, no iteration.
+type StandardTier = 'maly' | 'sredni' | 'duzy'
+type Tier = StandardTier | 'wielki_hurt'
 
-function calcTier(net: number): Tier {
+function calcTier(net: number): StandardTier {
   if (net < 2000) return 'maly'
   if (net <= 4000) return 'sredni'
   return 'duzy'
 }
 
-const TIER_PRICE: Record<Tier, 'price_maly_opt' | 'price_sredni' | 'price_duzy'> = {
+const TIER_PRICE: Record<
+  Tier,
+  'price_maly_opt' | 'price_sredni' | 'price_duzy' | 'price_duzi_gracze'
+> = {
   maly: 'price_maly_opt',
   sredni: 'price_sredni',
   duzy: 'price_duzy',
+  wielki_hurt: 'price_duzi_gracze',
 }
 
 export async function POST(req: NextRequest, ctx: RouteContext) {
@@ -99,9 +107,10 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   }
 
   // Load order draft
+  // Sprint S-CENNIK-WH.1 — also fetch cennik_tier (locked at offer-send).
   const { data: order, error: loadErr } = await supabase
     .from('orders')
-    .select('id, status')
+    .select('id, status, cennik_tier')
     .eq('access_token', token)
     .maybeSingle()
   if (loadErr) {
@@ -129,7 +138,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   const { data: products } = await supabase
     .from('products')
     .select(
-      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, show_in_orders',
+      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, show_in_orders',
     )
     .in('id', productIds)
   if (!products || products.length !== productIds.length) {
@@ -145,19 +154,32 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     )
   }
 
-  // Compute tier iteratively (same logic as UI mockup) — max 3 iterations
-  // converges бо tier transitions monotonic.
-  let tier: Tier = 'maly'
+  // Sprint S-CENNIK-WH.1 — branch by cennik_tier:
+  //   wielki_hurt → locked single tier (price_duzi_gracze), NO iteration
+  //   standard    → iterative 3-tier (maly/sredni/duzy) via calcTier()
+  let tier: Tier
   let total = 0
-  for (let i = 0; i < 3; i++) {
+  if (order.cennik_tier === 'wielki_hurt') {
+    tier = 'wielki_hurt'
     const priceKey = TIER_PRICE[tier]
     total = input.items.reduce((sum, item) => {
       const p = products.find((pp) => pp.id === item.product_id)!
       return sum + item.qty * Number(p[priceKey])
     }, 0)
-    const newTier = calcTier(total)
-    if (newTier === tier) break
-    tier = newTier
+  } else {
+    // Compute tier iteratively — max 3 iterations converges бо tier transitions monotonic.
+    let stdTier: StandardTier = 'maly'
+    for (let i = 0; i < 3; i++) {
+      const priceKey = TIER_PRICE[stdTier]
+      total = input.items.reduce((sum, item) => {
+        const p = products.find((pp) => pp.id === item.product_id)!
+        return sum + item.qty * Number(p[priceKey])
+      }, 0)
+      const newTier = calcTier(total)
+      if (newTier === stdTier) break
+      stdTier = newTier
+    }
+    tier = stdTier
   }
   const priceKey = TIER_PRICE[tier]
   const totalNet = total

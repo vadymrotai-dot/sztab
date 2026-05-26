@@ -47,6 +47,9 @@ export async function POST(
   const message = body.message?.trim()
   const createOrderLink = body.create_order_link !== false
   const cohortId = body.cohort_id || null
+  // Sprint S-CENNIK-WH.1 (26.05.2026) — cennik tier locked at offer-send
+  const cennikTier: 'standard' | 'wielki_hurt' =
+    body.cennik_tier === 'wielki_hurt' ? 'wielki_hurt' : 'standard'
 
   if (!email || !email.includes('@')) {
     return NextResponse.json(
@@ -104,6 +107,7 @@ export async function POST(
           cohort_id: cohortId,
           order_number: `DRAFT-${Date.now()}-${clientId.slice(0, 8)}`,
           status: 'draft',
+          cennik_tier: cennikTier,
         })
         .select('id, access_token')
         .single()
@@ -129,18 +133,17 @@ export async function POST(
     finalMessage = message.replace(/<<order_link>>/g, orderLink)
   }
 
-  // Read xlsx cennik
+  // Read xlsx cennik — branch by tier (S-CENNIK-WH.1)
+  const xlsxFilename =
+    cennikTier === 'wielki_hurt'
+      ? 'Ziomek_Fish_Cennik_Wielki_Hurt_2026.xlsx'
+      : 'Ziomek_Fish_Cennik_B2B_2026.xlsx'
   let xlsxBytes: Buffer
   try {
-    const xlsxPath = path.join(
-      process.cwd(),
-      'public',
-      'cennik',
-      'Ziomek_Fish_Cennik_B2B_2026.xlsx',
-    )
+    const xlsxPath = path.join(process.cwd(), 'public', 'cennik', xlsxFilename)
     xlsxBytes = await fs.readFile(xlsxPath)
   } catch (e: any) {
-    console.error('[send-offer] failed to read xlsx', e?.message)
+    console.error('[send-offer] failed to read xlsx', { tier: cennikTier, error: e?.message })
     return NextResponse.json(
       { ok: false, error: 'Cennik file not found' },
       { status: 500 },
@@ -158,10 +161,12 @@ export async function POST(
       custom_message: finalMessage,
       order_link: orderLink,
       client_name: client.title,
+      // Sprint S-CENNIK-WH.1 — attachment filename matches tier
+      attachment_filename: xlsxFilename,
     },
     attachments: [
       {
-        filename: 'Ziomek_Fish_Cennik_B2B_2026.xlsx',
+        filename: xlsxFilename,
         content: xlsxBytes,
         contentType:
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

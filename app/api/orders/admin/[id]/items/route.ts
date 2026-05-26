@@ -19,13 +19,16 @@ export const dynamic = 'force-dynamic'
 
 const UUID_RE = /^[0-9a-f-]{36}$/i
 
+// Sprint S-CENNIK-WH.1 (26.05.2026) — wielki_hurt 4-й tier (locked).
+type Tier = 'maly' | 'sredni' | 'duzy' | 'wielki_hurt'
 const TIER_PRICE: Record<
-  'maly' | 'sredni' | 'duzy',
-  'price_maly_opt' | 'price_sredni' | 'price_duzy'
+  Tier,
+  'price_maly_opt' | 'price_sredni' | 'price_duzy' | 'price_duzi_gracze'
 > = {
   maly: 'price_maly_opt',
   sredni: 'price_sredni',
   duzy: 'price_duzy',
+  wielki_hurt: 'price_duzi_gracze',
 }
 
 const EDITABLE_STATUSES = ['submitted', 'confirmed', 'in_realization']
@@ -128,7 +131,11 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     )
   }
 
-  const tier = (order.tier_at_submit || 'maly') as 'maly' | 'sredni' | 'duzy'
+  const rawTier = (order.tier_at_submit || 'maly') as string
+  const tier: Tier =
+    rawTier === 'wielki_hurt' || rawTier === 'sredni' || rawTier === 'duzy'
+      ? (rawTier as Tier)
+      : 'maly'
   const priceKey = TIER_PRICE[tier]
 
   const { data: product } = await admin

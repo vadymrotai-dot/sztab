@@ -17,7 +17,8 @@ type OrderStatus =
   | 'invoiced'
   | 'cancelled'
 
-type Tier = 'maly' | 'sredni' | 'duzy'
+// Sprint S-CENNIK-WH.1 (26.05.2026) — wielki_hurt 4-й tier (locked).
+type Tier = 'maly' | 'sredni' | 'duzy' | 'wielki_hurt'
 
 type Item = {
   id: string
@@ -37,6 +38,7 @@ type AvailableProduct = {
   price_maly_opt: number
   price_sredni: number
   price_duzy: number
+  price_duzi_gracze: number
 }
 
 const EDITABLE_STATUSES: OrderStatus[] = [
@@ -101,6 +103,7 @@ const TIER_LABELS: Record<Tier, string> = {
   maly: 'Mały opt',
   sredni: 'Średni opt',
   duzy: 'Duży opt',
+  wielki_hurt: 'Wielki Hurt',
 }
 
 // Order транзиції — forward chain + cancel завжди доступно
@@ -745,8 +748,19 @@ function AddItemModal({
   const [qty, setQty] = useState(1)
   const [submitting, setSubmitting] = useState(false)
 
-  const priceKey: 'price_maly_opt' | 'price_sredni' | 'price_duzy' =
-    tier === 'maly' ? 'price_maly_opt' : tier === 'sredni' ? 'price_sredni' : 'price_duzy'
+  // Sprint S-CENNIK-WH.1 — branch by tier для priceKey display
+  const priceKey:
+    | 'price_maly_opt'
+    | 'price_sredni'
+    | 'price_duzy'
+    | 'price_duzi_gracze' =
+    tier === 'wielki_hurt'
+      ? 'price_duzi_gracze'
+      : tier === 'maly'
+        ? 'price_maly_opt'
+        : tier === 'sredni'
+          ? 'price_sredni'
+          : 'price_duzy'
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()

@@ -58,6 +58,8 @@ export function SendOfferButton({
     orderLink?: string
   } | null>(null)
   const [cohortId, setCohortId] = useState<string>('')
+  // Sprint S-CENNIK-WH.1 (26.05.2026) — cennik tier selector
+  const [cennikTier, setCennikTier] = useState<'standard' | 'wielki_hurt'>('standard')
 
   useEffect(() => {
     if (open) {
@@ -81,6 +83,7 @@ export function SendOfferButton({
           message,
           create_order_link: true,
           cohort_id: cohortId || null,
+          cennik_tier: cennikTier,
         }),
       })
       const data = await res.json()
@@ -174,6 +177,41 @@ export function SendOfferButton({
                 </div>
               )}
 
+              {/* Sprint S-CENNIK-WH.1 (26.05.2026) — cennik tier selector */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Cennik (wersja załącznika + ceny w formularzu zamówienia)
+                </label>
+                <div className="flex gap-3">
+                  <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
+                    <input
+                      type="radio"
+                      name="cennik_tier"
+                      value="standard"
+                      checked={cennikTier === 'standard'}
+                      onChange={() => setCennikTier('standard')}
+                      className="accent-amber-600"
+                    />
+                    <span>
+                      <strong>Standardowy</strong> — 3 progi (mały / średni / duży opt)
+                    </span>
+                  </label>
+                  <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
+                    <input
+                      type="radio"
+                      name="cennik_tier"
+                      value="wielki_hurt"
+                      checked={cennikTier === 'wielki_hurt'}
+                      onChange={() => setCennikTier('wielki_hurt')}
+                      className="accent-amber-600"
+                    />
+                    <span>
+                      <strong>Wielki Hurt</strong> — jednolity próg, ceny zablokowane
+                    </span>
+                  </label>
+                </div>
+              </div>
+
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Treść wiadomości
@@ -191,7 +229,10 @@ export function SendOfferButton({
               </div>
 
               <div className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                <strong>Załącznik:</strong> Ziomek_Fish_Cennik_B2B_2026.xlsx
+                <strong>Załącznik:</strong>{' '}
+                {cennikTier === 'wielki_hurt'
+                  ? 'Ziomek_Fish_Cennik_Wielki_Hurt_2026.xlsx'
+                  : 'Ziomek_Fish_Cennik_B2B_2026.xlsx'}
               </div>
 
               {result && (

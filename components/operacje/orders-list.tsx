@@ -15,7 +15,8 @@ type OrderStatus =
   | 'invoiced'
   | 'cancelled'
 
-type Tier = 'maly' | 'sredni' | 'duzy'
+// Sprint S-CENNIK-WH.1 (26.05.2026) — wielki_hurt 4-й tier.
+type Tier = 'maly' | 'sredni' | 'duzy' | 'wielki_hurt'
 
 type OrderRow = {
   id: string
@@ -55,6 +56,7 @@ const TIER_LABELS: Record<Tier, string> = {
   maly: 'Mały',
   sredni: 'Średni',
   duzy: 'Duży',
+  wielki_hurt: 'WH',
 }
 
 const ACTIVE_STATUSES: OrderStatus[] = [
