@@ -16,13 +16,17 @@ type OrderStatus =
   | 'cancelled'
 
 // Sprint S-CENNIK-WH.1 (26.05.2026) — wielki_hurt 4-й tier.
-type Tier = 'maly' | 'sredni' | 'duzy' | 'wielki_hurt'
+// Sprint S-CENNIK-WH.2 (26.05.2026) — wielki_hurt_entry 5-й tier.
+type Tier = 'maly' | 'sredni' | 'duzy' | 'wielki_hurt' | 'wielki_hurt_entry'
 
 type OrderRow = {
   id: string
   order_number: string
   status: OrderStatus
   tier_at_submit: Tier | null
+  // Sprint S-CENNIK-WH.1/WH.2 — locked at offer-send (matrix 2x2)
+  cennik_tier?: 'standard' | 'wielki_hurt' | null
+  price_mode?: 'auto' | 'minimum' | null
   total_net: number
   total_brutto: number
   contact_person: string | null
@@ -57,6 +61,7 @@ const TIER_LABELS: Record<Tier, string> = {
   sredni: 'Średni',
   duzy: 'Duży',
   wielki_hurt: 'WH',
+  wielki_hurt_entry: 'WH·Hurt',
 }
 
 const ACTIVE_STATUSES: OrderStatus[] = [
@@ -244,6 +249,12 @@ export function OrdersList({ orders }: { orders: OrderRow[] }) {
                     {o.tier_at_submit && (
                       <span className="text-xs text-slate-700">
                         {TIER_LABELS[o.tier_at_submit]}
+                      </span>
+                    )}
+                    {/* Sprint S-CENNIK-WH.2 — mini mode badge if non-default */}
+                    {o.price_mode === 'minimum' && (
+                      <span className="ml-1 inline-flex items-center rounded bg-violet-100 px-1 py-0.5 text-[9px] font-medium text-violet-700 uppercase">
+                        Min
                       </span>
                     )}
                   </td>

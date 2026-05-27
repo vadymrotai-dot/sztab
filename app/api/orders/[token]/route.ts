@@ -44,10 +44,11 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
 
   // Load order draft by access_token
   // Sprint S-CENNIK-WH.1 — also fetch cennik_tier (locked at offer-send).
+  // Sprint S-CENNIK-WH.2 — also fetch price_mode (matrix 2x2).
   const { data: order, error: orderErr } = await supabase
     .from('orders')
     .select(
-      'id, status, order_number, contact_person, contact_phone, contact_email, delivery_address, preferred_delivery_date, customer_notes, client_id, cohort_id, link_opened_at, submitted_at, cennik_tier',
+      'id, status, order_number, contact_person, contact_phone, contact_email, delivery_address, preferred_delivery_date, customer_notes, client_id, cohort_id, link_opened_at, submitted_at, cennik_tier, price_mode',
     )
     .eq('access_token', token)
     .maybeSingle()
@@ -87,10 +88,11 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
 
   // Load 17 SKU available для orders
   // Sprint S-CENNIK-WH.1 — also fetch price_duzi_gracze для wielki_hurt tier.
+  // Sprint S-CENNIK-WH.2 — also fetch price_hurt_wh для wielki_hurt + auto matrix cell.
   const { data: products, error: prodErr } = await supabase
     .from('products')
     .select(
-      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, order_form_sort, category',
+      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, order_form_sort, category',
     )
     .eq('show_in_orders', true)
     .order('order_form_sort', { ascending: true })
@@ -124,6 +126,10 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       cennik_tier: (order.cennik_tier === 'wielki_hurt' ? 'wielki_hurt' : 'standard') as
         | 'standard'
         | 'wielki_hurt',
+      // Sprint S-CENNIK-WH.2 — expose price_mode для UI branching (matrix 2x2)
+      price_mode: (order.price_mode === 'minimum' ? 'minimum' : 'auto') as
+        | 'auto'
+        | 'minimum',
     },
     client: client
       ? {
@@ -146,6 +152,8 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         sredni: Number(p.price_sredni),
         duzy: Number(p.price_duzy),
         wielki_hurt: Number(p.price_duzi_gracze),
+        // Sprint S-CENNIK-WH.2 — Hurt entry-tier (NULL → 0 fallback, але UI sprawdza)
+        hurt_wh: p.price_hurt_wh == null ? null : Number(p.price_hurt_wh),
       },
     })),
   })

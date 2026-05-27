@@ -60,6 +60,8 @@ export function SendOfferButton({
   const [cohortId, setCohortId] = useState<string>('')
   // Sprint S-CENNIK-WH.1 (26.05.2026) — cennik tier selector
   const [cennikTier, setCennikTier] = useState<'standard' | 'wielki_hurt'>('standard')
+  // Sprint S-CENNIK-WH.2 (26.05.2026) — price mode selector (auto/minimum). Matrix 2x2 з cennikTier.
+  const [priceMode, setPriceMode] = useState<'auto' | 'minimum'>('auto')
 
   useEffect(() => {
     if (open) {
@@ -84,6 +86,8 @@ export function SendOfferButton({
           create_order_link: true,
           cohort_id: cohortId || null,
           cennik_tier: cennikTier,
+          // Sprint S-CENNIK-WH.2 — price mode (auto/minimum) — matrix 2x2 з cennik_tier
+          price_mode: priceMode,
         }),
       })
       const data = await res.json()
@@ -180,7 +184,7 @@ export function SendOfferButton({
               {/* Sprint S-CENNIK-WH.1 (26.05.2026) — cennik tier selector */}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Cennik (wersja załącznika + ceny w formularzu zamówienia)
+                  Cennik (wersja załącznika)
                 </label>
                 <div className="flex gap-3">
                   <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
@@ -193,7 +197,7 @@ export function SendOfferButton({
                       className="accent-amber-600"
                     />
                     <span>
-                      <strong>Standardowy</strong> — 3 progi (mały / średni / duży opt)
+                      <strong>Standardowy</strong> — opt B2B
                     </span>
                   </label>
                   <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
@@ -206,10 +210,55 @@ export function SendOfferButton({
                       className="accent-amber-600"
                     />
                     <span>
-                      <strong>Wielki Hurt</strong> — jednolity próg, ceny zablokowane
+                      <strong>Wielki Hurt</strong> — najniższy poziom
                     </span>
                   </label>
                 </div>
+              </div>
+
+              {/* Sprint S-CENNIK-WH.2 (26.05.2026) — price mode (auto/minimum) — matrix 2x2 */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Tryb wyceny
+                </label>
+                <div className="flex gap-3">
+                  <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
+                    <input
+                      type="radio"
+                      name="price_mode"
+                      value="auto"
+                      checked={priceMode === 'auto'}
+                      onChange={() => setPriceMode('auto')}
+                      className="accent-amber-600"
+                    />
+                    <span>
+                      <strong>Auto</strong> —{' '}
+                      {cennikTier === 'wielki_hurt'
+                        ? 'Hurt < 10k → Wielki Hurt >= 10k'
+                        : '3 progi (mały / średni / duży)'}
+                    </span>
+                  </label>
+                  <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
+                    <input
+                      type="radio"
+                      name="price_mode"
+                      value="minimum"
+                      checked={priceMode === 'minimum'}
+                      onChange={() => setPriceMode('minimum')}
+                      className="accent-amber-600"
+                    />
+                    <span>
+                      <strong>Minimum</strong> —{' '}
+                      {cennikTier === 'wielki_hurt'
+                        ? 'locked Wielki Hurt'
+                        : 'locked duży opt'}
+                    </span>
+                  </label>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Tryb wybrany teraz jest zablokowany w zamówieniu klienta — nie może być
+                  zmieniony przez klienta.
+                </p>
               </div>
 
               <div>

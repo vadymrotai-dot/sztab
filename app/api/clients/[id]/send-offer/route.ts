@@ -50,6 +50,9 @@ export async function POST(
   // Sprint S-CENNIK-WH.1 (26.05.2026) — cennik tier locked at offer-send
   const cennikTier: 'standard' | 'wielki_hurt' =
     body.cennik_tier === 'wielki_hurt' ? 'wielki_hurt' : 'standard'
+  // Sprint S-CENNIK-WH.2 (26.05.2026) — price mode locked at offer-send (matrix 2x2)
+  const priceMode: 'auto' | 'minimum' =
+    body.price_mode === 'minimum' ? 'minimum' : 'auto'
 
   if (!email || !email.includes('@')) {
     return NextResponse.json(
@@ -108,6 +111,8 @@ export async function POST(
           order_number: `DRAFT-${Date.now()}-${clientId.slice(0, 8)}`,
           status: 'draft',
           cennik_tier: cennikTier,
+          // Sprint S-CENNIK-WH.2 — price_mode locked at offer-send
+          price_mode: priceMode,
         })
         .select('id, access_token')
         .single()

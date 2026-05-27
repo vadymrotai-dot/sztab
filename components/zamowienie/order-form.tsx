@@ -9,9 +9,13 @@ import { useMemo, useState } from 'react'
 import { Minus, Plus, ChevronRight, ChevronLeft, CheckCircle2, Loader2 } from 'lucide-react'
 
 // Sprint S-CENNIK-WH.1 (26.05.2026) — wielki_hurt 4-й tier (locked).
+// Sprint S-CENNIK-WH.2 (26.05.2026) — wielki_hurt_entry 5-й tier (Hurt < 10k).
 type StandardTier = 'maly' | 'sredni' | 'duzy'
-type Tier = StandardTier | 'wielki_hurt'
+type Tier = StandardTier | 'wielki_hurt' | 'wielki_hurt_entry'
 type CennikTier = 'standard' | 'wielki_hurt'
+type PriceMode = 'auto' | 'minimum'
+
+const WH_HURT_THRESHOLD = 10000 // PLN netto — mirror lib/orders/tier-config.ts
 
 type Product = {
   id: string
@@ -19,7 +23,14 @@ type Product = {
   gramatura: string | null
   category: string | null
   sort: number | null
-  prices: { maly: number; sredni: number; duzy: number; wielki_hurt: number }
+  prices: {
+    maly: number
+    sredni: number
+    duzy: number
+    wielki_hurt: number
+    // Sprint S-CENNIK-WH.2 — Hurt entry-tier (NULL if SKU не jest w WH cenniku Hurt)
+    hurt_wh: number | null
+  }
 }
 
 export type OrderInitial = {
@@ -35,6 +46,8 @@ export type OrderInitial = {
     customer_notes: string | null
     // Sprint S-CENNIK-WH.1 — tier locked at offer-send.
     cennik_tier: CennikTier
+    // Sprint S-CENNIK-WH.2 — price mode locked at offer-send (matrix 2x2)
+    price_mode: PriceMode
   }
   client: {
     title: string
@@ -61,6 +74,7 @@ const TIER_LABEL: Record<Tier, string> = {
   sredni: 'Średni',
   duzy: 'Duży gracz',
   wielki_hurt: 'Wielki Hurt',
+  wielki_hurt_entry: 'Hurt',
 }
 
 const TIER_NEXT_THRESHOLD: Record<StandardTier, number | null> = {
@@ -69,36 +83,56 @@ const TIER_NEXT_THRESHOLD: Record<StandardTier, number | null> = {
   duzy: null,
 }
 
+// Sprint S-CENNIK-WH.2 — map TierAtSubmit (5 values) → Product.prices key (5 keys).
+// Note: 'wielki_hurt_entry' tier reads price з 'hurt_wh' field (different naming).
+function tierToPriceKey(t: Tier): keyof Product['prices'] {
+  if (t === 'wielki_hurt_entry') return 'hurt_wh'
+  return t
+}
+
 function fmt(n: number): string {
   return n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-// Sprint S-CENNIK-WH.1 — branch by cennikTier:
-//   wielki_hurt → locked single tier, no iteration
-//   standard    → iterative 3-tier
+// Sprint S-CENNIK-WH.2 — Matrix 2x2 (cennikTier × priceMode):
+//   standard + auto    → iterate maly/sredni/duzy (calcTier z 2k/4k thresholds)
+//   standard + minimum → locked 'duzy'
+//   wielki_hurt + auto → 10k hurt nominal threshold: <10k 'wielki_hurt_entry', >=10k 'wielki_hurt'
+//   wielki_hurt + min  → locked 'wielki_hurt'
 function computeTierAndTotal(
   cart: Record<string, number>,
   products: Product[],
   cennikTier: CennikTier,
-): { tier: Tier; total: number } {
-  if (cennikTier === 'wielki_hurt') {
-    const total = Object.entries(cart).reduce((sum, [id, qty]) => {
+  priceMode: PriceMode,
+): { tier: Tier; total: number; hurtNominal?: number } {
+  const sumWith = (selector: (p: Product) => number | null): number =>
+    Object.entries(cart).reduce((sum, [id, qty]) => {
       if (qty <= 0) return sum
       const p = products.find((pp) => pp.id === id)
       if (!p) return sum
-      return sum + qty * p.prices.wielki_hurt
+      const price = selector(p)
+      if (price == null) return sum
+      return sum + qty * price
     }, 0)
-    return { tier: 'wielki_hurt', total }
+
+  if (cennikTier === 'wielki_hurt' && priceMode === 'auto') {
+    const hurtNominal = sumWith((p) => p.prices.hurt_wh)
+    if (hurtNominal >= WH_HURT_THRESHOLD) {
+      return { tier: 'wielki_hurt', total: sumWith((p) => p.prices.wielki_hurt), hurtNominal }
+    }
+    return { tier: 'wielki_hurt_entry', total: hurtNominal, hurtNominal }
   }
+  if (cennikTier === 'wielki_hurt') {
+    return { tier: 'wielki_hurt', total: sumWith((p) => p.prices.wielki_hurt) }
+  }
+  if (priceMode === 'minimum') {
+    return { tier: 'duzy', total: sumWith((p) => p.prices.duzy) }
+  }
+  // standard + auto
   let tier: StandardTier = 'maly'
   let total = 0
   for (let i = 0; i < 4; i++) {
-    total = Object.entries(cart).reduce((sum, [id, qty]) => {
-      if (qty <= 0) return sum
-      const p = products.find((pp) => pp.id === id)
-      if (!p) return sum
-      return sum + qty * p.prices[tier]
-    }, 0)
+    total = sumWith((p) => p.prices[tier])
     const newTier: StandardTier =
       total < 2000 ? 'maly' : total <= 4000 ? 'sredni' : 'duzy'
     if (newTier === tier) return { tier, total }
@@ -117,7 +151,12 @@ export function OrderForm({
   const { client, products } = initial
   // Sprint S-CENNIK-WH.1 — cennik_tier locked at offer-send.
   const cennikTier: CennikTier = initial.order.cennik_tier ?? 'standard'
+  // Sprint S-CENNIK-WH.2 — price_mode locked at offer-send (matrix 2x2)
+  const priceMode: PriceMode = initial.order.price_mode ?? 'auto'
   const isWielkiHurt = cennikTier === 'wielki_hurt'
+  const isMinimum = priceMode === 'minimum'
+  const isAutoStandard = cennikTier === 'standard' && priceMode === 'auto'
+  const isAutoWH = cennikTier === 'wielki_hurt' && priceMode === 'auto'
   const clientName = client?.title ?? ''
   const firstWord = clientName.split(' ')[0] || 'Kliencie'
 
@@ -139,9 +178,9 @@ export function OrderForm({
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitResult, setSubmitResult] = useState<SubmitOk | null>(null)
 
-  const { tier, total } = useMemo(
-    () => computeTierAndTotal(cart, products, cennikTier),
-    [cart, products, cennikTier],
+  const { tier, total, hurtNominal } = useMemo(
+    () => computeTierAndTotal(cart, products, cennikTier, priceMode),
+    [cart, products, cennikTier, priceMode],
   )
   const itemsCount = useMemo(
     () => Object.values(cart).reduce((s, q) => s + (q > 0 ? 1 : 0), 0),
@@ -267,10 +306,24 @@ export function OrderForm({
             <div className="text-xs font-semibold text-amber-900 mb-2">Co warto wiedzieć:</div>
             <ul className="text-xs text-amber-900/80 space-y-1.5">
               <li>• 17 SKU kiszonek, sałatek, surówek</li>
-              {isWielkiHurt ? (
-                <li>• <strong>Cennik Wielki Hurt</strong> — najniższa cena (1 próg, zablokowana)</li>
-              ) : (
+              {isAutoWH && (
+                <li>
+                  • <strong>Cennik Wielki Hurt</strong> — Hurt do{' '}
+                  {fmt(WH_HURT_THRESHOLD)} PLN, powyżej Wielki Hurt (najniższe ceny)
+                </li>
+              )}
+              {isWielkiHurt && isMinimum && (
+                <li>
+                  • <strong>Cennik Wielki Hurt</strong> — locked, najniższy poziom
+                </li>
+              )}
+              {isAutoStandard && (
                 <li>• 3 progi cenowe (mały / średni / duży gracz)</li>
+              )}
+              {!isWielkiHurt && isMinimum && (
+                <li>
+                  • <strong>Cena duży opt</strong> — locked dla całego zamówienia
+                </li>
               )}
               <li>• Pierwsze zamówienie bez przedpłaty</li>
               <li>• Dostawa 3-5 dni roboczych</li>
@@ -290,12 +343,16 @@ export function OrderForm({
       {/* ─── Step 2: Wybór produktów ──────────────────────────────────────── */}
       {step === 2 && (
         <>
-          {/* Sticky tier banner */}
+          {/* Sticky tier banner — Sprint S-CENNIK-WH.2 matrix 2x2 */}
           <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 py-3 shadow-sm">
             <div className="flex items-baseline justify-between mb-2">
               <div>
                 <div className="text-[10px] uppercase tracking-wide text-slate-500">
-                  {isWielkiHurt ? 'Cennik (zablokowany)' : 'Próg cenowy'}
+                  {isMinimum
+                    ? 'Cennik (zablokowany)'
+                    : isAutoWH
+                      ? 'Cennik Wielki Hurt'
+                      : 'Próg cenowy'}
                 </div>
                 <div
                   className={`text-sm font-bold ${
@@ -316,15 +373,25 @@ export function OrderForm({
                 <div className="text-base font-bold text-slate-900">{fmt(total)} zł</div>
               </div>
             </div>
-            {isWielkiHurt ? (
-              <div className="text-[10px] text-violet-700 mt-1">
-                Ceny zablokowane — najniższe w cenniku, niezależnie od wielkości zamówienia.
-              </div>
-            ) : (
+            {/* Branch by matrix cell */}
+            {isAutoStandard && (
               <>
                 <TierProgressBar tier={tier as StandardTier} total={total} />
                 <TierHint tier={tier as StandardTier} total={total} />
               </>
+            )}
+            {isAutoWH && (
+              <WHHurtProgressBar tier={tier} hurtNominal={hurtNominal ?? 0} />
+            )}
+            {isMinimum && isWielkiHurt && (
+              <div className="text-[10px] text-violet-700 mt-1">
+                Ceny zablokowane na poziomie <strong>Wielki Hurt</strong> — niezależnie od wielkości zamówienia.
+              </div>
+            )}
+            {isMinimum && !isWielkiHurt && (
+              <div className="text-[10px] text-emerald-700 mt-1">
+                Ceny zablokowane na poziomie <strong>Duży opt</strong> — niezależnie od wielkości zamówienia.
+              </div>
             )}
           </div>
 
@@ -338,15 +405,19 @@ export function OrderForm({
                 <div className="space-y-2">
                   {items.map((p) => {
                     const isPomidor = /pomidor/i.test(p.name)
-                    const price = p.prices[tier]
+                    // Sprint S-CENNIK-WH.2 — tier→priceKey map (handles 'wielki_hurt_entry' → 'hurt_wh').
+                    // ?? 0 coerces NULL price_hurt_wh do 0 (UX fallback dla SKU bez WH-Hurt oferty;
+                    // klient widzi "Brak w Hurcie" badge + disabled state — nie powinien móc add).
+                    const price = p.prices[tierToPriceKey(tier)] ?? 0
                     // Sprint S-CENNIK-WH.1 — line-through показуємо vs maly (retail anchor).
-                    // For wielki_hurt також показуємо economy vs maly.
                     const originalPrice = p.prices.maly
                     const qty = cart[p.id] ?? 0
+                    // Sprint S-CENNIK-WH.2 — WH+auto: disable jeśli SKU не ma price_hurt_wh
+                    const whAutoUnavailable = isAutoWH && p.prices.hurt_wh == null
                     return (
                       <div
                         key={p.id}
-                        className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-start gap-3"
+                        className={`bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-start gap-3 ${whAutoUnavailable ? 'opacity-50' : ''}`}
                       >
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start gap-2 mb-1">
@@ -356,16 +427,35 @@ export function OrderForm({
                                 Ostatnie
                               </span>
                             )}
-                          </div>
-                          <div className="text-xs text-slate-500 mb-1.5">{p.gramatura}</div>
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-sm font-bold text-slate-900">{fmt(price)} zł</span>
-                            {tier !== 'maly' && price < originalPrice && (
-                              <span className="text-[10px] text-slate-400 line-through">
-                                {fmt(originalPrice)} zł
+                            {whAutoUnavailable && (
+                              <span className="shrink-0 text-[9px] bg-slate-300 text-slate-600 px-1.5 py-0.5 rounded font-bold uppercase">
+                                Brak w Hurcie
                               </span>
                             )}
                           </div>
+                          <div className="text-xs text-slate-500 mb-1.5">{p.gramatura}</div>
+                          {/* WH+auto: show Hurt + Wielki Hurt side-by-side */}
+                          {isAutoWH && !whAutoUnavailable ? (
+                            <div className="flex items-baseline gap-2 flex-wrap">
+                              <span className={`text-sm font-bold ${tier === 'wielki_hurt' ? 'text-violet-700' : 'text-slate-900'}`}>
+                                {tier === 'wielki_hurt' ? fmt(p.prices.wielki_hurt) : fmt(p.prices.hurt_wh ?? 0)} zł
+                              </span>
+                              <span className="text-[10px] text-slate-500">
+                                {tier === 'wielki_hurt'
+                                  ? `(Hurt: ${fmt(p.prices.hurt_wh ?? 0)} zł)`
+                                  : `(Wielki Hurt: ${fmt(p.prices.wielki_hurt)} zł)`}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-sm font-bold text-slate-900">{fmt(price)} zł</span>
+                              {tier !== 'maly' && price < originalPrice && (
+                                <span className="text-[10px] text-slate-400 line-through">
+                                  {fmt(originalPrice)} zł
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           <button
@@ -538,7 +628,8 @@ export function OrderForm({
               .map(([id, qty]) => {
                 const p = products.find((pp) => pp.id === id)
                 if (!p) return null
-                const price = p.prices[tier]
+                // Sprint S-CENNIK-WH.2 — tier→priceKey map (handles 'wielki_hurt_entry' → 'hurt_wh')
+                const price = p.prices[tierToPriceKey(tier)] ?? 0
                 const subtotal = qty * price
                 return (
                   <div key={id} className="px-3 py-2 flex items-baseline gap-3 text-xs">
@@ -560,7 +651,9 @@ export function OrderForm({
           {/* Totals */}
           <div className="bg-[#1F2B4A] text-white rounded-lg p-4 space-y-1.5">
             <div className="flex justify-between text-xs opacity-80">
-              <span>{isWielkiHurt ? 'Cennik' : 'Próg końcowy'}</span>
+              <span>
+                {isMinimum ? 'Cennik (zablokowany)' : isWielkiHurt ? 'Cennik' : 'Próg końcowy'}
+              </span>
               <span className="font-bold">{TIER_LABEL[tier]}</span>
             </div>
             <div className="flex justify-between text-sm">
@@ -727,5 +820,34 @@ function TierHint({ tier, total }: { tier: StandardTier; total: number }) {
       Brakuje <span className="font-semibold text-slate-700">{fmt(diff)} zł</span> do progu{' '}
       <span className="font-semibold text-amber-600">{nextLabel}</span> (lepsze ceny)
     </div>
+  )
+}
+
+// Sprint S-CENNIK-WH.2 — Hurt → Wielki Hurt progress (10k threshold, hurt nominal trigger)
+function WHHurtProgressBar({ tier, hurtNominal }: { tier: Tier; hurtNominal: number }) {
+  const isCrossed = tier === 'wielki_hurt'
+  const pct = Math.min(100, Math.max(0, (hurtNominal / WH_HURT_THRESHOLD) * 100))
+  const diff = WH_HURT_THRESHOLD - hurtNominal
+  return (
+    <>
+      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-300 ${isCrossed ? 'bg-violet-600' : 'bg-amber-500'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="text-[10px] mt-1.5">
+        {isCrossed ? (
+          <span className="text-violet-700">
+            Najlepsza cena · <strong>Wielki Hurt</strong>
+          </span>
+        ) : (
+          <span className="text-slate-500">
+            Brakuje <span className="font-semibold text-slate-700">{fmt(diff)} zł</span> (Hurt) do progu{' '}
+            <span className="font-semibold text-violet-700">Wielki Hurt</span> (lepsze ceny)
+          </span>
+        )}
+      </div>
+    </>
   )
 }

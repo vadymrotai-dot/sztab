@@ -25,6 +25,7 @@ export default async function ZamowieniaPage() {
     .select(
       `
       id, order_number, status, tier_at_submit,
+      cennik_tier, price_mode,
       total_net, total_brutto,
       contact_person, contact_phone, contact_email,
       delivery_address, preferred_delivery_date,

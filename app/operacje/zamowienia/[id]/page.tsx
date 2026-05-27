@@ -31,6 +31,7 @@ export default async function OrderDetailPage({
     .select(
       `
       id, order_number, status, tier_at_submit,
+      cennik_tier, price_mode,
       total_net, total_vat, total_brutto, vat_rate,
       contact_person, contact_phone, contact_email,
       delivery_address, preferred_delivery_date,

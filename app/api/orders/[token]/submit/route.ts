@@ -42,10 +42,15 @@ const SubmitSchema = z.object({
 type RouteContext = { params: Promise<{ token: string }> }
 
 // Sprint S-CENNIK-WH.1 (26.05.2026) — wielki_hurt додано як 4-й tier (locked).
-// calcTier() використовується ТІЛЬКИ для standard cennik (3-tier auto).
-// wielki_hurt = fixed at order load time, no iteration.
+// Sprint S-CENNIK-WH.2 (26.05.2026) — matrix 2x2 (cennik_tier × price_mode):
+//   standard + auto    → iterate maly/sredni/duzy (calcTier)
+//   standard + minimum → locked 'duzy' (najnizsza standard cena)
+//   wielki_hurt + auto → 10k threshold (hurt nominal): <10k 'wielki_hurt_entry', >=10k 'wielki_hurt'
+//   wielki_hurt + min  → locked 'wielki_hurt' (price_duzi_gracze)
+import { WH_HURT_THRESHOLD } from '@/lib/orders/tier-config'
+
 type StandardTier = 'maly' | 'sredni' | 'duzy'
-type Tier = StandardTier | 'wielki_hurt'
+type TierAtSubmit = StandardTier | 'wielki_hurt' | 'wielki_hurt_entry'
 
 function calcTier(net: number): StandardTier {
   if (net < 2000) return 'maly'
@@ -54,13 +59,14 @@ function calcTier(net: number): StandardTier {
 }
 
 const TIER_PRICE: Record<
-  Tier,
-  'price_maly_opt' | 'price_sredni' | 'price_duzy' | 'price_duzi_gracze'
+  TierAtSubmit,
+  'price_maly_opt' | 'price_sredni' | 'price_duzy' | 'price_duzi_gracze' | 'price_hurt_wh'
 > = {
   maly: 'price_maly_opt',
   sredni: 'price_sredni',
   duzy: 'price_duzy',
   wielki_hurt: 'price_duzi_gracze',
+  wielki_hurt_entry: 'price_hurt_wh',
 }
 
 export async function POST(req: NextRequest, ctx: RouteContext) {
@@ -108,9 +114,10 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
   // Load order draft
   // Sprint S-CENNIK-WH.1 — also fetch cennik_tier (locked at offer-send).
+  // Sprint S-CENNIK-WH.2 — also fetch price_mode (matrix 2x2).
   const { data: order, error: loadErr } = await supabase
     .from('orders')
-    .select('id, status, cennik_tier')
+    .select('id, status, cennik_tier, price_mode')
     .eq('access_token', token)
     .maybeSingle()
   if (loadErr) {
@@ -138,7 +145,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   const { data: products } = await supabase
     .from('products')
     .select(
-      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, show_in_orders',
+      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, show_in_orders',
     )
     .in('id', productIds)
   if (!products || products.length !== productIds.length) {
@@ -154,33 +161,78 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     )
   }
 
-  // Sprint S-CENNIK-WH.1 — branch by cennik_tier:
-  //   wielki_hurt → locked single tier (price_duzi_gracze), NO iteration
-  //   standard    → iterative 3-tier (maly/sredni/duzy) via calcTier()
-  let tier: Tier
+  // Sprint S-CENNIK-WH.2 — Matrix 2x2 (cennik_tier × price_mode):
+  //   standard + auto    → iterate maly/sredni/duzy (calcTier z 2k/4k thresholds)
+  //   standard + minimum → locked 'duzy' (najnizsza standard cena)
+  //   wielki_hurt + auto → 10k threshold (hurt nominal): <10k 'wielki_hurt_entry', >=10k 'wielki_hurt'
+  //   wielki_hurt + min  → locked 'wielki_hurt' (price_duzi_gracze)
+  const cennikTier: 'standard' | 'wielki_hurt' =
+    order.cennik_tier === 'wielki_hurt' ? 'wielki_hurt' : 'standard'
+  const priceMode: 'auto' | 'minimum' = order.price_mode === 'minimum' ? 'minimum' : 'auto'
+
+  let tier: TierAtSubmit
   let total = 0
-  if (order.cennik_tier === 'wielki_hurt') {
-    tier = 'wielki_hurt'
-    const priceKey = TIER_PRICE[tier]
-    total = input.items.reduce((sum, item) => {
+
+  const sumWithKey = (priceKey: keyof (typeof products)[number]): number =>
+    input.items.reduce((sum, item) => {
       const p = products.find((pp) => pp.id === item.product_id)!
-      return sum + item.qty * Number(p[priceKey])
+      const raw = p[priceKey] as number | string | null
+      if (raw == null) {
+        // Will be caught by the NaN check у caller; this prevents silent 0 substitution.
+        return NaN
+      }
+      return sum + item.qty * Number(raw)
     }, 0)
+
+  if (cennikTier === 'wielki_hurt' && priceMode === 'auto') {
+    // Threshold based on Hurt nominal (entry-tier prices). Guard: всі SKU must have price_hurt_wh.
+    const missingHurt = products.filter((p) => p.price_hurt_wh == null)
+    if (missingHurt.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            'Produkty bez ceny w cenniku Hurt: ' +
+            missingHurt.map((p) => p.display_name || p.name).join(', '),
+        },
+        { status: 400 },
+      )
+    }
+    const hurtNominal = sumWithKey('price_hurt_wh')
+    if (hurtNominal >= WH_HURT_THRESHOLD) {
+      tier = 'wielki_hurt'
+      total = sumWithKey('price_duzi_gracze')
+    } else {
+      tier = 'wielki_hurt_entry'
+      total = hurtNominal
+    }
+  } else if (cennikTier === 'wielki_hurt') {
+    // wielki_hurt + minimum (locked WH — current S-CENNIK-WH.1 behavior)
+    tier = 'wielki_hurt'
+    total = sumWithKey('price_duzi_gracze')
+  } else if (priceMode === 'minimum') {
+    // standard + minimum (locked duzy)
+    tier = 'duzy'
+    total = sumWithKey('price_duzy')
   } else {
-    // Compute tier iteratively — max 3 iterations converges бо tier transitions monotonic.
+    // standard + auto (existing 3-tier auto from S-ORDER.1.B.1)
     let stdTier: StandardTier = 'maly'
     for (let i = 0; i < 3; i++) {
-      const priceKey = TIER_PRICE[stdTier]
-      total = input.items.reduce((sum, item) => {
-        const p = products.find((pp) => pp.id === item.product_id)!
-        return sum + item.qty * Number(p[priceKey])
-      }, 0)
+      total = sumWithKey(TIER_PRICE[stdTier])
       const newTier = calcTier(total)
       if (newTier === stdTier) break
       stdTier = newTier
     }
     tier = stdTier
   }
+
+  if (!Number.isFinite(total)) {
+    return NextResponse.json(
+      { ok: false, error: 'Brak ceny dla produktu w wybranym cenniku — skontaktuj się z dostawcą' },
+      { status: 400 },
+    )
+  }
+
   const priceKey = TIER_PRICE[tier]
   const totalNet = total
   const totalVat = Math.round(totalNet * 0.05 * 100) / 100

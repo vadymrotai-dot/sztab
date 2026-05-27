@@ -20,15 +20,22 @@ export const dynamic = 'force-dynamic'
 const UUID_RE = /^[0-9a-f-]{36}$/i
 
 // Sprint S-CENNIK-WH.1 (26.05.2026) — wielki_hurt 4-й tier (locked).
-type Tier = 'maly' | 'sredni' | 'duzy' | 'wielki_hurt'
+// Sprint S-CENNIK-WH.2 (26.05.2026) — wielki_hurt_entry 5-й tier (Hurt entry < 10k).
+type Tier =
+  | 'maly'
+  | 'sredni'
+  | 'duzy'
+  | 'wielki_hurt'
+  | 'wielki_hurt_entry'
 const TIER_PRICE: Record<
   Tier,
-  'price_maly_opt' | 'price_sredni' | 'price_duzy' | 'price_duzi_gracze'
+  'price_maly_opt' | 'price_sredni' | 'price_duzy' | 'price_duzi_gracze' | 'price_hurt_wh'
 > = {
   maly: 'price_maly_opt',
   sredni: 'price_sredni',
   duzy: 'price_duzy',
   wielki_hurt: 'price_duzi_gracze',
+  wielki_hurt_entry: 'price_hurt_wh',
 }
 
 const EDITABLE_STATUSES = ['submitted', 'confirmed', 'in_realization']
@@ -131,11 +138,12 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     )
   }
 
+  // Sprint S-CENNIK-WH.2 — accept 5 values (matrix 2x2 outputs)
   const rawTier = (order.tier_at_submit || 'maly') as string
-  const tier: Tier =
-    rawTier === 'wielki_hurt' || rawTier === 'sredni' || rawTier === 'duzy'
-      ? (rawTier as Tier)
-      : 'maly'
+  const validTiers: Tier[] = ['maly', 'sredni', 'duzy', 'wielki_hurt', 'wielki_hurt_entry']
+  const tier: Tier = (validTiers as readonly string[]).includes(rawTier)
+    ? (rawTier as Tier)
+    : 'maly'
   const priceKey = TIER_PRICE[tier]
 
   const { data: product } = await admin
@@ -151,7 +159,15 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     )
   }
 
-  const unitPrice = Number((product as any)[priceKey])
+  // Sprint S-CENNIK-WH.2 — guard against NULL price (e.g. wielki_hurt_entry SKU bez price_hurt_wh)
+  const rawPrice = (product as any)[priceKey]
+  if (rawPrice == null) {
+    return NextResponse.json(
+      { ok: false, error: `Produkt nie ma ceny w cenniku (${priceKey}) — admin override required` },
+      { status: 400 },
+    )
+  }
+  const unitPrice = Number(rawPrice)
   const lineTotal = parsed.data.qty * unitPrice
 
   const { data: inserted, error: insErr } = await admin
