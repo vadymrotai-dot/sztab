@@ -32,30 +32,25 @@
 
 const APIFY_BASE = 'https://api.apify.com/v2'
 const ACTOR_ID = 'compass~crawler-google-places'
-// Sprint TYDZIEN1.A.2 (27.05.2026) — RAISED 25s → 80s after diagnose 24/24
-// Apify_GMaps partial з-за tego cap. Apify Compass scraper з
-// scrapePlaceDetailPage=true typowo kończy 90-200s na 3 places (review +
-// popularTimes + menu + ...). Sztab abortował 25s wcześniej niż Apify
-// zwracał rezultat — strata kosztów Apify side ($2-5/sprint), zero partials
-// saved у Sztab.
+// Sprint TYDZIEN1.A.2.2 (27.05.2026) — RAISED 80s → 110s after A.2.1 post-deploy
+// diagnose showed 95s actual (z scrapePlaceDetailPage=false). 80s cap missed
+// 95s run by 15s → Sztab partial, Apify SUCCEEDED $0.07. 110s gives 15s margin
+// over observed 95s for production clients, and covers small slowdowns.
 //
-// Vercel Pro 300s ceiling allows 80-90s budget for Apify (Apify Compass actor
-// typically completes 90-200s for 3 places with detail pages). Budget math:
-// 90s Apify + ~25s pozostałe Phase B + 5s margin = 120s ≤ 300s ceiling.
+// Vercel Pro 300s ceiling allows 110-120s Apify budget. Math:
+// 120s Apify + 25s AI_business_analysis + 12s AI_match_rescore + 15s other
+// + 10s margin = 182s ≤ 300s ceiling. Confortable.
 //
-// Legacy comment (now superseded — kept for context):
-//   Sprint S-CEIDG-DETAILS Day 1 PATCH (15.05.2026) lowered 240_000 → 25_000
-//   to fit Vercel function ceiling 120s. Over-corrected — almost all runs
-//   abortowane. A.2 raises back до safe 80s.
-const REQUEST_TIMEOUT_MS = 80_000
-/** Sprint TYDZIEN1.A.2 (27.05.2026) — RAISED 30s → 90s. Outer hard ceiling
- *  dla całego enrichContactsApify (Promise.race у public entry). Zachowuje
- *  Phase B budget — CEIDG_details + AI кроки після Apify obowiązkowo run.
- *  Якщо Apify не вкладається у 90s → повертаємо status='partial' з error_message
- *  'APIFY_TIMEOUT_90S'. Caller (route.ts:696-712) handles partial gracefully.
- *  Note: existing "no retry on AbortError" behavior kept; if still timeout,
- *  raise via ENV flag in future (sprint A.3+). */
-const APIFY_HARD_TIMEOUT_MS = 90_000
+// History:
+//   25_000 (S-CEIDG Day 1) — over-corrected from 240_000 (4 хв), 0% success
+//   80_000 (A.2)            — still missed median 150s (з detail=true)
+//   110_000 (A.2.2)         — covers 95s (з detail=false) + margin
+const REQUEST_TIMEOUT_MS = 110_000
+/** Sprint TYDZIEN1.A.2.2 (27.05.2026) — RAISED 90s → 120s. Outer hard ceiling
+ *  для enrichContactsApify Promise.race. 10s margin over inner timeout 110s
+ *  для retry/abort overhead. Якщо Apify > 120s → return zeroResult('partial')
+ *  з 'APIFY_TIMEOUT_120S' (string auto-update via dynamic formula). */
+const APIFY_HARD_TIMEOUT_MS = 120_000
 const RATE_LIMIT_PER_MIN = 30
 const RATE_WINDOW_MS = 60_000
 const COST_PER_RESULT_USD = 0.007
@@ -239,12 +234,21 @@ async function callApify(
   const heavyDetailNeeded = (HEAVY_DETAIL_CLIENT_TYPES as readonly string[]).includes(
     clientType ?? '',
   )
+  // Sprint TYDZIEN1.A.2.2 (27.05.2026) — maxCrawledPlaces conditional. Non-heavy
+  // client_types (production/hurtownia/sklep_detal/instytucja/inne) zwykle mają
+  // 1 main address per KRS — single result wystarczy. Reduces actor work ~3x
+  // (typical 30-50s zamiast 90-120s) + cost 1 vs 3 result units. Trade-off:
+  // pickBestMatch widzi tylko 1 candidate; jeśli nazwa Google ≠ DB title →
+  // 'no_match'. Acceptable dla non-gastronomia (1 KRS-registered address).
+  // Heavy clients (gastronomia/hotel/catering) keep 3 places — restaurant
+  // chains mają multiple locations + menu detail wymaga більше data.
+  const maxPlaces = heavyDetailNeeded ? 3 : 1
   console.log(
-    `[apify] clientType=${clientType ?? 'null'} heavyDetail=${heavyDetailNeeded} (scrapePlaceDetailPage)`,
+    `[apify] clientType=${clientType ?? 'null'} heavyDetail=${heavyDetailNeeded} maxPlaces=${maxPlaces} (scrapePlaceDetailPage+maxCrawledPlaces)`,
   )
   const body = {
     searchStringsArray: [searchQuery],
-    maxCrawledPlaces: 3,
+    maxCrawledPlaces: maxPlaces,
     language: 'pl',
     countryCode: 'pl',
     deeperCityScrape: false,
