@@ -59,7 +59,13 @@ import { extractBrandAliasesFromKoncesje } from '@/lib/intelligence/extract-konc
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 120
+// Sprint TYDZIEN1.A.2.3 (27.05.2026) — RAISED 120 → 240. A.2.2 post-deploy
+// diagnose showed Vercel killed function at 120s — 4s BEFORE Apify response
+// arrived (Apify 105s + 18s preamble = 123s). Vercel Pro ceiling 300s.
+// Math: preamble 18s + Apify ≤110s + AI_business ~25s + AI_match ~12s +
+// margin ~70s = ~235s safe. Trade-off: longer billable function time, ale
+// allows Phase B to actually complete з Apify в середині pipeline.
+export const maxDuration = 240
 
 interface LookupRequest {
   nip?: string
