@@ -125,6 +125,9 @@ export async function POST(req: Request) {
         employee_count_range: data.employee_count_range,
         pkd_codes: data.pkd_codes,
         gus_last_checked: data.checked_at,
+        // Sprint TYDZIEN1.A.1 (27.05.2026) — siedziba з GUS report (praw_*/fiz_*)
+        ...(data.city ? { city: data.city } : {}),
+        ...(data.address ? { address: data.address } : {}),
       })
       .eq('id', targetId)
     if (upErr) {

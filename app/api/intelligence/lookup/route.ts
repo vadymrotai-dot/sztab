@@ -241,6 +241,10 @@ export async function POST(req: Request) {
             pkd_2007_codes: gus.pkd_codes && gus.pkd_codes.length > 0 ? gus.pkd_codes : null,
             gus_last_checked: gus.checked_at,
             krs_number: krsNumber,
+            // Sprint TYDZIEN1.A.1 (27.05.2026) — siedziba з GUS report (praw_*/fiz_*).
+            // Nie nadpisuj jeśli GUS zwrócił null (skip-spread, zostaw istniejącą wartość).
+            ...(gus.city ? { city: gus.city } : {}),
+            ...(gus.address ? { address: gus.address } : {}),
           })
           .eq('id', clientId)
 

@@ -241,8 +241,50 @@ export interface GusEnrichedData {
   employee_count_range: '0' | '1-9' | '10-49' | '50-249' | '250+' | null
   pkd_codes: string[]
   pkd_main: string | null
+  /** Sprint TYDZIEN1.A.1 (27.05.2026) — siedziba miejscowość, z praw_* lub fiz_* fallback. */
+  city: string | null
+  /** Sprint TYDZIEN1.A.1 (27.05.2026) — sformatowany adres siedziby
+   *  "{ulica} {numer}/{lokal}, {kod_pocz} {miejscowosc}" z null-skipping. */
+  address: string | null
   raw: unknown
   checked_at: string
+}
+
+/** Format polski kod pocztowy '05532' → '05-532'. */
+function formatZip(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const digits = String(raw).replace(/\D/g, '')
+  if (digits.length !== 5) return digits || null
+  return `${digits.slice(0, 2)}-${digits.slice(2)}`
+}
+
+/** Compose Polish address string з GUS report fields.
+ *  Prefers praw_adSiedz* (osoba prawna), fallback fiz_adSiedz* (JDG).
+ *  Format: "{ulica} {numer}/{lokal}, {kod} {miejscowosc}" — null-skipping. */
+function composeGusAddress(
+  reportFlat: Record<string, string | undefined>,
+): { city: string | null; address: string | null } {
+  const pick = (praw: string, fiz: string): string | null => {
+    const v = reportFlat[praw] ?? reportFlat[fiz] ?? ''
+    return v && v.trim() ? v.trim() : null
+  }
+  const city = pick('praw_adSiedzMiejscowosc_Nazwa', 'fiz_adSiedzMiejscowosc_Nazwa')
+  const ulica = pick('praw_adSiedzUlica_Nazwa', 'fiz_adSiedzUlica_Nazwa')
+  const numer = pick('praw_adSiedzNumerNieruchomosci', 'fiz_adSiedzNumerNieruchomosci')
+  const lokal = pick('praw_adSiedzNumerLokalu', 'fiz_adSiedzNumerLokalu')
+  const kodRaw = pick('praw_adSiedzKodPocztowy', 'fiz_adSiedzKodPocztowy')
+  const kod = formatZip(kodRaw)
+
+  // Compose: street part + zip+city part, '-' joined
+  const street = [ulica, numer && lokal ? `${numer}/${lokal}` : numer]
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+  const cityPart = [kod, city].filter(Boolean).join(' ').trim()
+  const parts = [street, cityPart].filter((s) => s.length > 0)
+  const address = parts.length > 0 ? parts.join(', ') : null
+
+  return { city, address }
 }
 
 /** Map GUS LiczbaPracujacych (number) to bucket. */
@@ -288,6 +330,8 @@ export async function enrichWithGUS(
       employee_count_range: null,
       pkd_codes: [],
       pkd_main: null,
+      city: null,
+      address: null,
       raw: { search: null, report: null, pkd: null },
       checked_at: checkedAt,
     }
@@ -367,6 +411,9 @@ export async function enrichWithGUS(
   // Fallback: якщо нема marked main, take first code
   if (!pkd_main && pkd_codes.length > 0) pkd_main = pkd_codes[0] ?? null
 
+  // Sprint TYDZIEN1.A.1 — extract address from reportFlat (praw_* OR fiz_* fallback)
+  const { city, address } = composeGusAddress(reportFlat)
+
   return {
     found: true,
     regon: search.Regon,
@@ -376,6 +423,8 @@ export async function enrichWithGUS(
     employee_count_range,
     pkd_codes,
     pkd_main,
+    city,
+    address,
     raw: { search, report, pkd: pkdReport },
     checked_at: checkedAt,
   }

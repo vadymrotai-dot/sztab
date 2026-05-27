@@ -1,0 +1,21 @@
+timestamp,decision,action,target,field,old,new,status
+20260522-052303,D1_continental_cleanup,cohort_members DELETE,8c549ece-5bd0-42bb-9b0b-880dc0dc6a73,-,(in cohort),(removed),applied
+20260522-052303,D1_continental_cleanup,cohort_members DELETE,ba327137-d2c1-4934-b062-0a7143776b3f,-,(in cohort),(removed),applied
+20260522-052303,D1_continental_cleanup,cohort_members DELETE,aa6ba106-87cc-48c7-ba22-135e02f35141,-,(in cohort),(removed),applied
+20260522-052303,D1_continental_cleanup,cohort_members DELETE,4c5a4eb4-44e1-416e-b26a-66efb71e1aaa,-,(in cohort),(removed),applied
+20260522-052303,D1_continental_cleanup,cohort_members DELETE,99c1f595-53a6-42b7-9df8-3776549f794c,-,(in cohort),(removed),applied
+20260522-052303,D1_continental_cleanup,cohort_members DELETE,762afb64-b5b0-4722-a802-14e928d48b9e,-,(in cohort),(removed),applied
+20260522-052303,D1_continental_cleanup,cohort_members DELETE,ae1dee8d-d145-4799-a025-44b092795123,-,(in cohort),(removed),applied
+20260522-052303,D1_continental_cleanup,cohort_members DELETE,8e8caa96-75db-4ac7-aafa-026041df6a56,-,(in cohort),(removed),applied
+20260522-052303,D1_continental_cleanup,cohort_members DELETE,7aaeefc2-d601-4bcf-99d0-65e8d0c5f7aa,-,(in cohort),(removed),applied
+20260522-052303,D1_continental_cleanup,cohort_members DELETE,07932a61-b137-466a-b797-53155b5fc657,-,(in cohort),(removed),applied
+20260522-052303,D1_continental_cleanup,cohort_members DELETE,933b18cc-0a44-4fdd-be3a-4a31322ed469,-,(in cohort),(removed),applied
+20260522-052303,D1_continental_cleanup,cohort_members DELETE,f065ac22-8ae3-4871-8114-fbc7f584d4c8,-,(in cohort),(removed),applied
+20260522-052303,D2_intermarche_drop,cohort_members DELETE,ac8c1b34-d7fc-4c2c-91bb-e717651bcf59,-,(in cohort),(removed),applied
+20260522-052303,D3_promote_GRUPA_MPT,contact_enrichment INSERT,e0c47edb-1358-456d-bedf-8b3ffd02a81f,gmaps_no_match_recovered,-,"phone=,website=http://www.grupampt.pl/",inserted
+20260522-052303,D3_promote_GRUPA_MPT,clients UPDATE,e0c47edb-1358-456d-bedf-8b3ffd02a81f,website,(NULL),http://www.grupampt.pl/,updated
+20260522-052303,D3_promote_ARCTIC,contact_enrichment INSERT,126df1ce-02a9-45c5-aafa-f7095bf58ac5,gmaps_no_match_recovered,-,"phone=+48532129186,website=http://www.arcticproduce.pl/",inserted
+20260522-052303,D3_promote_ARCTIC,clients UPDATE,126df1ce-02a9-45c5-aafa-f7095bf58ac5,phone,(NULL),+48532129186,updated
+20260522-052303,D3_promote_ARCTIC,clients UPDATE,126df1ce-02a9-45c5-aafa-f7095bf58ac5,website,(NULL),http://www.arcticproduce.pl/,updated
+20260522-052303,D3_promote_OLEUM_DISTRIBUTION,contact_enrichment INSERT,490f5813-e744-40f4-aceb-30d36294705b,gmaps_no_match_recovered,-,"phone=+48338568321,website=None",inserted
+20260522-052303,D3_promote_OLEUM_DISTRIBUTION,clients UPDATE,490f5813-e744-40f4-aceb-30d36294705b,phone,(NULL),+48338568321,updated
