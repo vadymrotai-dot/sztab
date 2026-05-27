@@ -29,6 +29,8 @@ import { fetchPersonNetwork } from '@/lib/rejestrio/person-network'
 import { fetchCrbr } from '@/lib/rejestrio/crbr'
 import { fetchBranches } from '@/lib/gus/branches'
 import { extractFromWebsite } from '@/lib/enrichment/website'
+// Sprint TYDZIEN1.A.3 (27.05.2026) — regex-based contact extractor (no AI cost)
+import { extractWebsiteRegex } from '@/lib/enrichment/website-regex'
 import { upsertField, upsertFields } from '@/lib/profile/merge'
 import { findExistingContact } from '@/lib/enrichment/contact-preflight'
 import { enrichContactsApify } from '@/lib/enrichment/apify'
@@ -59,13 +61,14 @@ import { extractBrandAliasesFromKoncesje } from '@/lib/intelligence/extract-konc
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-// Sprint TYDZIEN1.A.2.3 (27.05.2026) — RAISED 120 → 240. A.2.2 post-deploy
-// diagnose showed Vercel killed function at 120s — 4s BEFORE Apify response
-// arrived (Apify 105s + 18s preamble = 123s). Vercel Pro ceiling 300s.
-// Math: preamble 18s + Apify ≤110s + AI_business ~25s + AI_match ~12s +
-// margin ~70s = ~235s safe. Trade-off: longer billable function time, ale
-// allows Phase B to actually complete з Apify в середині pipeline.
-export const maxDuration = 240
+// Sprint TYDZIEN1.A.2.6 (27.05.2026) — RAISED 240 → 260. A.2.4 raised Apify
+// cap до 150s, A.2.6 raised to 170s після diagnose. Updated budget math:
+// preamble 18s + Apify 170s + AI_business 25s + AI_match 12s + margin 35s = 260s.
+// Vercel Pro ceiling 300s, leaves 40s margin.
+//
+// Sprint TYDZIEN1.A.2.3 (legacy comment): RAISED 120 → 240 after function killed
+// at 120s mid-Apify; A.2.6 incremental raise дla covering Apify variance.
+export const maxDuration = 260
 
 interface LookupRequest {
   nip?: string
@@ -634,12 +637,11 @@ async function runPhaseB({
   const supabase = await createClient()
 
   // Sprint S6A Step 2 — Phase B budget tracker для AI_match_rescore guard.
-  // Sprint TYDZIEN1.A.2.4 (27.05.2026) — RAISED 110_000 → 220_000. Align з
-  // maxDuration=240 (A.2.3). 20s reserved для handler return + Phase A response
-  // overhead. Previous 110s budget left AI_match_rescore z negative remaining
-  // gdy Apify took 110-150s. Budget math: 18s preamble + 150s Apify + 25s AI
-  // bus + 12s match + 15s margin = 220s within budget.
-  const PHASE_B_BUDGET_MS = 220_000
+  // Sprint TYDZIEN1.A.2.6 (27.05.2026) — RAISED 220_000 → 240_000. Align з
+  // maxDuration=260 (A.2.6). 20s reserved для handler return + Phase A response.
+  // Budget math: 18s preamble + 170s Apify + 25s AI bus + 12s match + 15s margin
+  // = 240s within budget.
+  const PHASE_B_BUDGET_MS = 240_000
   const phaseBStartedAt = Date.now()
 
   // Lightweight response object для helper compat (mostly to track per-step
@@ -755,6 +757,158 @@ async function runPhaseB({
       status: 'skipped',
       note: 'tavily_api_key brak у params (ustaw w /settings → Klucze API) + brak fallbacku TAVILY_API_KEY w env',
     })
+  }
+
+  // ─── STEP 4.6: Website regex scrape (TYDZIEN1.A.3 — 27.05.2026) ────────────
+  // Free phone/email/social extractor — fetches homepage + /kontakt + /contact
+  // + /o-nas, runs Polish phone regex + email regex + facebook/instagram/linkedin
+  // detection. No AI cost ($0). Source-of-truth dla phone gdy Apify GMaps fails
+  // (timeout, wrong-firm match, cost_guard tripped).
+  //
+  // Source URL priority: website_krs (authoritative KRS-registered) > Tavily-found
+  // website (company_profile_fields[website]). Skip jeśli neither populated.
+  //
+  // Idempotency: skip jeśli recent successful website_scrape row < 30 days
+  // (no schema migration — uses enrichment_log).
+  if (clientId) {
+    // Resolve target URL — prefer website_krs (canonical), fallback Tavily website
+    const { data: wsClient } = await supabase
+      .from('clients')
+      .select('website_krs')
+      .eq('id', clientId)
+      .single()
+    const { data: wsField } = await supabase
+      .from('company_profile_fields')
+      .select('value_text')
+      .eq('client_id', clientId)
+      .eq('field_key', 'website')
+      .is('superseded_at', null)
+      .maybeSingle()
+    const wsKrs = (wsClient as { website_krs?: string | null } | null)?.website_krs ?? null
+    const wsTavily = (wsField as { value_text?: string | null } | null)?.value_text ?? null
+    const rawWebsiteUrl = wsKrs || wsTavily
+    if (!rawWebsiteUrl) {
+      response.sources_completed.push({
+        source: 'website_scrape',
+        status: 'skipped',
+        note: 'no website URL (KRS or Tavily)',
+      })
+    } else {
+      // Normalize URL: ensure scheme, strip trailing slash
+      let normalizedUrl = rawWebsiteUrl.trim()
+      if (!/^https?:\/\//i.test(normalizedUrl)) {
+        normalizedUrl = `https://${normalizedUrl.replace(/^www\./i, '')}`
+      }
+      normalizedUrl = normalizedUrl.replace(/\/$/, '')
+
+      // Idempotency: skip jeśli recent successful row exists <30d
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+      const { data: recentScrape } = await supabase
+        .from('enrichment_log')
+        .select('id, run_started_at')
+        .eq('target_id', clientId)
+        .eq('target_type', 'company')
+        .eq('source', 'website_scrape')
+        .eq('status', 'success')
+        .gte('run_started_at', cutoff)
+        .order('run_started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (recentScrape) {
+        const lastRun = (recentScrape as { run_started_at: string }).run_started_at
+        response.sources_completed.push({
+          source: 'website_scrape',
+          status: 'skipped',
+          note: `cached: last success ${lastRun.slice(0, 10)} (<30d)`,
+        })
+      } else {
+        const wsRunId = await startEnrichmentRun(supabase, {
+          target_type: 'company',
+          target_id: clientId,
+          source: 'website_scrape',
+        })
+        try {
+          const wsResult = await extractWebsiteRegex(normalizedUrl)
+          // Sprint TYDZIEN1.A.3 — additional spam filter beyond what
+          // website-regex.ts already does. Caught у smoke test maczfit.pl:
+          //   - Sentry DSN-like: <hash>@ingest.sentry.<host>
+          //   - CSS font fragments: 'wght@200..700' (consecutive dots in domain)
+          //   - Common monitoring/tracking false positives
+          const cleanEmails = wsResult.emails.filter((e) => {
+            if (/\.{2,}/.test(e)) return false                  // consecutive dots
+            if (/sentry|ingest|datadog|newrelic|honeybadger/i.test(e)) return false
+            if (/^[a-f0-9]{16,}@/i.test(e)) return false        // hash-prefix DSN
+            // basic shape: must have actual TLD (≥2 chars after final dot)
+            const parts = e.split('@')[1] ?? ''
+            if (!/\.[a-z]{2,}$/i.test(parts)) return false
+            return true
+          })
+          // Promote to canonical fields (only якщо нової wartości; не nadpisuj
+          // existing populated values). KRS-derived phones/emails are highest
+          // trust; website_scrape gets 'medium' confidence-equivalent.
+          const wsFields: Array<{
+            field_key: string
+            value: { value_text?: string; value_json?: unknown }
+          }> = []
+          if (wsResult.phones.length > 0) {
+            wsFields.push({ field_key: 'phone', value: { value_text: wsResult.phones[0]! } })
+          }
+          if (cleanEmails.length > 0) {
+            wsFields.push({ field_key: 'email', value: { value_text: cleanEmails[0]! } })
+          }
+          if (wsResult.facebook_url) {
+            wsFields.push({
+              field_key: 'facebook_url',
+              value: { value_text: wsResult.facebook_url },
+            })
+          }
+          if (wsResult.instagram_url) {
+            wsFields.push({
+              field_key: 'instagram_url',
+              value: { value_text: wsResult.instagram_url },
+            })
+          }
+          const wsMerged =
+            wsFields.length > 0
+              ? await upsertFields(
+                  supabase,
+                  { type: 'client', id: clientId },
+                  wsFields,
+                  'website_scrape',
+                )
+              : { added: [], updated: [], unchanged: [], ignored: [] }
+          response.fields_filled += wsMerged.added.length + wsMerged.updated.length
+          const wsStatus =
+            wsResult.phones.length > 0 || cleanEmails.length > 0 ? 'success' : 'partial'
+          response.sources_completed.push({
+            source: 'website_scrape',
+            status: wsStatus,
+            fields_added: wsMerged.added.length,
+            fields_updated: wsMerged.updated.length,
+            note: `${wsResult.phones.length}ph, ${cleanEmails.length}em (${wsResult.emails.length} raw), ${wsResult.pages_fetched.length} pages`,
+          })
+          await finishEnrichmentRun(supabase, wsRunId, {
+            status: wsStatus,
+            fields_added: wsMerged.added,
+            fields_updated: wsMerged.updated,
+            raw_payload: wsResult,
+            cost_usd: 0,
+          })
+        } catch (wsErr) {
+          const wsMsg = wsErr instanceof Error ? wsErr.message : String(wsErr)
+          response.errors.push(`website_scrape: ${wsMsg}`)
+          response.sources_completed.push({
+            source: 'website_scrape',
+            status: 'error',
+            error: wsMsg,
+          })
+          await finishEnrichmentRun(supabase, wsRunId, {
+            status: 'error',
+            error_message: wsMsg,
+          })
+        }
+      }
+    }
   }
 
   // ─── STEP 5: Apify Google Maps ───
