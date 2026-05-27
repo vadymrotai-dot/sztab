@@ -634,9 +634,12 @@ async function runPhaseB({
   const supabase = await createClient()
 
   // Sprint S6A Step 2 — Phase B budget tracker для AI_match_rescore guard.
-  // Vercel function ceiling 120s; safety margin 10s перш ніж STEP 7 має bail
-  // gracefully (зберегти решту Phase B work від timeout).
-  const PHASE_B_BUDGET_MS = 110_000
+  // Sprint TYDZIEN1.A.2.4 (27.05.2026) — RAISED 110_000 → 220_000. Align з
+  // maxDuration=240 (A.2.3). 20s reserved для handler return + Phase A response
+  // overhead. Previous 110s budget left AI_match_rescore z negative remaining
+  // gdy Apify took 110-150s. Budget math: 18s preamble + 150s Apify + 25s AI
+  // bus + 12s match + 15s margin = 220s within budget.
+  const PHASE_B_BUDGET_MS = 220_000
   const phaseBStartedAt = Date.now()
 
   // Lightweight response object для helper compat (mostly to track per-step

@@ -32,25 +32,26 @@
 
 const APIFY_BASE = 'https://api.apify.com/v2'
 const ACTOR_ID = 'compass~crawler-google-places'
-// Sprint TYDZIEN1.A.2.2 (27.05.2026) — RAISED 80s → 110s after A.2.1 post-deploy
-// diagnose showed 95s actual (z scrapePlaceDetailPage=false). 80s cap missed
-// 95s run by 15s → Sztab partial, Apify SUCCEEDED $0.07. 110s gives 15s margin
-// over observed 95s for production clients, and covers small slowdowns.
-//
-// Vercel Pro 300s ceiling allows 110-120s Apify budget. Math:
-// 120s Apify + 25s AI_business_analysis + 12s AI_match_rescore + 15s other
-// + 10s margin = 182s ≤ 300s ceiling. Confortable.
+// Sprint TYDZIEN1.A.2.4 (27.05.2026) — RAISED 110s → 150s. A.2.2 post-deploy
+// diagnose showed Apify Compass actor з identycznym INPUT
+// (maxCrawledPlaces=1, scrapePlaceDetailPage=false) ma duration variance
+// 95-142s. 110s cap missed 142s run by 32s → Sztab partial, Apify SUCCEEDED
+// $0.13. 150s covers all observed runs + 8s margin nad worst case 142s.
 //
 // History:
-//   25_000 (S-CEIDG Day 1) — over-corrected from 240_000 (4 хв), 0% success
-//   80_000 (A.2)            — still missed median 150s (з detail=true)
-//   110_000 (A.2.2)         — covers 95s (з detail=false) + margin
-const REQUEST_TIMEOUT_MS = 110_000
-/** Sprint TYDZIEN1.A.2.2 (27.05.2026) — RAISED 90s → 120s. Outer hard ceiling
- *  для enrichContactsApify Promise.race. 10s margin over inner timeout 110s
- *  для retry/abort overhead. Якщо Apify > 120s → return zeroResult('partial')
- *  з 'APIFY_TIMEOUT_120S' (string auto-update via dynamic formula). */
-const APIFY_HARD_TIMEOUT_MS = 120_000
+//   25_000 (S-CEIDG Day 1) — over-corrected from 240_000, 0% success
+//   80_000 (A.2)            — still missed median 150s (z detail=true)
+//   110_000 (A.2.2)         — covered median 95s, missed 142s peak
+//   150_000 (A.2.4)         — covers 142s peak + 8s margin
+//
+// Vercel Pro 300s ceiling + maxDuration=240 (A.2.3). Math:
+// 18s preamble + 150s Apify + 25s AI_business + 12s match + 35s margin = 240s ≤ ceiling
+const REQUEST_TIMEOUT_MS = 150_000
+/** Sprint TYDZIEN1.A.2.4 (27.05.2026) — RAISED 120s → 160s. Outer hard ceiling
+ *  для enrichContactsApify Promise.race. 10s margin over inner timeout 150s
+ *  для retry/abort overhead. Якщо Apify > 160s → return zeroResult('partial')
+ *  з 'APIFY_TIMEOUT_160S' (string auto-update via dynamic formula). */
+const APIFY_HARD_TIMEOUT_MS = 160_000
 const RATE_LIMIT_PER_MIN = 30
 const RATE_WINDOW_MS = 60_000
 const COST_PER_RESULT_USD = 0.007
