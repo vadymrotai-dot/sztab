@@ -100,6 +100,25 @@ export async function POST(
 
     let accessToken: string
     if (existingDraft) {
+      // Sprint S-CENNIK-WH.2.1 (27.05.2026) — refresh tier+mode+cohort if Vadym
+      // changed wybór between sends (idempotency reuses access_token but tier/mode
+      // must reflect newest send-offer parameters).
+      const refreshResult = await admin
+        .from('orders')
+        .update({
+          cennik_tier: cennikTier,
+          price_mode: priceMode,
+          cohort_id: cohortId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingDraft.id)
+      if (refreshResult.error) {
+        console.error(
+          '[send-offer] failed to refresh existing draft',
+          refreshResult.error.message,
+        )
+        // soft-fail: continue з old values rather than block send
+      }
       orderId = existingDraft.id
       accessToken = existingDraft.access_token
     } else {
