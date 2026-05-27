@@ -118,7 +118,17 @@ export interface ApifyTarget {
    *  Apify item phone normalized matches. SOLERA edge: name "SOLERA Wilcza"
    *  на Google ≠ DB title "SOLERA SP. Z O.O." але phone identical → accept. */
   phone?: string | null
+  /** Sprint TYDZIEN1.A.2.1 (27.05.2026) — client_type drives conditional
+   *  scrapePlaceDetailPage. Only gastronomia/hotel/catering need full detail
+   *  (menu, popular times, reviews). Production/hurtownia/sklep_detal etc.
+   *  use lighter scrape (~30-45s typical) which fits within 80s timeout.
+   *  null/unknown → economy mode (heavyDetail=false). */
+  clientType?: string | null
 }
+
+/** Sprint TYDZIEN1.A.2.1 — client_types що requiruj full detail page scrape
+ *  (menu_dishes, popularTimes, openingHours). Outside this list → false. */
+const HEAVY_DETAIL_CLIENT_TYPES = ['gastronomia', 'hotel', 'catering'] as const
 
 /** Sprint S6D Day 2 REVISION (12.05.2026) — menu dish extracted з Google
  *  Maps detail page. Google Maps typically rendert top 3-5 popular dishes,
@@ -206,6 +216,7 @@ function buildQuery(target: ApifyTarget): string {
 async function callApify(
   apiKey: string,
   searchQuery: string,
+  clientType: string | null,
 ): Promise<ApifyPlace[]> {
   // memory=1024MB замість default 4096 — дозволяє більше concurrent runs у
   // межах account memory limit (8192MB total на free/starter). Cold-start
@@ -218,6 +229,19 @@ async function callApify(
   // updatesFromCustomers, questionsAndAnswers, tableReservationLinks, orderBy,
   // ownerUpdates, hotel fields. Якщо actor returns menu items у raw payload
   // — picked up via defensive extractMenuDishes helper.
+  //
+  // Sprint TYDZIEN1.A.2.1 (27.05.2026) — CONDITIONAL detail page. A.2 post-deploy
+  // diagnose showed median Apify run з detail=true = 150s, well above 80s Sztab
+  // timeout (0/8 recent runs covered). Only gastronomia/hotel/catering really
+  // need detail (menu_dishes, popularTimes). For production/hurtownia/etc.
+  // — detail=false reduces actor runtime до 30-45s typical, fits 80s timeout
+  // (~95% success expected). Default (null/unknown) → false (economy mode).
+  const heavyDetailNeeded = (HEAVY_DETAIL_CLIENT_TYPES as readonly string[]).includes(
+    clientType ?? '',
+  )
+  console.log(
+    `[apify] clientType=${clientType ?? 'null'} heavyDetail=${heavyDetailNeeded} (scrapePlaceDetailPage)`,
+  )
   const body = {
     searchStringsArray: [searchQuery],
     maxCrawledPlaces: 3,
@@ -225,7 +249,7 @@ async function callApify(
     countryCode: 'pl',
     deeperCityScrape: false,
     skipClosedPlaces: false,
-    scrapePlaceDetailPage: true,
+    scrapePlaceDetailPage: heavyDetailNeeded,
   }
 
   let lastError: unknown
@@ -387,7 +411,9 @@ async function enrichContactsApifyInternal(
   const query = buildQuery(target)
   let items: ApifyPlace[]
   try {
-    items = await callApify(apiKey, query)
+    // Sprint TYDZIEN1.A.2.1 — pass clientType до callApify для conditional
+    // scrapePlaceDetailPage (heavy detail tylko dla gastronomia/hotel/catering).
+    items = await callApify(apiKey, query, target.clientType ?? null)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     return zeroResult('error', 0, `Apify call failed: ${msg.slice(0, 200)}`)

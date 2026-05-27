@@ -188,6 +188,36 @@ export async function POST(req: Request) {
   let ownerId =
     (existingClient as { owner_id: string } | null)?.owner_id ?? user.id
 
+  // ─── Sprint TYDZIEN1.A.2.1 (27.05.2026) — Cleanup stuck 'running' rows ────
+  // Vercel function timeout / kill leaves enrichment_log rows stuck na
+  // status='running' navсekiv (after() promise dropped before finishEnrichmentRun).
+  // На entry handler — mark abandoned rows > 5 min as 'error' aby UI/diag
+  // не showed misleading "running" forever. Cheap: 1 SELECT + bulk UPDATE.
+  if (clientId) {
+    const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    const { data: stuckRows } = await supabase
+      .from('enrichment_log')
+      .select('id, source')
+      .eq('target_id', clientId)
+      .eq('status', 'running')
+      .lt('run_started_at', cutoff)
+    const stuckCount = (stuckRows ?? []).length
+    if (stuckCount > 0) {
+      const stuckIds = (stuckRows as Array<{ id: string }>).map((r) => r.id)
+      await supabase
+        .from('enrichment_log')
+        .update({
+          status: 'error',
+          error_message: 'abandoned: function timeout (cleaned up at handler entry)',
+          run_completed_at: new Date().toISOString(),
+        })
+        .in('id', stuckIds)
+      console.log(
+        `[lookup] cleanup ${stuckCount} stuck running rows for client ${clientId}`,
+      )
+    }
+  }
+
   // ─── TYDZIEN1.A.2 (27.05.2026) — Per-firm budget guard ─────────────────────
   // Cumulative cost accumulator + threshold check. Po przekroczeniu budgetu
   // expensive steps są pomijane (Apify_GMaps, sprawozdania JSON, www_menu).
@@ -809,6 +839,10 @@ async function runPhaseB({
             city: t.city,
             voivodeship: t.region,
             nip,
+            // Sprint TYDZIEN1.A.2.1 (27.05.2026) — pass client_type для conditional
+            // scrapePlaceDetailPage. existingClientTypeForGmaps already resolved
+            // wyżej (Step 6.8 b2b skip-logic) — reuse без osobnego DB fetch.
+            clientType: existingClientTypeForGmaps,
           })
           // ─── COST GUARD (S-DATA.2.A.6.8, 22.05.2026) ───
           // Phase 1 spike lesson — PAY_PER_EVENT actors можуть billed per-result
