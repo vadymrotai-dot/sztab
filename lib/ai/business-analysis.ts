@@ -256,6 +256,28 @@ UŻYJ KONTEKSTU:
   niepasujące słowo prawdopodobnie marka
 - jeśli brak silnych sygnałów, zwróć null + confidence=low
 
+⚡ KRS DOMAIN OVERRIDE (Sprint TYDZIEN1.A.1.3, 27.05.2026):
+Jeżeli sekcja "Sygnały marki / domeny" pokazuje domenę z KRS (website lub email)
+różną od strip'owanego legal name (np. legal='FRESH MEALS FACTORY', domain='maczfit.pl')
+ORAZ "Domain mismatch z nazwą firmy: TAK" → traktuj root domeny jako AUTHORITATIVE
+extracted_brand. Confidence=high. Domena oficjalnie zarejestrowana w KRS to
+najsilniejszy sygnał marki handlowej (silniejszy niż title parsing).
+
+PRIORYTET ŹRÓDEŁ extracted_brand (od najsilniejszego):
+1. KRS domain (website_krs / email_krs) — gdy mismatch z legal name → high confidence
+2. CEIDG koncesja brand_aliases (BAR/RESTAURACJA opis) — high confidence
+3. Title parsing (legal suffix strip, dash split) — medium/high
+
+PRZYKŁAD KRS DOMAIN PRIORITY:
+- Legal: "FRESH MEALS FACTORY SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ"
+- Title-only parsing dałoby: "FRESH MEALS FACTORY"
+- ALE Sygnały marki: website_domain='maczfit.pl', email_domain='maczfit.pl', mismatch=TAK
+- → extracted_brand="MaczFit" (z domain root, capitalized), confidence="high"
+
+Domena to nieprzypadkowo zarejestrowana wartość — firma SAMA wybrała ten brand
+do publicznej obecności online. Title może być legacy registry name pozostały
+z prejnego rebrandingu lub generic legal name z owner-suffix.
+
 extracted_brand_confidence:
 - "high" — jasna marka, zidentyfikowana z wysokim prawdopodobieństwem
   (legal suffix stripped, lub dash split, lub jednoznaczne 1-2-token brand)
@@ -319,6 +341,60 @@ interface CompanyContext {
     kind: string | null
     address: string | null
   }>
+  /** Sprint TYDZIEN1.A.1.3 (27.05.2026) — domain signals from KRS.
+   *  website_krs/email_krs to authoritative domena handlowa, gdy registry
+   *  legal name nie matches faktyczna nazwa marki (FRESH MEALS FACTORY →
+   *  domain maczfit.pl). */
+  website_krs: string | null
+  email_krs: string | null
+  /** Root domain extracted з website_krs (np. 'maczfit.pl' z 'WWW.MACZFIT.PL'). */
+  website_domain_signal: string | null
+  /** Root domain extracted з email_krs (np. 'maczfit.pl' z 'administracja@maczfit.pl'). */
+  email_domain_signal: string | null
+  /** True jeśli legal name nie zawiera root domain — silny sygnał марки handlowej. */
+  title_brand_mismatch: boolean
+}
+
+/** Sprint TYDZIEN1.A.1.3 — extract root domain з URL string lub bare hostname.
+ *  Handle WWW.X.PL, http(s)://, trailing paths, query strings. Lowercase. */
+function extractRootDomain(url: string | null | undefined): string | null {
+  if (!url) return null
+  let s = String(url).trim().toLowerCase()
+  if (!s) return null
+  s = s.replace(/^https?:\/\//, '')
+  s = s.split('/')[0] ?? s
+  s = s.split('?')[0] ?? s
+  s = s.replace(/^www\./, '')
+  s = s.replace(/[.]+$/, '')
+  if (!s || !s.includes('.')) return null
+  return s
+}
+
+/** Sprint TYDZIEN1.A.1.3 — extract domain з email address (after @). */
+function extractEmailDomain(email: string | null | undefined): string | null {
+  if (!email) return null
+  const at = String(email).indexOf('@')
+  if (at < 0) return null
+  return extractRootDomain(email.slice(at + 1))
+}
+
+/** Sprint TYDZIEN1.A.1.3 — generic platform / aggregator detection.
+ *  Used to decide czy domain to autentyczna marka handlowa (not platform). */
+export function isGenericPlatform(domain: string | null | undefined): boolean {
+  if (!domain) return false
+  const d = String(domain).toLowerCase()
+  const platforms = [
+    'emis.com',
+    'bizraport.pl',
+    'krs-pobierz.pl',
+    'gowork.pl',
+    'linkedin.com',
+    'facebook.com',
+    'instagram.com',
+    'panoramafirm.pl',
+    'pkt.pl',
+  ]
+  return platforms.some((p) => d === p || d.endsWith(`.${p}`) || d.includes(p))
 }
 
 async function gatherContext(
@@ -332,9 +408,11 @@ async function gatherContext(
   // Sprint S-CEIDG-DETAILS Day 1 (15.05.2026) — додано brand_aliases для
   // JDG koncesje (BAR/RESTAURACJA/SKLEP + brand name + address). Source =
   // migration 067 + runCeidgDetailsStep у app/api/intelligence/lookup/route.ts.
+  // Sprint TYDZIEN1.A.1.3 (27.05.2026) — fetch website_krs + email_krs для
+  // sygnały marki / domeny detection (FRESH MEALS FACTORY → maczfit.pl).
   const { data: client } = await supabase
     .from('clients')
-    .select('title, nip, krs_legal_form, krs_number, registered_date, city, vat_status, krs_management_board, krs_pkd_with_descriptions, brand_aliases')
+    .select('title, nip, krs_legal_form, krs_number, registered_date, city, vat_status, krs_management_board, krs_pkd_with_descriptions, brand_aliases, website_krs, email_krs')
     .eq('id', clientId)
     .single()
   const c = (client ?? {}) as {
@@ -348,6 +426,8 @@ async function gatherContext(
     krs_management_board?: Array<{ name?: string; surname?: string; functionName?: string; funkcjaWOrganie?: string }> | null
     krs_pkd_with_descriptions?: Array<{ kod: string; opis: string | null; isMain: boolean }> | null
     brand_aliases?: Array<{ brand: string; kind: string | null; address: string | null }> | null
+    website_krs?: string | null
+    email_krs?: string | null
   }
 
   // Profile fields для PKD codes / website
@@ -460,6 +540,24 @@ async function gatherContext(
   const brandAliases = Array.isArray(c.brand_aliases) ? c.brand_aliases : []
   if (brandAliases.length > 0) inputSources.add('CEIDG_details')
 
+  // Sprint TYDZIEN1.A.1.3 — domain signals z KRS + title mismatch detection
+  const websiteKrs = c.website_krs ?? null
+  const emailKrs = c.email_krs ?? null
+  const websiteDomainSignal = extractRootDomain(websiteKrs)
+  const emailDomainSignal = extractEmailDomain(emailKrs)
+  // Effective signal — preferowana ta z website_krs, fallback email_krs.
+  const effectiveDomain = websiteDomainSignal ?? emailDomainSignal
+  let titleBrandMismatch = false
+  if (effectiveDomain && !isGenericPlatform(effectiveDomain)) {
+    // Compare domain root vs legal name (z usuniętym ' . sp z o o ' itp.)
+    const titleNorm = (c.title ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+    const domainSlug = effectiveDomain.split('.')[0]?.toLowerCase().replace(/[^a-z0-9]/g, '') ?? ''
+    if (domainSlug && titleNorm && !titleNorm.includes(domainSlug)) {
+      titleBrandMismatch = true
+    }
+  }
+  if (websiteDomainSignal || emailDomainSignal) inputSources.add('KRS_domain')
+
   const context: CompanyContext = {
     nazwa: c.title ?? '?',
     nip: c.nip ?? '?',
@@ -483,6 +581,12 @@ async function gatherContext(
     news_mentions: news,
     apify_data: apify,
     brand_aliases: brandAliases,
+    // Sprint TYDZIEN1.A.1.3 — domain signals
+    website_krs: websiteKrs,
+    email_krs: emailKrs,
+    website_domain_signal: websiteDomainSignal,
+    email_domain_signal: emailDomainSignal,
+    title_brand_mismatch: titleBrandMismatch,
   }
 
   return { context, inputSources: Array.from(inputSources) }
@@ -553,6 +657,21 @@ function buildUserPrompt(ctx: CompanyContext): string {
     for (const b of ctx.bzp_tenders) {
       lines.push(`- "${b.subject.slice(0, 80)}" CPV: ${b.cpv.slice(0, 3).join(',')}`)
     }
+    lines.push('')
+  }
+
+  // Sprint TYDZIEN1.A.1.3 (27.05.2026) — Sygnały marki / domeny z KRS.
+  // Authoritative source dla nazwy handlowej; często rożna od registry legal name.
+  if (ctx.website_krs || ctx.email_krs || ctx.website_domain_signal || ctx.email_domain_signal) {
+    lines.push(`Sygnały marki / domeny:`)
+    lines.push(`- Domena z KRS (website): ${ctx.website_domain_signal ?? '—'}`)
+    lines.push(`- Domena z KRS (email): ${ctx.email_domain_signal ?? '—'}`)
+    lines.push(
+      `- Domain mismatch z nazwą firmy: ${ctx.title_brand_mismatch ? 'TAK — domena może być nazwą handlową' : 'NIE'}`,
+    )
+    lines.push(
+      `- WAŻNE: jeśli domena ≠ legal name, traktuj domenę jako PRAWDOPODOBNĄ markę handlową. Sprawdź ją w internecie (Tavily) i wpisz w extracted_brand.`,
+    )
     lines.push('')
   }
 

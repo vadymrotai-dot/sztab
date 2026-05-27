@@ -606,12 +606,24 @@ async function runPhaseB({
     try {
       const { data: targetRow } = await supabase
         .from('clients')
-        .select('title')
+        .select('title, website_krs, email_krs')
         .eq('id', clientId)
         .single()
-      const t = targetRow as { title: string } | null
+      const t = targetRow as {
+        title: string
+        website_krs: string | null
+        email_krs: string | null
+      } | null
       if (t) {
-        const web = await searchCompanyOnline(tavilyKey, t.title, nip)
+        // Sprint TYDZIEN1.A.1.3 — derive KRS domain hint (website_krs preferred,
+        // fallback email domain) for authoritative override of Tavily website pick.
+        const krsDomainHint =
+          (t.website_krs && t.website_krs.trim()) ||
+          (t.email_krs && t.email_krs.includes('@')
+            ? t.email_krs.split('@')[1] ?? null
+            : null) ||
+          null
+        const web = await searchCompanyOnline(tavilyKey, t.title, nip, krsDomainHint)
         const fields: Array<{ field_key: string; value: { value_text?: string; value_json?: unknown } }> = []
         if (web.website_url) fields.push({ field_key: 'website', value: { value_text: web.website_url } })
         if (web.facebook_url) fields.push({ field_key: 'facebook_url', value: { value_text: web.facebook_url } })

@@ -1,0 +1,45 @@
+======================================================================
+TAVILY RE-RANK SMOKE TEST — FRESH MEALS FACTORY
+Input: existing 14 raw_results (no new Tavily fetch)
+======================================================================
+
+### BEFORE (current state в DB) ###
+  website_url:    'https://www.emis.com'
+  facebook_url:   None
+  news_mentions:  0 entries
+
+### AFTER (re-applied new ranker з krs_domain_hint='maczfit.pl') ###
+  ✓ Current website ('emis.com') jest aggregator/generic → override krs_hint
+  new website_url: 'https://maczfit.pl'
+
+### NEW news_mentions (top 5 by score, skip agg/generic/empty) ###
+  count: 2
+Traceback (most recent call last):
+  File "<stdin>", line 127, in <module>
+ValueError: Invalid format specifier
+
+### NEW news_mentions DETAIL ###
+  count: 2
+  [1] score=0.4983 host=freshfactory.pl
+      title: 'FreshFactory'
+      snippet[:200]: '# WELCOME TO THE WORLD OF FRESHNESS. ### O NAS. FRESH FACTORY to dynamicznie rozwijająca się rodzinna firma handlowa zajmująca się zakupem, kontrolą jakości, sortowaniem, pakowaniem i przechowywaniem '
+
+  [2] score=0.4364 host=vrejestr.pl
+      title: 'FRESH MEALS FACTORY - vRejestr.pl'
+      snippet[:200]: 'Nazwa pełnaFRESH MEALS FACTORY SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ. Forma prawnaSpółka z ograniczoną odpowiedzialnością. w przypadku zarządu składającego się z dwóch lub większej liczby osób do sk'
+
+### Audit: which raw_results passed/failed ###
+  score=0.8465 host=www.bizraport.pl                         content_len= 1177 flags=AGG,GEN
+  score=0.7594 host=www.gowork.pl                            content_len=  122 flags=AGG,GEN
+  score=0.7414 host=aleo.com                                 content_len=   99 flags=AGG
+  score=0.6086 host=www.emis.com                             content_len=  972 flags=AGG,GEN
+  score=0.5761 host=pl.linkedin.com                          content_len=  151 flags=GEN
+  score=0.5536 host=www.emis.com                             content_len=  942 flags=AGG,GEN
+  score=0.5169 host=krs-pobierz.pl                           content_len= 1125 flags=AGG,GEN
+  score=0.4983 host=freshfactory.pl                          content_len= 1022 flags=PASS
+  score=0.4938 host=krs-pobierz.pl                           content_len= 1125 flags=AGG,GEN
+  score=0.4780 host=www.gowork.pl                            content_len=  122 flags=AGG,GEN
+  score=0.4364 host=vrejestr.pl                              content_len=  934 flags=PASS
+  score=0.4027 host=www.emis.com                             content_len=  942 flags=AGG,GEN
+  score=0.0450 host=www.gowork.pl                            content_len=  145 flags=AGG,GEN
+  score=0.0153 host=krs-pobierz.pl                           content_len= 1125 flags=AGG,GEN

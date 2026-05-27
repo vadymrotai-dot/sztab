@@ -136,7 +136,36 @@ export const AGGREGATOR_BLOCKLIST = [
   'restauracja.pl',      // food directory aggregator (singular variant of restauracje.pl)
   'oceniamy.to',         // review aggregator (PL business ratings)
   'bizraport.pl',        // business report aggregator
+  // Sprint TYDZIEN1.A.1.3 (27.05.2026) — caught у FRESH MEALS FACTORY audit.
+  // Tavily picked emis.com (corporate-intel platform) as website_url over
+  // KRS-declared maczfit.pl. EMIS has 2 result entries (PL+EN profile) tied/
+  // beating ownDomain heuristic. Block dla website_url selection.
+  'emis.com',
 ]
+
+/** Sprint TYDZIEN1.A.1.3 (27.05.2026) — narrower "generic platform" list
+ *  used by news_mentions filter (which else might pollute prompt context).
+ *  Different from AGGREGATOR_BLOCKLIST (50+ entries) — focuses on top-tier
+ *  intel/social platforms where company is *listed* but not *operated*. */
+const GENERIC_PLATFORM_BLOCKLIST = [
+  'emis.com',
+  'bizraport.pl',
+  'krs-pobierz.pl',
+  'gowork.pl',
+  'linkedin.com',
+  'facebook.com',
+  'instagram.com',
+  'panoramafirm.pl',
+  'pkt.pl',
+]
+
+export function isGenericPlatform(host: string | null | undefined): boolean {
+  if (!host) return false
+  const h = String(host).toLowerCase().replace(/^www\./, '')
+  return GENERIC_PLATFORM_BLOCKLIST.some(
+    (d) => h === d || h.endsWith(`.${d}`) || h.includes(d),
+  )
+}
 
 export function isAggregator(host: string): boolean {
   const h = host.toLowerCase().replace(/^www\./, '')
@@ -307,6 +336,10 @@ export async function searchCompanyOnline(
   apiKey: string,
   nazwa: string,
   nip: string,
+  /** Sprint TYDZIEN1.A.1.3 (27.05.2026) — KRS-declared domena (z clients.website_krs
+   *  lub email_krs root). Jeśli podana і nie jest generic platform → użyj jako
+   *  authoritative website_url, override Tavily heuristic. */
+  krsDomainHint: string | null = null,
 ): Promise<WebSearchResult> {
   const out: WebSearchResult = {
     website_url: null,
@@ -428,6 +461,58 @@ export async function searchCompanyOnline(
   // Sprint M FIX 6 — defensive double-check, ownDomain already excludes aggregators.
   if (!out.website_url && ownDomain && !isAggregator(ownDomain)) {
     out.website_url = `https://${ownDomain}`
+  }
+
+  // Sprint TYDZIEN1.A.1.3 (27.05.2026) — KRS domain hint override.
+  // Jeśli mamy authoritative domain z KRS і:
+  //   (a) website_url to currently null / generic / aggregator → use krsDomain
+  //   (b) raw_results contain matching host → confirm + use
+  // Inaczej zostaw existing (Tavily-pick).
+  if (krsDomainHint) {
+    const hintRoot = krsDomainHint.toLowerCase().replace(/^www\./, '').replace(/^https?:\/\//, '').split('/')[0] ?? null
+    if (hintRoot && !isAggregator(hintRoot) && !isGenericPlatform(hintRoot)) {
+      const currentRoot = (() => {
+        if (!out.website_url) return null
+        try {
+          return new URL(out.website_url).hostname.toLowerCase().replace(/^www\./, '')
+        } catch { return null }
+      })()
+      const currentIsBad =
+        !currentRoot || isAggregator(currentRoot) || isGenericPlatform(currentRoot)
+      if (currentIsBad) {
+        out.website_url = `https://${hintRoot}`
+      }
+    }
+  }
+
+  // Sprint TYDZIEN1.A.1.3 — populate news_mentions liberalnie (top 5 by Tavily score,
+  // skip aggregators + generic platforms + empty contents). Replaces older PL-news
+  // outlets-only filter (forbes/puls/...) which left news_mentions empty для
+  // 90% B2B firms (FRESH MEALS got 0, FOOD EXPERTS got 0).
+  if (out.news_mentions.length < 5) {
+    const seenUrls = new Set<string>(out.news_mentions.map((n) => n.url))
+    const sortedByScore = [...allResults].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    for (const r of sortedByScore) {
+      if (out.news_mentions.length >= 5) break
+      if (seenUrls.has(r.url)) continue
+      const content = r.content ?? ''
+      if (content.length < 50) continue
+      let host: string
+      try { host = new URL(r.url).hostname.toLowerCase() } catch { continue }
+      if (isAggregator(host)) continue
+      if (isGenericPlatform(host)) continue
+      // Skip facebook/instagram (separate categorization) + own website
+      if (host.includes('facebook.com') || host.includes('instagram.com')) continue
+      if (ownDomain && host.endsWith(ownDomain)) continue
+      out.news_mentions.push({
+        title: r.title,
+        url: r.url,
+        snippet: content.slice(0, 280),
+        published_at: r.published_date ?? null,
+        score: r.score,
+      })
+      seenUrls.add(r.url)
+    }
   }
 
   return out

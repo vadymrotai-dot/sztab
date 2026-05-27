@@ -1,0 +1,127 @@
+======================================================================
+FRESH MEALS FACTORY (NIP 9512471196) — AI INPUT/OUTPUT DUMP
+Generated: 2026-05-27T10:55:44.295049Z
+======================================================================
+
+### A. RAW DB STATE ###
+
+clients.website        = None
+clients.website_krs    = 'WWW.MACZFIT.PL'
+clients.email_krs      = 'administracja@maczfit.pl'
+clients.city           = 'Szymanów'
+clients.brand_aliases  = []
+clients.business_profile.extracted_brand = 'FRESH MEALS FACTORY'
+clients.business_profile.buyer_strength_for_chm = 25
+
+company_profile_fields[website].value_text = 'https://www.emis.com'
+company_profile_fields[website].source     = 'WWW'
+company_profile_fields[news_mentions]      = None
+
+### B. RECONSTRUCTED PROMPT (what AI received last run) ###
+
+DANE FIRMY:
+
+Identyfikacja:
+- Nazwa: FRESH MEALS FACTORY SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ
+- NIP: 9512471196
+- Forma prawna: SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ
+- KRS: 0000752666
+- Data rejestracji: 2018-10-15
+- VAT: Czynny
+- Miasto: Szymanów
+
+KODY PKD (działalność gospodarcza):
+- 10.85.Z: WYTWARZANIE GOTOWYCH POSIŁKÓW I DAŃ (GŁÓWNE)
+- 68.20.Z: WYNAJEM I ZARZĄDZANIE NIERUCHOMOŚCIAMI WŁASNYMI LUB DZIERŻAWIONYMI
+- 10.86.Z: PRODUKCJA ARTYKUŁÓW SPOŻYWCZYCH HOMOGENIZOWANYCH I ŻYWNOŚCI DIETETYCZNEJ
+- 46.38.Z: SPRZEDAŻ HURTOWA POZOSTAŁEJ ŻYWNOŚCI
+- 10.89.D: PRODUKCJA POZOSTAŁYCH ARTYKUŁÓW SPOŻYWCZYCH, Z WYŁĄCZENIEM SUPLEMENTÓW DIETY, SUBSTYTUTÓW MIĘSA, ROŚLINNYCH SUBSTYTUTÓW DLA JAJ, NABIAŁU I INNYCH PRODUKTÓW MLECZNYCH, GDZIE INDZIEJ NIESKLASYFIKOWANA
+- 46.3: SPRZEDAŻ HURTOWA ŻYWNOŚCI, NAPOJÓW I WYROBÓW TYTONIOWYCH
+- 11.07.Z: PRODUKCJA NAPOJÓW BEZALKOHOLOWYCH I WÓD BUTELKOWANYCH
+- 10.32.Z: PRODUKCJA SOKÓW Z OWOCÓW I WARZYW
+- 70.20.Z: DORADZTWO W ZAKRESIE PROWADZENIA DZIAŁALNOŚCI GOSPODARCZEJ I POZOSTAŁE DORADZTWO W ZAKRESIE ZARZĄDZANIA
+
+Zarząd / decyzyjni:
+- Dorota Zwolińska (CZŁONEK ZARZĄDU)
+- Nicolas Jedraszak (PREZES ZARZĄDU)
+- Grzegorz Marek Paluch (CZŁONEK ZARZĄDU)
+
+Online presence:
+- Website: https://www.emis.com
+- Facebook: —
+- Instagram: —
+- Google Maps locations found: 0
+
+ZADANIE: Zwróć analizę biznesową jako JSON shape opisany w instrukcji systemowej.
+
+### C. AI OUTPUT (stored business_profile JSONB) ###
+
+{
+  "model_used": "claude-haiku-4-5",
+  "analyzed_at": "2026-05-27T10:39:34.820Z",
+  "client_type": "production",
+  "input_sources": [
+    "GUS",
+    "KRS",
+    "VAT_BL",
+    "WWW",
+    "persons",
+    "tavily"
+  ],
+  "client_subtype": "producent żywności gotowych posiłków i napojów",
+  "business_format": "producent spożywczy + hurtownia z funkcją B2B distribution",
+  "extracted_brand": "FRESH MEALS FACTORY",
+  "special_traits_pl": [
+    "Specjalizacja: produkcja gotowych posiłków i żywności dietetycznej",
+    "Model hybrydowy: producent + hurtownia B2B",
+    "Zakres Portfolio: od artykułów homogenizowanych po napoje i soki",
+    "Certyfikacja potrzebna dla gotowych posiłków (HACCP, hygieniczne)",
+    "Potencjalny catering dla instytucji publicznych (DPS, szkoły)"
+  ],
+  "buyer_reasoning_pl": "Fresh Meals Factory jest producentem gotowych posiłków i żywności dietetycznej — kategoria odległa od profilu ChM (kiszonki, warzywa konserwowane polskie). Brak synergii produktowej. Potencjalna współpraca dotyczyłaby maksymalnie komplementarnych komponentów do posiłków (warzywa kiszone jako dodatki), ale nie stanowi core business ani core procurement. HoReCa target audience jest wspólny, ale bez specjalizacji na kuchni polsko-ukraińskiej.",
+  "business_summary_pl": "Fresh Meals Factory to spółka z ograniczoną odpowiedzialnością zarejestrowana w 2018 r., specjalizująca się w produkcji gotowych posiłków, żywności dietetycznej i homogenizowanej, wraz z hurtową dystrybucją pozostałej żywności, napojów i soków. Model biznesowy łączy produkcję przemysłową (10.85.Z, 10.86.Z, 10.89.D, 11.07.Z, 10.32.Z) z B2B distribution dla sektora HoReCa, cateringu instytucjonalnego i sieci handlowych. Siedziба w Szymanowie sugeruje produkcję zbiorczą obsługującą rynek warszawski i regionu mazowieckiego.",
+  "estimated_locations": 1,
+  "product_categories_pl": [
+    "Gotowe posiłki i dania",
+    "Artykuły spożywcze homogenizowane",
+    "Żywność dietetyczna",
+    "Pozostałe artykuły spożywcze",
+    "Soki z owoców i warzyw",
+    "Napoje bezalkoholowe i wody butelkowane",
+    "Sprzedaż hurtowa żywności i napojów"
+  ],
+  "buyer_strength_for_chm": 25,
+  "target_demographics_pl": [
+    "B2B — jednostki HoReCa (restauracje, hotele, kawiarnie)",
+    "Catering instytucjonalny",
+    "Dystrybutorzy i sieci handlowe",
+    "Szkoły, domy opieki, szpitale (żywność dietetyczna)"
+  ],
+  "classification_confidence": 92,
+  "extracted_brand_confidence": "high",
+  "classification_reasoning_pl": "PKD główny 10.85.Z (wytwarzanie gotowych posiłków) + PKD dodatkowe 10.86.Z, 10.89.D, 11.07.Z, 10.32.Z wyraźnie wskazują producenta spożywczego z funkcją dystrybucji (46.38.Z). Forma prawna Sp. z o.o., rejestracja KRS, struktura zarządu (prezes, członkowie) oraz brak lokalizacji detalicznych (0 na Google Maps) potwierdzają producenta B2B. Nazwa 'Factory' + portfolio 'gotowe posiłki' dodatkowo solidne sygnały."
+}
+
+### D. TAVILY raw_results (what AI did NOT see — out of context) ###
+
+Total raw_results: 14
+Tavily writeback news_mentions size: 0  ← KEY: empty list, not propagated to fieldMap!
+Tavily writeback website_url:        'https://www.emis.com'  ← KEY: emis.com, generic corporate-intel site
+
+=== Maczfit-related results (first 5 з 'maczfit' string) ===
+  url=https://pl.linkedin.com/company/maczfit
+  title='MACZFIT - LinkedIn'
+  content[:400]='... firmą: Fresh Meals Factory Sp. z o.o. z siedzibą w Szymanowie (05-532), ul. Szymanów 9D, REGON: 381565356, NIP: 951-247-11-96, wpisanej do rejestru'
+
+  url=https://www.gowork.pl/maczfit.pl-fresh-meals-factory,23958573/kontakt
+  title='Kontakt, Maczfit.pl - Fresh Meals Factory Szymanów - GoWork.pl'
+  content[:400]='Kontakt Fresh Meals Factory Sp. z o.o. 05-532 Szyman w 9D NIP: 9512471196 KRS: 0000752666 REGON: 381565356 www.maczfit.pl.'
+
+  url=https://www.gowork.pl/maczfit.pl-fresh-meals-factory,23958573/kontakt
+  title='Kontakt, Maczfit.pl - Fresh Meals Factory Szymanów - GoWork.pl'
+  content[:400]='Kontakt Fresh Meals Factory Sp. z o.o. 05-532 Szyman w 9D NIP: 9512471196 KRS: 0000752666 REGON: 381565356 www.maczfit.pl.'
+
+  url=https://www.gowork.pl/opinie_czytaj,23958573,3
+  title='Opinie o maczfit.pl - Maczfit Foods - GoWork'
+  content[:400]='Sprawdź 222 opinie o Maczfit.pl - Fresh Meals Factory Szymanów. Dowiedz się więcej o rozmowach kwalifikacyjnych, zarobkach, kadrze zarządzającej,'
+

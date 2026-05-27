@@ -1,0 +1,56 @@
+======================================================================
+FRESH MEALS FACTORY — PROMPT AFTER FIX (Sprint TYDZIEN1.A.1.3)
+Generated: 2026-05-27T11:04:47.509014Z
+======================================================================
+
+### A. NEW SIGNALS (from gatherContext extension) ###
+  website_krs           = 'WWW.MACZFIT.PL'
+  email_krs             = 'administracja@maczfit.pl'
+  website_domain_signal = 'maczfit.pl'
+  email_domain_signal   = 'maczfit.pl'
+  title_brand_mismatch  = True
+
+### B. REBUILT PROMPT ###
+
+DANE FIRMY:
+
+Identyfikacja:
+- Nazwa: FRESH MEALS FACTORY SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ
+- NIP: 9512471196
+- Forma prawna: SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ
+- KRS: 0000752666
+- Data rejestracji: 2018-10-15
+- VAT: Czynny
+- Miasto: Szymanów
+
+KODY PKD (działalność gospodarcza):
+- 10.85.Z: WYTWARZANIE GOTOWYCH POSIŁKÓW I DAŃ (GŁÓWNE)
+- 68.20.Z: WYNAJEM I ZARZĄDZANIE NIERUCHOMOŚCIAMI WŁASNYMI LUB DZIERŻAWIONYMI
+- 10.86.Z: PRODUKCJA ARTYKUŁÓW SPOŻYWCZYCH HOMOGENIZOWANYCH I ŻYWNOŚCI DIETETYCZNEJ
+- 46.38.Z: SPRZEDAŻ HURTOWA POZOSTAŁEJ ŻYWNOŚCI
+- 10.89.D: PRODUKCJA POZOSTAŁYCH ARTYKUŁÓW SPOŻYWCZYCH, Z WYŁĄCZENIEM SUPLEMENTÓW DIETY, SUBSTYTUTÓW MIĘSA, ROŚLINNYCH SUBSTYTUTÓW DLA JAJ, NABIAŁU I INNYCH PRODUKTÓW MLECZNYCH, GDZIE INDZIEJ NIESKLASYFIKOWANA
+- 46.3: SPRZEDAŻ HURTOWA ŻYWNOŚCI, NAPOJÓW I WYROBÓW TYTONIOWYCH
+- 11.07.Z: PRODUKCJA NAPOJÓW BEZALKOHOLOWYCH I WÓD BUTELKOWANYCH
+- 10.32.Z: PRODUKCJA SOKÓW Z OWOCÓW I WARZYW
+- 70.20.Z: DORADZTWO W ZAKRESIE PROWADZENIA DZIAŁALNOŚCI GOSPODARCZEJ I POZOSTAŁE DORADZTWO W ZAKRESIE ZARZĄDZANIA
+
+Zarząd / decyzyjni:
+- Dorota Zwolińska (CZŁONEK ZARZĄDU)
+- Nicolas Jedraszak (PREZES ZARZĄDU)
+- Grzegorz Marek Paluch (CZŁONEK ZARZĄDU)
+
+Sygnały marki / domeny:
+- Domena z KRS (website): maczfit.pl
+- Domena z KRS (email): maczfit.pl
+- Domain mismatch z nazwą firmy: TAK — domena może być nazwą handlową
+- WAŻNE: jeśli domena ≠ legal name, traktuj domenę jako PRAWDOPODOBNĄ markę handlową. Sprawdź ją w internecie (Tavily) i wpisz w extracted_brand.
+
+Online presence:
+- Website: https://www.emis.com
+- Facebook: —
+- Instagram: —
+- Google Maps locations found: 0
+
+(News mentions niepopulated в DB — po deploy + nowym Tavily run będą populated)
+
+ZADANIE: Zwróć analizę biznesową jako JSON shape opisany w instrukcji systemowej.
