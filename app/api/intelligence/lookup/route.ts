@@ -838,11 +838,22 @@ async function runPhaseB({
         // Resolve target metadata для Apify call
         const { data: targetRow } = await supabase
           .from('clients')
-          .select('title, city, region')
+          .select('title, city, region, website_krs')
           .eq('id', clientId)
           .single()
-        const t = targetRow as { title: string; city: string | null; region: string | null } | null
+        const t = targetRow as {
+          title: string
+          city: string | null
+          region: string | null
+          website_krs: string | null
+        } | null
         if (t) {
+          // Sprint TYDZIEN1.A.2.5 — extract root domain z website_krs (np.
+          // 'WWW.MACZFIT.PL' → 'maczfit.pl') dla focused searchQuery + domain
+          // match boost у pickBestMatch.
+          const websiteDomainHint = t.website_krs
+            ? t.website_krs.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0] || null
+            : null
           const result = await enrichContactsApify(params.apify_api_token, {
             name: t.title,
             city: t.city,
@@ -852,6 +863,8 @@ async function runPhaseB({
             // scrapePlaceDetailPage. existingClientTypeForGmaps already resolved
             // wyżej (Step 6.8 b2b skip-logic) — reuse без osobnego DB fetch.
             clientType: existingClientTypeForGmaps,
+            // Sprint TYDZIEN1.A.2.5 — domain hint для query + match boost
+            websiteDomain: websiteDomainHint,
           })
           // ─── COST GUARD (S-DATA.2.A.6.8, 22.05.2026) ───
           // Phase 1 spike lesson — PAY_PER_EVENT actors можуть billed per-result

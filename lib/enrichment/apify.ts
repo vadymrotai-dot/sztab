@@ -120,6 +120,43 @@ export interface ApifyTarget {
    *  use lighter scrape (~30-45s typical) which fits within 80s timeout.
    *  null/unknown → economy mode (heavyDetail=false). */
   clientType?: string | null
+  /** Sprint TYDZIEN1.A.2.5 (27.05.2026) — root domain z clients.website_krs
+   *  (np. 'maczfit.pl'). Used як:
+   *   1) searchQuery suffix replacement (preferred over city dla focused query)
+   *   2) pickBestMatch domain match boost (+0.5 jeśli item.website host matches) */
+  websiteDomain?: string | null
+}
+
+/** Sprint TYDZIEN1.A.2.5 — strip Polish company legal suffixes before
+ *  searchQuery formation і similarity comparison. Without this, Levenshtein
+ *  awarded long-suffix matches (e.g. "Sp. z ograniczoną odpowiedzialnością")
+ *  more weight than actual brand names. */
+export function stripLegalSuffix(name: string): string {
+  return (name ?? '')
+    .replace(/\s+SP[ÓO]ŁKA\s+Z\s+OGRANICZON[AĄ]\s+ODPOWIEDZIALNOŚCI[AĄ]?$/i, '')
+    .replace(/\s+SP\.?\s*Z\s*O\.?\s*O\.?(\s*,?\s*SP\.?\s*K\.?)?$/i, '')
+    .replace(/\s+S\.?\s*A\.?$/i, '')
+    .replace(/\s+SP\.?\s*K\.?$/i, '')
+    .replace(/\s+SP\.?\s*J\.?$/i, '')
+    .replace(/\s+P\.?\s*S\.?\s*A\.?$/i, '')
+    .replace(/\s+SPÓŁKA\s+KOMANDYTOWA$/i, '')
+    .replace(/\s+SPÓŁKA\s+JAWNA$/i, '')
+    .replace(/\s+SPÓŁKA\s+AKCYJNA$/i, '')
+    .trim()
+}
+
+/** Sprint TYDZIEN1.A.2.5 — extract bare root domain (host без www/protocol/path).
+ *  Used dla domain match comparison in pickBestMatch. */
+function rootDomain(url: string | null | undefined): string | null {
+  if (!url) return null
+  let s = String(url).trim().toLowerCase()
+  if (!s) return null
+  s = s.replace(/^https?:\/\//, '')
+  s = s.split('/')[0] ?? s
+  s = s.split('?')[0] ?? s
+  s = s.replace(/^www\./, '')
+  s = s.replace(/[.]+$/, '')
+  return s && s.includes('.') ? s : null
 }
 
 /** Sprint TYDZIEN1.A.2.1 — client_types що requiruj full detail page scrape
@@ -202,9 +239,18 @@ interface ApifyPlace {
 }
 
 function buildQuery(target: ApifyTarget): string {
-  const parts = [target.name]
-  if (target.city) parts.push(target.city)
-  else if (target.voivodeship) parts.push(target.voivodeship)
+  // Sprint TYDZIEN1.A.2.5 — strip legal suffix from name. Long suffixes pollute
+  // Google search (matches everyone with "Sp. z o.o."). Plus domain hint
+  // (preferred over city) makes Google return exact firm at rank 0.
+  const cleanName = stripLegalSuffix(target.name)
+  const parts = [cleanName]
+  if (target.websiteDomain) {
+    parts.push(target.websiteDomain)
+  } else if (target.city) {
+    parts.push(target.city)
+  } else if (target.voivodeship) {
+    parts.push(target.voivodeship)
+  }
   parts.push('Polska')
   return parts.join(' ')
 }
@@ -325,6 +371,11 @@ function pickBestMatch(
   items: ApifyPlace[],
   targetName: string,
   targetPhone: string | null = null,
+  /** Sprint TYDZIEN1.A.2.5 — passed from ApifyTarget.websiteDomain dla domain
+   *  match boost (decisive signal vs name-only Levenshtein). */
+  targetWebsiteDomain: string | null = null,
+  /** Sprint TYDZIEN1.A.2.5 — target city dla geographic sanity penalty. */
+  targetCity: string | null = null,
 ): PickResult | null {
   if (items.length === 0) return null
 
@@ -346,16 +397,47 @@ function pickBestMatch(
     }
   }
 
-  if (items.length === 1) {
-    // Single result — accept якщо хоча б weak similarity (existing permissive)
-    const sim = similarity(targetName, items[0].title ?? '')
-    return { match: items[0], override: null, name_similarity: sim }
+  // Sprint TYDZIEN1.A.2.5 — scoring helper. Computes name similarity з legal
+  // suffix stripping (kills "sp. z o.o." bias) + domain match +0.5 boost +
+  // city absence -0.2 penalty. Single source of truth dla 1-result і N-result
+  // branches.
+  const targetClean = stripLegalSuffix(targetName).toLowerCase()
+  const targetCityLc = targetCity ? targetCity.toLowerCase() : null
+  const scoreCandidate = (item: ApifyPlace): number => {
+    const itemTitleClean = stripLegalSuffix(item.title ?? '').toLowerCase()
+    let score = similarity(targetClean, itemTitleClean)
+    // Domain match boost — decisive
+    if (targetWebsiteDomain) {
+      const itemRoot = rootDomain(item.website ?? null)
+      if (itemRoot && (itemRoot === targetWebsiteDomain || itemRoot.endsWith(`.${targetWebsiteDomain}`))) {
+        score += 0.5
+      }
+    }
+    // City absence penalty (only якщо targetCity declared)
+    if (targetCityLc) {
+      const addr = (item.address ?? '').toLowerCase()
+      if (addr && !addr.includes(targetCityLc)) {
+        score -= 0.2
+      }
+    }
+    return score
   }
-  // Multiple → pick highest similarity
+
+  if (items.length === 1) {
+    // Single-result branch — apply same scoring + threshold check (Sprint A.2.5).
+    // Previously accepted unconditionally — bypassed threshold validation.
+    const sim = scoreCandidate(items[0])
+    if (sim >= NAME_SIMILARITY_THRESHOLD) {
+      return { match: items[0], override: null, name_similarity: sim }
+    }
+    return null
+  }
+
+  // Multiple → pick highest score
   let best: ApifyPlace | null = null
   let bestSim = -1
   for (const item of items) {
-    const sim = similarity(targetName, item.title ?? '')
+    const sim = scoreCandidate(item)
     if (sim > bestSim) {
       bestSim = sim
       best = item
@@ -430,7 +512,14 @@ async function enrichContactsApifyInternal(
     return zeroResult('no_match', cost, undefined, { query, items: [] })
   }
 
-  const picked = pickBestMatch(items, target.name, target.phone ?? null)
+  // Sprint TYDZIEN1.A.2.5 — pass websiteDomain + city dla scoring boost/penalty
+  const picked = pickBestMatch(
+    items,
+    target.name,
+    target.phone ?? null,
+    target.websiteDomain ?? null,
+    target.city ?? null,
+  )
   if (!picked) {
     return zeroResult('no_match', cost, 'no result above similarity threshold', {
       query,
