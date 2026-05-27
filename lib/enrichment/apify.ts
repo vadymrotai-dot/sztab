@@ -32,20 +32,30 @@
 
 const APIFY_BASE = 'https://api.apify.com/v2'
 const ACTOR_ID = 'compass~crawler-google-places'
-// Sprint S-CEIDG-DETAILS Day 1 PATCH (15.05.2026) — was 240_000 (4 хв) для
-// крайніх slow runs. Але це блокувало CEIDG_details + AI_business_analysis
-// step якщо Apify timeouted (Vercel function ceiling 120s). Lower до 25s.
-// Outer guard `APIFY_HARD_TIMEOUT_MS` (Promise.race у public entry) — 30s,
-// захищає від всіх retry edge cases. Trade-off: rare cold-start slow Apify
-// runs (40-60s) тепер abort у 25s, повертають status='partial'. Acceptable —
-// AI ще може run з CEIDG brand_aliases замість GMaps signals.
-const REQUEST_TIMEOUT_MS = 25_000
-/** Sprint S-CEIDG-DETAILS Day 1 (15.05.2026) — hard ceiling для всього
- *  enrichContactsApify (Promise.race у public entry). Захищає Phase B
- *  budget — CEIDG_details + AI кроки після Apify обов'язково run. Якщо
- *  Apify не вкладається у 30s → повертаємо status='partial' з error_message
- *  'APIFY_TIMEOUT_30S'. Caller (route.ts:696-712) handles partial gracefully. */
-const APIFY_HARD_TIMEOUT_MS = 30_000
+// Sprint TYDZIEN1.A.2 (27.05.2026) — RAISED 25s → 80s after diagnose 24/24
+// Apify_GMaps partial з-за tego cap. Apify Compass scraper з
+// scrapePlaceDetailPage=true typowo kończy 90-200s na 3 places (review +
+// popularTimes + menu + ...). Sztab abortował 25s wcześniej niż Apify
+// zwracał rezultat — strata kosztów Apify side ($2-5/sprint), zero partials
+// saved у Sztab.
+//
+// Vercel Pro 300s ceiling allows 80-90s budget for Apify (Apify Compass actor
+// typically completes 90-200s for 3 places with detail pages). Budget math:
+// 90s Apify + ~25s pozostałe Phase B + 5s margin = 120s ≤ 300s ceiling.
+//
+// Legacy comment (now superseded — kept for context):
+//   Sprint S-CEIDG-DETAILS Day 1 PATCH (15.05.2026) lowered 240_000 → 25_000
+//   to fit Vercel function ceiling 120s. Over-corrected — almost all runs
+//   abortowane. A.2 raises back до safe 80s.
+const REQUEST_TIMEOUT_MS = 80_000
+/** Sprint TYDZIEN1.A.2 (27.05.2026) — RAISED 30s → 90s. Outer hard ceiling
+ *  dla całego enrichContactsApify (Promise.race у public entry). Zachowuje
+ *  Phase B budget — CEIDG_details + AI кроки після Apify obowiązkowo run.
+ *  Якщо Apify не вкладається у 90s → повертаємо status='partial' з error_message
+ *  'APIFY_TIMEOUT_90S'. Caller (route.ts:696-712) handles partial gracefully.
+ *  Note: existing "no retry on AbortError" behavior kept; if still timeout,
+ *  raise via ENV flag in future (sprint A.3+). */
+const APIFY_HARD_TIMEOUT_MS = 90_000
 const RATE_LIMIT_PER_MIN = 30
 const RATE_WINDOW_MS = 60_000
 const COST_PER_RESULT_USD = 0.007

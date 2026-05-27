@@ -89,6 +89,42 @@ interface LookupResponse {
   phase_b_pending?: string[]
 }
 
+/** Sprint TYDZIEN1.A.2 HOTFIX (27.05.2026) — per-firm budget context.
+ *  POST handler creates one ctx + threads через runPhaseB → runRejestrioStep
+ *  via parameter chain. Cumulative cost accumulator + threshold check. */
+interface LookupBudgetCtx {
+  readonly budgetUsd: number
+  /** Returns false if cumulative >= budget (caller should skip + log). */
+  checkBudget(stepName: string): boolean
+  /** Increments cumulative (no-op on null/negative/NaN). */
+  addCost(cost: number | null | undefined): void
+  /** Current cumulative spend USD (для note strings z budżetu skip). */
+  getCumulative(): number
+}
+
+function createBudgetCtx(): LookupBudgetCtx {
+  const budgetUsd = Number(process.env.PER_FIRM_BUDGET_USD ?? '0.13')
+  let cumulative = 0
+  return {
+    budgetUsd,
+    getCumulative: () => cumulative,
+    addCost(cost) {
+      if (typeof cost === 'number' && cost > 0 && Number.isFinite(cost)) {
+        cumulative += cost
+      }
+    },
+    checkBudget(stepName) {
+      if (cumulative >= budgetUsd) {
+        console.log(
+          `[budget] skip ${stepName} — cumulative $${cumulative.toFixed(4)} >= $${budgetUsd.toFixed(4)} (PER_FIRM_BUDGET_USD)`,
+        )
+        return false
+      }
+      return true
+    },
+  }
+}
+
 export async function POST(req: Request) {
   const supabase = await createClient()
   const {
@@ -151,6 +187,17 @@ export async function POST(req: Request) {
   let clientId = (existingClient as { id: string } | null)?.id ?? null
   let ownerId =
     (existingClient as { owner_id: string } | null)?.owner_id ?? user.id
+
+  // ─── TYDZIEN1.A.2 (27.05.2026) — Per-firm budget guard ─────────────────────
+  // Cumulative cost accumulator + threshold check. Po przekroczeniu budgetu
+  // expensive steps są pomijane (Apify_GMaps, sprawozdania JSON, www_menu).
+  // Default 0.13 USD ≈ 0.50 zł — twardy cap per analiza klienta.
+  // Override via env PER_FIRM_BUDGET_USD дla cohort runs gdzie nas stać.
+  //
+  // A.2 HOTFIX (27.05.2026): wrapped у ctx object бо runPhaseB/runRejestrioStep
+  // = top-level functions (NOT nested) → closure variables nie reachable.
+  // Pass ctx via parameter chain.
+  const budgetCtx = createBudgetCtx()
 
   // ─── STEP 1: Identity sweep (GUS first — enrichWithGUS extracts krs_number) ───
   let krsNumber: string | null = null
@@ -509,6 +556,8 @@ export async function POST(req: Request) {
       entityType: phaseB_entityType,
       krsNumber: phaseB_krsNumber,
       params: phaseB_params,
+      // Sprint TYDZIEN1.A.2 HOTFIX — pass budget ctx (closure factory wraps mutable state)
+      budgetCtx,
     })
   })
 
@@ -524,6 +573,7 @@ async function runPhaseB({
   entityType,
   krsNumber,
   params,
+  budgetCtx,
 }: {
   clientId: string
   nip: string
@@ -542,6 +592,8 @@ async function runPhaseB({
      *  для JDG (entityType==='JDG'). Gated у Phase A pending list. */
     ceidg_api_key?: string
   }
+  /** Sprint TYDZIEN1.A.2 HOTFIX (27.05.2026) — per-firm budget context. */
+  budgetCtx: LookupBudgetCtx
 }): Promise<void> {
   const supabase = await createClient()
 
@@ -577,7 +629,7 @@ async function runPhaseB({
   await Promise.allSettled([
     runBzpStep(supabase, clientId, nip, response),
     krsNumber
-      ? runRejestrioStep(supabase, clientId, krsNumber, params.krs_rejestr_api_token, response)
+      ? runRejestrioStep(supabase, clientId, krsNumber, params.krs_rejestr_api_token, response, budgetCtx)
       : Promise.resolve(),
   ])
 
@@ -730,6 +782,13 @@ async function runPhaseB({
         status: 'skipped',
         note: `pre-flight: contact already у ${existing.source}`,
       })
+    } else if (!budgetCtx.checkBudget('Apify_GMaps')) {
+      // Sprint TYDZIEN1.A.2 — budget guard tripped, skip expensive Apify call
+      response.sources_completed.push({
+        source: 'Apify_GMaps',
+        status: 'skipped',
+        note: `budget_exceeded: cumulative $${budgetCtx.getCumulative().toFixed(4)} >= $${budgetCtx.budgetUsd.toFixed(4)}`,
+      })
     } else {
       const runId = await startEnrichmentRun(supabase, {
         target_type: 'company',
@@ -836,6 +895,8 @@ async function runPhaseB({
               ? `cost_guard_tripped: $${result.cost_usd}`
               : result.error_message,
           })
+          // Sprint TYDZIEN1.A.2 — accumulate Apify cost dla budget guard
+          budgetCtx.addCost(result.cost_usd)
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -936,7 +997,7 @@ async function runPhaseB({
       websiteUrl = (webField as { value_text?: string | null } | null)?.value_text ?? null
     }
 
-    if (websiteUrl && params.anthropic_api_key) {
+    if (websiteUrl && params.anthropic_api_key && budgetCtx.checkBudget('www_menu')) {
       const wwwRunId = await startEnrichmentRun(supabase, {
         target_type: 'company',
         target_id: clientId,
@@ -1014,6 +1075,8 @@ async function runPhaseB({
           cost_usd: result.cost_usd,
           error_message: result.error,
         })
+        // Sprint TYDZIEN1.A.2 — accumulate www_menu cost dla budget guard
+        budgetCtx.addCost(result.cost_usd)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         response.errors.push(`www_menu: ${msg}`)
@@ -1021,12 +1084,17 @@ async function runPhaseB({
         await finishEnrichmentRun(supabase, wwwRunId, { status: 'error', error_message: msg })
       }
     } else {
+      // Sprint TYDZIEN1.A.2 — note differentiates budget_exceeded vs other skip reasons
+      const skipNote =
+        !websiteUrl
+          ? 'no website URL (run Apify GMaps first)'
+          : !params.anthropic_api_key
+            ? 'anthropic_api_key missing'
+            : `budget_exceeded: cumulative $${budgetCtx.getCumulative().toFixed(4)} >= $${budgetCtx.budgetUsd.toFixed(4)}`
       response.sources_completed.push({
         source: 'www_menu',
         status: 'skipped',
-        note: !websiteUrl
-          ? 'no website URL (run Apify GMaps first)'
-          : 'anthropic_api_key missing',
+        note: skipNote,
       })
     }
 
@@ -1699,6 +1767,8 @@ async function runRejestrioStep(
   krsNumber: string,
   apiKey: string | undefined,
   response: LookupResponse,
+  /** Sprint TYDZIEN1.A.2 HOTFIX (27.05.2026) — per-firm budget ctx (z runPhaseB). */
+  budgetCtx: LookupBudgetCtx,
 ): Promise<void> {
   // Sprint S-RANK Bonus (13.05.2026) — cache guard для rejestr.io API.
   // ROI audit виявив: 12.05 → 19 з 24 rejestrio_v2 calls = duplicate
@@ -1963,27 +2033,50 @@ async function runRejestrioStep(
 
   try {
     // 6. sprawozdania (XBRL JSON) → financial_statements rows
-    const fins = await fetchAllFinancials(apiKey, krs)
-    let finInserted = 0
-    for (const f of fins) {
-      const { error } = await supabase.from('financial_statements').upsert(
-        {
-          client_id: clientId,
-          krs_doc_id: f.primary_doc_id,
-          okres_data_start: f.okres_data_start,
-          okres_data_koniec: f.okres_data_koniec,
-          przychody_netto: f.fields.przychody_netto,
-          zysk_netto: f.fields.zysk_netto,
-          aktywa_razem: f.fields.aktywa_razem,
-          liczba_pracownikow: f.fields.liczba_pracownikow,
-          raw_xbrl_json: f.raw_xbrl_combined,
-          source: 'rejestrio_v2',
-        },
-        { onConflict: 'client_id,okres_data_koniec' },
+    //
+    // Sprint TYDZIEN1.A.2 (27.05.2026) — ENV gate REJESTRIO_FETCH_JSON_FINANCIALS.
+    // Default skip (process.env.REJESTRIO_FETCH_JSON_FINANCIALS !== 'true').
+    // JSON XBRL fetch = 0,50 zł × 2 (RZiS + Bilans) × N years per firma (typically
+    // 1-3 zł / firma) — drains rejestr.io credit fast. Sztab nie processes XBRL
+    // raw data downstream (no analytics). Enable opt-in via ENV=true для Premium
+    // plan або kiedy explicitly potrzebne finanse.
+    const SKIP_FINANCIALS = process.env.REJESTRIO_FETCH_JSON_FINANCIALS !== 'true'
+    const BUDGET_OK_FINANCIALS = budgetCtx.checkBudget('sprawozdania_json')
+    if (SKIP_FINANCIALS) {
+      summary.financial_years = 0
+      // Sprint TYDZIEN1.A.2 HOTFIX — summary is Record<string,number>, use numeric flag.
+      // Reason text is in console.log + enrichment_log audit (sprawozdania_json_disabled_env).
+      summary.financial_skipped_env = 1
+      console.log(
+        `[lookup] sprawozdania SKIP env_flag clientId=${clientId} krs=${krs} (REJESTRIO_FETCH_JSON_FINANCIALS != 'true')`,
       )
-      if (!error) finInserted++
+    } else if (!BUDGET_OK_FINANCIALS) {
+      summary.financial_years = 0
+      // Sprint TYDZIEN1.A.2 HOTFIX — numeric flag (см. wyżej). budgetCtx already logged via checkBudget().
+      summary.financial_skipped_budget = 1
+    } else {
+      const fins = await fetchAllFinancials(apiKey, krs)
+      let finInserted = 0
+      for (const f of fins) {
+        const { error } = await supabase.from('financial_statements').upsert(
+          {
+            client_id: clientId,
+            krs_doc_id: f.primary_doc_id,
+            okres_data_start: f.okres_data_start,
+            okres_data_koniec: f.okres_data_koniec,
+            przychody_netto: f.fields.przychody_netto,
+            zysk_netto: f.fields.zysk_netto,
+            aktywa_razem: f.fields.aktywa_razem,
+            liczba_pracownikow: f.fields.liczba_pracownikow,
+            raw_xbrl_json: f.raw_xbrl_combined,
+            source: 'rejestrio_v2',
+          },
+          { onConflict: 'client_id,okres_data_koniec' },
+        )
+        if (!error) finInserted++
+      }
+      summary.financial_years = finInserted
     }
-    summary.financial_years = finInserted
   } catch (e) {
     errors.push(`sprawozdania: ${e instanceof Error ? e.message : e}`)
   }
