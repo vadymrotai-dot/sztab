@@ -1837,6 +1837,74 @@ async function runRejestrioStep(
       personsUpserted++
     }
     summary.persons_upserted = personsUpserted
+
+    // Sprint TYDZIEN1.A.1.2 (27.05.2026) — DEDUPE: after successful rejestrio_v2
+    // upsert, remove krs_anon placeholders dla (client_id, rola) pairs gdzie
+    // mamy real rejestrio_v2 link. Preserves anon як fallback jeśli rejestrio
+    // step failed (no upsert → no cleanup).
+    if (personsUpserted > 0) {
+      // Step 1: delete anon person_company_links where rejestrio_v2 link exists
+      // dla tego samego (client_id, rola). Two-pass (fetch ids → delete) bo
+      // PostgREST nie wspiera EXISTS subqueries z policy enforcement.
+      const { data: anonLinks } = await supabase
+        .from('person_company_links')
+        .select('id, person_id, rola, persons!inner(id, source, imie)')
+        .eq('client_id', clientId)
+      const anonRowIds = (anonLinks ?? [])
+        .filter((row: any) => {
+          const p = Array.isArray(row.persons) ? row.persons[0] : row.persons
+          if (!p) return false
+          const isAnon =
+            p.source === 'krs_anon' ||
+            p.source === null ||
+            (typeof p.imie === 'string' && p.imie.startsWith('(KRS'))
+          if (!isAnon) return false
+          // Also has rejestrio_v2 link з same rola?
+          return (anonLinks ?? []).some((r2: any) => {
+            const p2 = Array.isArray(r2.persons) ? r2.persons[0] : r2.persons
+            return (
+              r2.id !== row.id &&
+              r2.rola === row.rola &&
+              p2 &&
+              p2.source === 'rejestrio_v2'
+            )
+          })
+        })
+        .map((r: any) => ({ link_id: r.id as string, person_id: r.person_id as string }))
+
+      if (anonRowIds.length > 0) {
+        const linkIdsToDelete = anonRowIds.map((r) => r.link_id)
+        const { error: delLinkErr } = await supabase
+          .from('person_company_links')
+          .delete()
+          .in('id', linkIdsToDelete)
+        if (delLinkErr) {
+          console.warn('[lookup] dedupe: delete anon links failed', delLinkErr.message)
+        }
+        // Step 2: delete orphaned anon persons (no remaining links)
+        const personIdsToCheck = [...new Set(anonRowIds.map((r) => r.person_id))]
+        let orphansDeleted = 0
+        for (const personId of personIdsToCheck) {
+          const { data: remaining } = await supabase
+            .from('person_company_links')
+            .select('id')
+            .eq('person_id', personId)
+            .limit(1)
+          if (!remaining || remaining.length === 0) {
+            const { error: delPersonErr } = await supabase
+              .from('persons')
+              .delete()
+              .eq('id', personId)
+            if (!delPersonErr) orphansDeleted += 1
+          }
+        }
+        console.log(
+          `[lookup] dedupe anon: clientId=${clientId} deletedLinks=${linkIdsToDelete.length} orphans=${orphansDeleted}`,
+        )
+        summary.anon_links_deduped = linkIdsToDelete.length
+        summary.anon_orphans_deleted = orphansDeleted
+      }
+    }
   } catch (e) {
     errors.push(`ogolny: ${e instanceof Error ? e.message : e}`)
   }
