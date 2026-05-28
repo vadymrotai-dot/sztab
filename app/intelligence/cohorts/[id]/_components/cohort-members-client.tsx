@@ -170,8 +170,8 @@ interface Props {
   statusFilter: CohortMemberStatus | null
   statusFilterLabel: string | null
   /** Sprint TYDZIEN2.T2.3.1 (28.05.2026) — map NIP → existing clients.id.
-   *  Pozwala prospect row link directly do /clients/{id}?from=cohort/ gdy
-   *  parallel clients row istnieje (KRS unification). Fallback do
+   *  Pozwala prospect row link directly do /clients/{id}?from=cohort&fromId=
+   *  gdy parallel clients row istnieje (KRS unification). Fallback do
    *  /intelligence/lookup gdy nie ma. Server-resolved bulk SELECT. */
   nipToClientId?: Record<string, string>
 }
@@ -537,7 +537,7 @@ export function CohortMembersClient({
           }
           // Sprint TYDZIEN2.T2.3.1 (28.05.2026) — conditional href.
           // Якщо parallel clients.id row istnieje (NIP resolved) → bezpośredni
-          // profile link з ?from=cohort/ context (blue, як clients rows).
+          // profile link з ?from=cohort&fromId= context (blue, як clients rows).
           // Inaczej fallback do /intelligence/lookup?nip= (emerald, як wcześniej)
           // — auto-uruchomi enrichment przy pierwszym otwarciu i utworzy profil.
           const directClientId = p.nip ? nipToClientId?.[p.nip] : undefined
@@ -545,8 +545,13 @@ export function CohortMembersClient({
             <div>
               {p.nip ? (
                 directClientId ? (
+                  // Sprint TYDZIEN2.T2.3.1 BUGFIX (28.05.2026) — convention
+                  // changed з `?from=cohort/{uuid}` na `?from=cohort&fromId={uuid}`.
+                  // Slash у query value blокував Next.js Link client-side
+                  // navigation (prefetch validation fail, silent click no-op).
+                  // Direct URL visit works because browser parses URL standard.
                   <Link
-                    href={`/clients/${directClientId}?from=cohort/${cohortId}`}
+                    href={`/clients/${directClientId}?from=cohort&fromId=${cohortId}`}
                     className="font-medium text-blue-700 hover:underline"
                   >
                     {p.name}
@@ -815,12 +820,14 @@ export function CohortMembersClient({
             )
           }
           return (
-            // Sprint TYDZIEN2.T2.3 (28.05.2026) — ?from=cohort/{id} przekazuje
+            // Sprint TYDZIEN2.T2.3 (28.05.2026) — ?from=cohort&fromId={id} przekazuje
             // cohort context до strony klienta; client page parsuje + buduje
             // breadcrumb "AI Discovery > Cohorts > {name} > {client}" zamiast
             // domyślnego "Klienci > {client}". `cohortId` уже у props.
+            // T2.3.1 BUGFIX (28.05.2026) — split з `?from=cohort/{uuid}` aby
+            // uniknąć slash w query value (Next.js Link prefetch fail).
             <Link
-              href={`/clients/${c.id}?from=cohort/${cohortId}`}
+              href={`/clients/${c.id}?from=cohort&fromId=${cohortId}`}
               className="font-medium hover:underline"
             >
               {c.title}

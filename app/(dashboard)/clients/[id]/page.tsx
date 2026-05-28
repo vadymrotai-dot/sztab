@@ -47,24 +47,27 @@ export default async function ClientDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  // Sprint TYDZIEN2.T2.3 (28.05.2026) — ?from=cohort/{uuid} convention.
+  // Sprint TYDZIEN2.T2.3 (28.05.2026) — ?from=cohort&fromId={uuid} convention.
   // Cohort row Link na /intelligence/cohorts/[id] przekazuje cohort context
   // aby dynamic breadcrumb pokazał drogę powrotną. Backward-compat: bez param
   // — fallback do standardowego "Klienci > {title}".
-  searchParams: Promise<{ from?: string }>
+  // T2.3.1 BUGFIX (28.05.2026) — convention split z `?from=cohort/{uuid}` na
+  // 2 osobne params aby uniknąć slash w query value (Next.js Link prefetch
+  // silnie no-op'ował click navigation).
+  searchParams: Promise<{ from?: string; fromId?: string }>
 }) {
   const { id } = await params
   const sp = await searchParams
   const supabase = await createClient()
 
-  // Sprint TYDZIEN2.T2.3 — parse ?from=cohort/{uuid} jeśli obecne.
+  // Sprint TYDZIEN2.T2.3 — parse ?from=cohort&fromId={uuid} jeśli obecne.
+  // T2.3.1 BUGFIX — 2 separate params (slash w query blокował Link nav).
   // Validation: UUID v4 regex (relaxed — accept any UUID format). Jeśli invalid
   // lub cohort nie istnieje → fallback do default breadcrumb (graceful).
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   let fromCohortId: string | null = null
-  if (sp.from && sp.from.startsWith('cohort/')) {
-    const candidate = sp.from.slice('cohort/'.length)
-    if (UUID_RE.test(candidate)) fromCohortId = candidate
+  if (sp.from === 'cohort' && sp.fromId && UUID_RE.test(sp.fromId)) {
+    fromCohortId = sp.fromId
   }
   let fromCohort: { id: string; name: string } | null = null
   if (fromCohortId) {
