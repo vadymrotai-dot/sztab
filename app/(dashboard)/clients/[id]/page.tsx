@@ -809,39 +809,27 @@ export default async function ClientDetailPage({
 
         {/* Sprint TYDZIEN2.T2.4.B (28.05.2026) — ContactSectionV3 replaces V2.
             V3 reads з client_contact_methods (multi-row, grouped по kind, ⭐
-            primary). V2 cascade-single style retire'd, ale import zachowany dla
-            fallback na case bardzo świeżych clientów bez ccm seed (rare —
-            322/341 mają ≥1 method po T2.4.A). Якщо ccm empty → V3 renders
-            empty state з podpowiedzią. */}
+            primary). T2.4.C1 — interactive add/delete/setPrimary.
+            V2 fallback zachowany dla edge case клiентów без ccm rows (rare —
+            322/341 mają ≥1 method po T2.4.A; T2.4.C1 dozwala każdemu добавити
+            via inline form у V3 natomiast).
+            T2.4.C1: usunięto SectionActionLink "+ Dodaj kontakt" — per-section
+            "+ Dodaj" buttons у V3 obsługują firm methods. Decision-makers
+            ("Osoby kontaktowe") osobno w Aktywność accordion. */}
         <AccordionSection
           id="kontakt"
           title="Kontakt"
           meta={
             contactMethods.length > 0
               ? `${contactMethods.length} ${contactMethods.length === 1 ? 'kontakt' : 'kontaktów'}`
-              : `${contactSourcesCount} źródeł`
+              : 'brak'
           }
-          action={<SectionActionLink label="+ Dodaj kontakt" href={`/clients/${id}#aktywnosc`} />}
         >
-          {contactMethods.length > 0 ? (
-            <ContactSectionV3 methods={contactMethods} />
-          ) : (
-            <ContactSectionV2
-              email={emailValue ?? null}
-              emailSource={emailSource}
-              phone={phoneValue ?? null}
-              phoneSource={phoneSource}
-              website={websiteValue ?? null}
-              websiteSource={websiteSource}
-              facebookUrl={facebookField?.value_text ?? null}
-              instagramUrl={instagramField?.value_text ?? null}
-              hints={{
-                email: !emailValue ? 'Brak w KRS' : undefined,
-                phone: !phoneValue ? 'Brak danych' : undefined,
-                website: !websiteValue ? 'Brak własnej domeny' : undefined,
-              }}
-            />
-          )}
+          {/* T2.4.C1: V3 always renderowany. Pusty stan показує all section
+              headers z "+ Dodaj" buttons aby user mógł додати pierwszy method.
+              V2 cascade-fallback retired — теперь nawet client без ccm seed
+              ma full interactivity. */}
+          <ContactSectionV3 clientId={id} methods={contactMethods} />
         </AccordionSection>
 
         {/* Sprint TYDZIEN2.T2.2 (28.05.2026) — lista zamówień klienta.
