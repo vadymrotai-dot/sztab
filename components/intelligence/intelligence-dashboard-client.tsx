@@ -160,6 +160,7 @@ export function IntelligenceDashboardClient({
                     {new Date(run.created_at).toLocaleString('pl-PL', {
                       dateStyle: 'short',
                       timeStyle: 'short',
+                      timeZone: 'Europe/Warsaw',
                     })}
                   </TableCell>
                   <TableCell>

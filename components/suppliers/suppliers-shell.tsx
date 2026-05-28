@@ -151,7 +151,7 @@ export function SuppliersShell({ suppliers, productCounts, productsBySupplier }:
 
 function SupplierDetail({ supplier, products }: { supplier: Supplier; products: Product[] }) {
   const updatedAt = supplier.updated_at
-    ? new Date(supplier.updated_at).toLocaleDateString('pl-PL')
+    ? new Date(supplier.updated_at).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' })
     : '—'
   return (
     <>

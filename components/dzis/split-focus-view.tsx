@@ -34,7 +34,7 @@ function buildWeekDates(todayISO: string): Array<{ iso: string; dayName: string;
     const iso = d.toISOString().slice(0, 10)
     days.push({
       iso,
-      dayName: d.toLocaleDateString('pl-PL', { weekday: 'short' }),
+      dayName: d.toLocaleDateString('pl-PL', { weekday: 'short', timeZone: 'Europe/Warsaw' }),
       day: d.getDate(),
     })
   }

@@ -239,7 +239,7 @@ function OFFPanel({ external }: { external: ProductExternalRow | null }) {
     )
   }
   const fetchedAt = external.off_fetched_at
-    ? new Date(external.off_fetched_at).toLocaleString('pl-PL')
+    ? new Date(external.off_fetched_at).toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' })
     : '—'
   const product = (external.off_payload as { product?: Record<string, unknown> }).product ?? {}
 

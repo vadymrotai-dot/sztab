@@ -387,7 +387,7 @@ function ProductDetail({ product, supplier }: { product: Product; supplier: Supp
         title="Analiza biznesowa (AI)"
         meta={
           businessProfile?.analyzed_at
-            ? `${new Date(businessProfile.analyzed_at).toLocaleDateString('pl-PL')} · ${businessProfile.model_used ?? ''}`
+            ? `${new Date(businessProfile.analyzed_at).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' })} · ${businessProfile.model_used ?? ''}`
             : 'Brak analizy'
         }
         defaultOpen={Boolean(businessProfile)}

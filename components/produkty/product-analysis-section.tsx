@@ -145,7 +145,7 @@ export function ProductAnalysisSection({ productId, profile }: Props) {
   // ─── Populated state ────────────────────────────────────────────
 
   const analyzedAtPl = profile.analyzed_at
-    ? new Date(profile.analyzed_at).toLocaleDateString('pl-PL')
+    ? new Date(profile.analyzed_at).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' })
     : null
   const nextSteps = profile.next_steps ?? []
 

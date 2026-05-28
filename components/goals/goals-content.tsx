@@ -299,7 +299,7 @@ export function GoalsContent({ goals: initialGoals }: GoalsContentProps) {
                     <Progress value={Math.min(progress, 100)} className="h-2" />
                     <div className="flex justify-between text-xs text-muted-foreground">
                       <span>{Math.round(progress)}%</span>
-                      {goal.deadline && <span>Termin: {new Date(goal.deadline).toLocaleDateString('pl-PL')}</span>}
+                      {goal.deadline && <span>Termin: {new Date(goal.deadline).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' })}</span>}
                     </div>
                     <div className="flex gap-2 pt-2">
                       <Button

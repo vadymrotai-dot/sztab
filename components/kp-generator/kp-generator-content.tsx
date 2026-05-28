@@ -322,7 +322,7 @@ export function KPGeneratorContent({ clients, products }: KPGeneratorContentProp
       <div ref={printRef} className="hidden">
         <h1>Kalkulacja Produktowa {kpNumber}</h1>
         <div className="header">
-          <div>Data: {new Date(kpDate).toLocaleDateString('pl-PL')}</div>
+          <div>Data: {new Date(kpDate).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' })}</div>
         </div>
         {client && (
           <div className="client">

@@ -122,7 +122,7 @@ export function HabitsContent({ habits: initialHabits }: HabitsContentProps) {
 
   const getDayLabel = (dateStr: string): string => {
     const date = new Date(dateStr)
-    return date.toLocaleDateString('pl-PL', { weekday: 'narrow' })
+    return date.toLocaleDateString('pl-PL', { weekday: 'narrow', timeZone: 'Europe/Warsaw' })
   }
 
   const getDayNumber = (dateStr: string): number => {

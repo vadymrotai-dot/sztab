@@ -77,7 +77,7 @@ export function SalesSnippetButton({ matchId, initialSnippet, size = 'sm' }: Pro
           <MailIcon className="size-3 text-purple-600" />
           Cold-opener
           <Badge variant="outline" className="ml-1 h-4 text-[9px]">
-            {snippet.generated_at ? new Date(snippet.generated_at).toLocaleDateString('pl-PL') : ''}
+            {snippet.generated_at ? new Date(snippet.generated_at).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' }) : ''}
           </Badge>
         </span>
         <span className="text-muted-foreground">{expanded ? '▼' : '▶'}</span>

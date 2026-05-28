@@ -136,15 +136,15 @@ function fmtDate(iso: string | null): string {
   if (!iso) return '—'
   const d = new Date(iso)
   return (
-    d.toLocaleDateString('pl-PL') +
+    d.toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' }) +
     ' ' +
-    d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
+    d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' })
   )
 }
 
 function fmtDateOnly(iso: string | null): string {
   if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('pl-PL')
+  return new Date(iso).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' })
 }
 
 export function OrderDetail({

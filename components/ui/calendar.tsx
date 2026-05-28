@@ -37,7 +37,9 @@ function Calendar({
       captionLayout={captionLayout}
       formatters={{
         formatMonthDropdown: (date) =>
-          date.toLocaleString('default', { month: 'short' }),
+          // Sprint TYDZIEN2 BUGFIX-V2 (28.05.2026) — fixed locale+timeZone
+          // aby uniknąć React #418 (Node 'default' = en-US vs browser pl).
+          date.toLocaleString('pl-PL', { month: 'short', timeZone: 'Europe/Warsaw' }),
         ...formatters,
       }}
       classNames={{
@@ -190,7 +192,7 @@ function CalendarDayButton({
       ref={ref}
       variant="ghost"
       size="icon"
-      data-day={day.date.toLocaleDateString()}
+      data-day={day.date.toLocaleDateString('en-CA', { timeZone: 'Europe/Warsaw' })}
       data-selected-single={
         modifiers.selected &&
         !modifiers.range_start &&

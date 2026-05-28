@@ -241,6 +241,7 @@ function DealCard({
               {new Date(deal.next_action_date).toLocaleDateString('pl-PL', {
                 day: 'numeric',
                 month: 'short',
+                timeZone: 'Europe/Warsaw',
               })}
               {overdue && ' · zaległe'}
             </span>

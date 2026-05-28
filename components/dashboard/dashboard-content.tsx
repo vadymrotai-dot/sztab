@@ -136,6 +136,7 @@ const formatShortDate = (iso: string) =>
   new Date(iso).toLocaleDateString('pl-PL', {
     day: 'numeric',
     month: 'short',
+    timeZone: 'Europe/Warsaw',
   })
 
 const dealHeading = (deal: DealRow) =>
@@ -642,6 +643,7 @@ export function DashboardContent({
                           <span className="text-[10px] leading-none opacity-70">
                             {new Date(date).toLocaleDateString('pl-PL', {
                               weekday: 'narrow',
+                              timeZone: 'Europe/Warsaw',
                             })}
                           </span>
                           <span className="font-medium">
