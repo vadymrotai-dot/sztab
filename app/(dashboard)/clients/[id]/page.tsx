@@ -24,6 +24,7 @@ import { FinancialStatementsTable } from '@/components/clients/financial-stateme
 import { PersonsSectionV2 } from '@/components/clients/persons-section-v2'
 import { SignalsSection } from '@/components/clients/signals-section'
 import { ContactSectionV2 } from '@/components/clients/contact-section-v2'
+import { ContactSectionV3 } from '@/components/clients/contact-section-v3'
 import { OrdersSection } from '@/components/clients/orders-section'
 import { ClientDetailActions } from '@/components/clients/client-detail-actions'
 import { OrderLinkButton } from '@/components/clients/order-link-button'
@@ -243,6 +244,29 @@ export default async function ClientDetailPage({
       })
     }
   }
+
+  // Sprint TYDZIEN2.T2.4.B (28.05.2026) — fetch client_contact_methods dla
+  // ContactSectionV3 (replaces V2 single-cascade z multi-row grouped display).
+  // RLS auth.uid()=owner_id, anon supabase OK (verified ccm.owner_id matches
+  // clients.owner_id post-seed). 664 rows total у DB, ~2 methods/client avg.
+  // Sort priority: kind alphabetically NIE — explicit order у component;
+  // tu wystarczy is_primary DESC, created_at ASC, kind grouped client-side.
+  const { data: contactMethodsData } = await supabase
+    .from('client_contact_methods')
+    .select('id, kind, value, label, is_primary, source, created_at')
+    .eq('client_id', id)
+    .order('kind', { ascending: true })
+    .order('is_primary', { ascending: false })
+    .order('created_at', { ascending: true })
+  const contactMethods = (contactMethodsData ?? []) as Array<{
+    id: string
+    kind: string
+    value: string
+    label: string | null
+    is_primary: boolean
+    source: string
+    created_at: string
+  }>
 
   const c = client as Record<string, unknown> & {
     id: string
@@ -783,27 +807,41 @@ export default async function ClientDetailPage({
           />
         </AccordionSection>
 
+        {/* Sprint TYDZIEN2.T2.4.B (28.05.2026) — ContactSectionV3 replaces V2.
+            V3 reads з client_contact_methods (multi-row, grouped по kind, ⭐
+            primary). V2 cascade-single style retire'd, ale import zachowany dla
+            fallback na case bardzo świeżych clientów bez ccm seed (rare —
+            322/341 mają ≥1 method po T2.4.A). Якщо ccm empty → V3 renders
+            empty state з podpowiedzią. */}
         <AccordionSection
           id="kontakt"
           title="Kontakt"
-          meta={`${contactSourcesCount} źródeł`}
+          meta={
+            contactMethods.length > 0
+              ? `${contactMethods.length} ${contactMethods.length === 1 ? 'kontakt' : 'kontaktów'}`
+              : `${contactSourcesCount} źródeł`
+          }
           action={<SectionActionLink label="+ Dodaj kontakt" href={`/clients/${id}#aktywnosc`} />}
         >
-          <ContactSectionV2
-            email={emailValue ?? null}
-            emailSource={emailSource}
-            phone={phoneValue ?? null}
-            phoneSource={phoneSource}
-            website={websiteValue ?? null}
-            websiteSource={websiteSource}
-            facebookUrl={facebookField?.value_text ?? null}
-            instagramUrl={instagramField?.value_text ?? null}
-            hints={{
-              email: !emailValue ? 'Brak w KRS' : undefined,
-              phone: !phoneValue ? 'Brak danych' : undefined,
-              website: !websiteValue ? 'Brak własnej domeny' : undefined,
-            }}
-          />
+          {contactMethods.length > 0 ? (
+            <ContactSectionV3 methods={contactMethods} />
+          ) : (
+            <ContactSectionV2
+              email={emailValue ?? null}
+              emailSource={emailSource}
+              phone={phoneValue ?? null}
+              phoneSource={phoneSource}
+              website={websiteValue ?? null}
+              websiteSource={websiteSource}
+              facebookUrl={facebookField?.value_text ?? null}
+              instagramUrl={instagramField?.value_text ?? null}
+              hints={{
+                email: !emailValue ? 'Brak w KRS' : undefined,
+                phone: !phoneValue ? 'Brak danych' : undefined,
+                website: !websiteValue ? 'Brak własnej domeny' : undefined,
+              }}
+            />
+          )}
         </AccordionSection>
 
         {/* Sprint TYDZIEN2.T2.2 (28.05.2026) — lista zamówień klienta.
