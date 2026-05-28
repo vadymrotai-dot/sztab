@@ -126,7 +126,7 @@ export function ClientsContent({ clients: initialClients }: ClientsContentProps)
               filteredClients.map((client) => (
                 <TableRow key={client.id}>
                   <TableCell className="font-medium">
-                    <Link href={`/clients/${client.id}`} className="hover:underline">
+                    <Link href={`/clients/${client.id}`} className="hover:underline" prefetch={false}>
                       {client.title}
                     </Link>
                   </TableCell>
@@ -157,13 +157,13 @@ export function ClientsContent({ clients: initialClients }: ClientsContentProps)
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem asChild>
-                          <Link href={`/clients/${client.id}`}>
+                          <Link href={`/clients/${client.id}`} prefetch={false}>
                             <EyeIcon className="mr-2 size-4" />
                             Zobacz
                           </Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
-                          <Link href={`/clients/${client.id}/edit`}>
+                          <Link href={`/clients/${client.id}/edit`} prefetch={false}>
                             <PencilIcon className="mr-2 size-4" />
                             Edytuj
                           </Link>

@@ -159,6 +159,7 @@ function DealCard({
                   className="text-xs text-muted-foreground hover:underline truncate"
                   onClick={(e) => e.stopPropagation()}
                   onPointerDown={(e) => e.stopPropagation()}
+                  prefetch={false}
                 >
                   {deal.client.title}
                 </Link>

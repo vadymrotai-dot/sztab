@@ -33,6 +33,7 @@ export function HotLeadyChips({ leads, compact = false, emptyState }: Props) {
             href={`/clients/${l.id}`}
             className="group inline-flex items-center gap-1.5 rounded-full border border-[#E5E1D8] bg-white px-2.5 py-1 text-[12px] hover:border-[#4F46E5] hover:bg-[#EEEDFE]"
             title={`Score: ${l.score}`}
+            prefetch={false}
           >
             <span className="size-1.5 rounded-full bg-[#00A656]" />
             <span className="max-w-[180px] truncate">{l.name}</span>
@@ -54,6 +55,7 @@ export function HotLeadyChips({ leads, compact = false, emptyState }: Props) {
             key={l.id}
             href={`/clients/${l.id}`}
             className="group inline-flex items-center gap-1.5 rounded-full border border-[#E5E1D8] bg-white px-2.5 py-1 text-[12px] hover:border-[#4F46E5] hover:bg-[#EEEDFE]"
+            prefetch={false}
           >
             <span className="size-1.5 rounded-full bg-[#00A656]" />
             <span className="max-w-[180px] truncate">{l.name}</span>

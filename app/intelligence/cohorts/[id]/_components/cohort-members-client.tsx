@@ -555,9 +555,15 @@ export function CohortMembersClient({
                   // Slash у query value blокував Next.js Link client-side
                   // navigation (prefetch validation fail, silent click no-op).
                   // Direct URL visit works because browser parses URL standard.
+                  // Sprint TYDZIEN2 FINAL (28.05.2026) — prefetch={false} bo cohort
+                  // mass-list (50+ Links видимих) → Next.js Link auto-prefetch
+                  // flooduje серверу 50+ RSC requests одразу при page load → real
+                  // klick "губиться" w prefetch queue. Vercel logs показали
+                  // 94 RSC requests/30s. Prefetch disabled per Link u list.
                   <Link
                     href={`/clients/${directClientId}?from=cohort&fromId=${cohortId}`}
                     className="font-medium text-blue-700 hover:underline"
+                    prefetch={false}
                   >
                     {p.name}
                   </Link>
@@ -566,6 +572,7 @@ export function CohortMembersClient({
                     href={`/intelligence/lookup?nip=${p.nip}`}
                     className="font-medium hover:text-emerald-700 hover:underline"
                     title="Pierwszy lookup utworzy profil"
+                    prefetch={false}
                   >
                     {p.name}
                   </Link>
@@ -831,9 +838,11 @@ export function CohortMembersClient({
             // domyślnego "Klienci > {client}". `cohortId` уже у props.
             // T2.3.1 BUGFIX (28.05.2026) — split з `?from=cohort/{uuid}` aby
             // uniknąć slash w query value (Next.js Link prefetch fail).
+            // Sprint TYDZIEN2 FINAL (28.05.2026) — prefetch={false} per mass-list rule.
             <Link
               href={`/clients/${c.id}?from=cohort&fromId=${cohortId}`}
               className="font-medium hover:underline"
+              prefetch={false}
             >
               {c.title}
             </Link>

@@ -474,6 +474,7 @@ function UnifiedTable({
                   <Link
                     href={`/clients/${r.id}`}
                     className="font-medium hover:underline"
+                    prefetch={false}
                   >
                     {r.name}
                   </Link>

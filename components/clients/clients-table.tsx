@@ -404,6 +404,7 @@ function ClientRow({
           href={`/clients/${client.id}`}
           className="hover:underline"
           onClick={(e) => e.stopPropagation()}
+          prefetch={false}
         >
           {client.title}
         </Link>
@@ -443,7 +444,7 @@ function ClientRow({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem asChild>
-              <Link href={`/clients/${client.id}/edit`}>
+              <Link href={`/clients/${client.id}/edit`} prefetch={false}>
                 <PencilIcon className="mr-2 size-4" />
                 Edytuj
               </Link>
