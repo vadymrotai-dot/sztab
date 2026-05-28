@@ -477,8 +477,20 @@ export async function searchCompanyOnline(
           return new URL(out.website_url).hostname.toLowerCase().replace(/^www\./, '')
         } catch { return null }
       })()
+      // Sprint TYDZIEN1.A.1.4 (27.05.2026) — also override jeśli currentRoot to
+      // non-bare subdomain hintRoot (np. objectstorage.maczfit.pl coverage CDN
+      // storage, не corporate main domain). Tavily čsasem picks subdomena gdy
+      // bare domain не появляється w results (FRESH MEALS case).
+      const isSubdomainNotBare =
+        !!currentRoot &&
+        currentRoot !== hintRoot &&
+        currentRoot !== `www.${hintRoot}` &&
+        currentRoot.endsWith(`.${hintRoot}`)
       const currentIsBad =
-        !currentRoot || isAggregator(currentRoot) || isGenericPlatform(currentRoot)
+        !currentRoot ||
+        isAggregator(currentRoot) ||
+        isGenericPlatform(currentRoot) ||
+        isSubdomainNotBare
       if (currentIsBad) {
         out.website_url = `https://${hintRoot}`
       }

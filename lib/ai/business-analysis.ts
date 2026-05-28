@@ -124,6 +124,14 @@ Wysokie buyer_strength_for_chm (80-95) — jeśli firma:
 Niskie (10-40) — branża nie food, nieadekwatne PKD, online-only sklep z
 nieadekwatnym asortymentem.
 
+⚠️ KRYTYCZNIE (sygnał VAT, Sprint TYDZIEN1.A.1.4):
+Jeśli vat_status='Niezarejestrowany' I firma zarejestrowana >1 rok temu →
+buyer_strength_for_chm MAX 20. Powód: brak czynnego VAT = nie kupuje B2B
+z fakturami VAT, prawdopodobnie nieaktywna lub mikro-skala → niska wartość
+jako klient hurtowy. Wyjaśnij to w buyer_reasoning_pl (np. "Firma od X lat
+niezarejestrowana jako podatnik VAT — nieaktywna operacyjnie lub mikro-skala
+poniżej progu VAT, nie kupuje z fakturami VAT").
+
 🔥 SPECJALIZACJA Z PKD GŁÓWNEGO (Sprint S6C):
 Jeśli PKD główny chronię specyficzną kategorię produktową (RYBY/SKORUPIAKI,
 MIĘSO, ALKOHOL, NAPOJE, MLEKO, NABIAŁ, ZBOŻA, PIECZYWO, OWOCE/WARZYWA,
@@ -318,6 +326,10 @@ interface CompanyContext {
   pkd_with_descriptions: Array<{ kod: string; opis: string | null; isMain: boolean }>
   city: string | null
   vat_status: string | null
+  /** Sprint TYDZIEN1.A.1.4 (28.05.2026) — data rejestracji firmy w VAT (z VAT_BL
+   *  лub registry). Używana для obliczenia ile lat firma jest niezarejestrowana
+   *  jako podatnik VAT → silny sygnał low buyer_strength jeśli >1 rok nieaktywności. */
+  vat_registered_date: string | null
   zarząd: Array<{ imie: string; nazwisko: string; rola: string }>
   financials: Array<{ rok: number; przychody_pln: number | null; zysk_netto_pln: number | null }>
   bzp_tenders: Array<{ subject: string; cpv: string[]; date: string | null }>
@@ -412,7 +424,7 @@ async function gatherContext(
   // sygnały marki / domeny detection (FRESH MEALS FACTORY → maczfit.pl).
   const { data: client } = await supabase
     .from('clients')
-    .select('title, nip, krs_legal_form, krs_number, registered_date, city, vat_status, krs_management_board, krs_pkd_with_descriptions, brand_aliases, website_krs, email_krs')
+    .select('title, nip, krs_legal_form, krs_number, registered_date, city, vat_status, vat_registered_date, krs_management_board, krs_pkd_with_descriptions, brand_aliases, website_krs, email_krs')
     .eq('id', clientId)
     .single()
   const c = (client ?? {}) as {
@@ -423,6 +435,7 @@ async function gatherContext(
     registered_date?: string | null
     city?: string | null
     vat_status?: string | null
+    vat_registered_date?: string | null
     krs_management_board?: Array<{ name?: string; surname?: string; functionName?: string; funkcjaWOrganie?: string }> | null
     krs_pkd_with_descriptions?: Array<{ kod: string; opis: string | null; isMain: boolean }> | null
     brand_aliases?: Array<{ brand: string; kind: string | null; address: string | null }> | null
@@ -571,6 +584,7 @@ async function gatherContext(
       : [],
     city: c.city ?? null,
     vat_status: c.vat_status ?? null,
+    vat_registered_date: c.vat_registered_date ?? null,
     zarząd,
     financials,
     bzp_tenders: bzpTenders,
@@ -601,7 +615,23 @@ function buildUserPrompt(ctx: CompanyContext): string {
   lines.push(`- Forma prawna: ${ctx.forma ?? 'nieznana'}`)
   if (ctx.krs) lines.push(`- KRS: ${ctx.krs}`)
   if (ctx.registered_date) lines.push(`- Data rejestracji: ${ctx.registered_date}`)
-  if (ctx.vat_status) lines.push(`- VAT: ${ctx.vat_status}`)
+  // Sprint TYDZIEN1.A.1.4 (28.05.2026) — VAT з duration label.
+  // Niezarejestrowany >1 rok → silny sygnał low buyer_strength (rule w SYSTEM_PROMPT).
+  if (ctx.vat_status) {
+    const vd = ctx.vat_registered_date
+    if (vd) {
+      const years = Math.floor((Date.now() - new Date(vd).getTime()) / (365.25 * 86_400_000))
+      if (ctx.vat_status.toLowerCase().includes('niezarejestrowany') && years >= 1) {
+        lines.push(`- VAT: ${ctx.vat_status} (od ${vd} = ponad ${years} ${years === 1 ? 'rok' : 'lat'})`)
+      } else if (ctx.vat_status.toLowerCase().includes('czynny')) {
+        lines.push(`- VAT: ${ctx.vat_status} (od ${vd})`)
+      } else {
+        lines.push(`- VAT: ${ctx.vat_status}`)
+      }
+    } else {
+      lines.push(`- VAT: ${ctx.vat_status}`)
+    }
+  }
   if (ctx.city) lines.push(`- Miasto: ${ctx.city}`)
   lines.push('')
 

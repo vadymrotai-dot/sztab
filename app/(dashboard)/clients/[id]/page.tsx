@@ -655,7 +655,11 @@ export default async function ClientDetailPage({
           meta={aiMeta}
           defaultOpen={true}
         >
-          <BusinessProfileSection clientId={id} profile={(c.business_profile as never) ?? null} />
+          <BusinessProfileSection
+            clientId={id}
+            profile={(c.business_profile as never) ?? null}
+            legalName={c.title}
+          />
         </AccordionSection>
 
         <AccordionSection
