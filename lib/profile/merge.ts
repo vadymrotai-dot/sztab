@@ -60,6 +60,56 @@ export const SOURCE_PRIORITIES: Record<string, number> = {
   MSiG: 9, // Same as GUS — official Monitor publication
 }
 
+/** Sprint TYDZIEN2.T2.1 (28.05.2026) — fields що sync ujemy назад у
+ *  `clients.*` після успішного cpf write. NULL-only policy: nie torkamy
+ *  existing non-empty values (manual entry wins).
+ *  Schema verify (28.05.2026): clients має email/phone/website. NIE ma
+ *  facebook_url/instagram_url/linkedin_url — odroczone do T2.1#2 z migracją. */
+const CLIENT_WRITEBACK_FIELDS = new Set<string>(['email', 'phone', 'website'])
+
+/** NULL-only sync helper: pisze do clients.{field} tylko gdy current
+ *  value jest NULL or empty string. Errors logged, NIE rzucane (sync
+ *  failure musi nie zablokować enrichment write u cpf). */
+async function writebackToClient(
+  supabase: SupabaseClient,
+  clientId: string,
+  fieldKey: string,
+  newValue: string,
+): Promise<void> {
+  try {
+    // Read current value
+    const { data: row, error: readErr } = await supabase
+      .from('clients')
+      .select(fieldKey)
+      .eq('id', clientId)
+      .single()
+    if (readErr) {
+      console.error(`[sync] cpf→clients read failed (${clientId}.${fieldKey}):`, readErr.message)
+      return
+    }
+    // Sprint TYDZIEN2.T2.1 HOTFIX (28.05.2026) — cast via unknown bo Supabase
+    // .select(fieldKey) z dynamic string field zwraca union including
+    // GenericStringError (TS limitation). readErr guard above zapewnia, że
+    // row to data row, не error object.
+    const current = (row as unknown as Record<string, unknown> | null)?.[fieldKey]
+    if (current !== null && current !== undefined && current !== '') {
+      // Existing non-empty value → manual entry wins, skip.
+      return
+    }
+    const { error: updErr } = await supabase
+      .from('clients')
+      .update({ [fieldKey]: newValue, updated_at: new Date().toISOString() })
+      .eq('id', clientId)
+    if (updErr) {
+      console.error(`[sync] cpf→clients update failed (${clientId}.${fieldKey}):`, updErr.message)
+      return
+    }
+    console.log(`[sync] cpf→clients ${fieldKey} for ${clientId} = ${newValue.slice(0, 60)}`)
+  } catch (e) {
+    console.error(`[sync] cpf→clients exception (${clientId}.${fieldKey}):`, e instanceof Error ? e.message : e)
+  }
+}
+
 export type ProfileTargetType = 'client' | 'prospect'
 
 export interface UpsertFieldResult {
@@ -130,6 +180,10 @@ export async function upsertField(
     last_verified_at: new Date().toISOString(),
   }
 
+  // Sprint TYDZIEN2.T2.1 (28.05.2026) — single result variable аby
+  // централізовано wywołać sync hook AFTER decision branches.
+  let result: UpsertFieldResult
+
   if (!existing) {
     const { data: ins, error } = await supabase
       .from('company_profile_fields')
@@ -137,52 +191,75 @@ export async function upsertField(
       .select('id')
       .single()
     if (error) throw new Error(`upsertField insert: ${error.message}`)
-    return { status: 'inserted', field_id: (ins as { id: string }).id }
-  }
+    result = { status: 'inserted', field_id: (ins as { id: string }).id }
+  } else {
+    const sameValue = valueEquals(existing, value)
 
-  const sameValue = valueEquals(existing, value)
-
-  // Lower priority — ignore unless same value (verification still useful)
-  if (priority < existing.source_priority) {
-    if (sameValue) {
-      // Bump last_verified_at on existing — confirms same value via lower-tier source
+    // Lower priority — ignore unless same value (verification still useful)
+    if (priority < existing.source_priority) {
+      if (sameValue) {
+        // Bump last_verified_at on existing — confirms same value via lower-tier source
+        await supabase
+          .from('company_profile_fields')
+          .update({ last_verified_at: new Date().toISOString() })
+          .eq('id', existing.id)
+        result = { status: 'verified', field_id: existing.id }
+      } else {
+        result = { status: 'ignored_lower_priority', field_id: existing.id }
+      }
+    } else if (priority === existing.source_priority && sameValue) {
+      // Same priority + same value — verification
       await supabase
         .from('company_profile_fields')
         .update({ last_verified_at: new Date().toISOString() })
         .eq('id', existing.id)
-      return { status: 'verified', field_id: existing.id }
+      result = { status: 'verified', field_id: existing.id }
+    } else {
+      // Same priority + different value, OR higher priority → supersede + insert
+      await supabase
+        .from('company_profile_fields')
+        .update({
+          superseded_at: new Date().toISOString(),
+          superseded_by_source: source,
+        })
+        .eq('id', existing.id)
+      const { data: ins, error } = await supabase
+        .from('company_profile_fields')
+        .insert(newRow)
+        .select('id')
+        .single()
+      if (error) throw new Error(`upsertField re-insert: ${error.message}`)
+      result = {
+        status: 'superseded',
+        field_id: (ins as { id: string }).id,
+        superseded_id: existing.id,
+      }
     }
-    return { status: 'ignored_lower_priority', field_id: existing.id }
   }
 
-  // Same priority + same value — verification
-  if (priority === existing.source_priority && sameValue) {
-    await supabase
-      .from('company_profile_fields')
-      .update({ last_verified_at: new Date().toISOString() })
-      .eq('id', existing.id)
-    return { status: 'verified', field_id: existing.id }
+  // Sprint TYDZIEN2.T2.1 — cpf → clients sync hook. NULL-only policy.
+  // Trigger tylko gdy:
+  //   - target.type === 'client' (nie 'prospect' — prospects mają swój
+  //     pipeline у scored_prospects + ceidg_prospects)
+  //   - status ∈ {inserted, superseded} — value albo dopiero co pojawiło,
+  //     albo zostało nadpisane wyższym priorytetem. NIE 'verified' (value
+  //     nie zmieniło się w cpf, backfill catch-up pokrywa stare gaps).
+  //     NIE 'ignored_lower_priority' (cpf-side nie zmienione).
+  //   - fieldKey ∈ CLIENT_WRITEBACK_FIELDS (email/phone/website)
+  //   - value.value_text non-empty
+  // Errors w writebackToClient są logowane lecz NIE rzucane — sync failure
+  // musi nie zablokować enrichment.
+  if (
+    target.type === 'client' &&
+    (result.status === 'inserted' || result.status === 'superseded') &&
+    CLIENT_WRITEBACK_FIELDS.has(fieldKey) &&
+    typeof value.value_text === 'string' &&
+    value.value_text.trim() !== ''
+  ) {
+    await writebackToClient(supabase, target.id, fieldKey, value.value_text)
   }
 
-  // Same priority + different value, OR higher priority → supersede + insert
-  await supabase
-    .from('company_profile_fields')
-    .update({
-      superseded_at: new Date().toISOString(),
-      superseded_by_source: source,
-    })
-    .eq('id', existing.id)
-  const { data: ins, error } = await supabase
-    .from('company_profile_fields')
-    .insert(newRow)
-    .select('id')
-    .single()
-  if (error) throw new Error(`upsertField re-insert: ${error.message}`)
-  return {
-    status: 'superseded',
-    field_id: (ins as { id: string }).id,
-    superseded_id: existing.id,
-  }
+  return result
 }
 
 /** Bulk upsert — array of fields у one source. Returns per-field results. */
