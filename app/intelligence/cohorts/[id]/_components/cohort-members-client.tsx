@@ -793,7 +793,14 @@ export function CohortMembersClient({
             )
           }
           return (
-            <Link href={`/clients/${c.id}`} className="font-medium hover:underline">
+            // Sprint TYDZIEN2.T2.3 (28.05.2026) — ?from=cohort/{id} przekazuje
+            // cohort context до strony klienta; client page parsuje + buduje
+            // breadcrumb "AI Discovery > Cohorts > {name} > {client}" zamiast
+            // domyślnego "Klienci > {client}". `cohortId` уже у props.
+            <Link
+              href={`/clients/${c.id}?from=cohort/${cohortId}`}
+              className="font-medium hover:underline"
+            >
               {c.title}
             </Link>
           )

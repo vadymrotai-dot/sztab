@@ -44,11 +44,38 @@ const statusColor: Record<string, string> = {
 
 export default async function ClientDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  // Sprint TYDZIEN2.T2.3 (28.05.2026) — ?from=cohort/{uuid} convention.
+  // Cohort row Link na /intelligence/cohorts/[id] przekazuje cohort context
+  // aby dynamic breadcrumb pokazał drogę powrotną. Backward-compat: bez param
+  // — fallback do standardowego "Klienci > {title}".
+  searchParams: Promise<{ from?: string }>
 }) {
   const { id } = await params
+  const sp = await searchParams
   const supabase = await createClient()
+
+  // Sprint TYDZIEN2.T2.3 — parse ?from=cohort/{uuid} jeśli obecne.
+  // Validation: UUID v4 regex (relaxed — accept any UUID format). Jeśli invalid
+  // lub cohort nie istnieje → fallback do default breadcrumb (graceful).
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  let fromCohortId: string | null = null
+  if (sp.from && sp.from.startsWith('cohort/')) {
+    const candidate = sp.from.slice('cohort/'.length)
+    if (UUID_RE.test(candidate)) fromCohortId = candidate
+  }
+  let fromCohort: { id: string; name: string } | null = null
+  if (fromCohortId) {
+    // cohorts RLS = FOR ALL TO authenticated (migration 060) → anon supabase OK
+    const { data } = await supabase
+      .from('cohorts')
+      .select('id, name')
+      .eq('id', fromCohortId)
+      .maybeSingle()
+    if (data) fromCohort = data as { id: string; name: string }
+  }
 
   const [
     { data: client },
@@ -489,7 +516,20 @@ export default async function ClientDetailPage({
     <div className="flex flex-col bg-[#FAFAF7] min-h-screen">
       <PageHeader
         title={c.title}
-        breadcrumbs={[{ label: 'Klienci', href: '/clients' }, { label: c.title }]}
+        breadcrumbs={
+          // Sprint TYDZIEN2.T2.3 (28.05.2026) — dynamic 4-step breadcrumb gdy
+          // przyszli z cohort (explicit ?from=cohort/{uuid} + cohort exists),
+          // inaczej 2-step fallback. 4-step zachowuje consistency z cohort
+          // page own breadcrumb (AI Discovery > Cohorts > {name}).
+          fromCohort
+            ? [
+                { label: 'AI Discovery', href: '/intelligence' },
+                { label: 'Cohorts', href: '/intelligence/cohorts' },
+                { label: fromCohort.name, href: `/intelligence/cohorts/${fromCohort.id}` },
+                { label: c.title },
+              ]
+            : [{ label: 'Klienci', href: '/clients' }, { label: c.title }]
+        }
         actions={
           <div className="flex items-center gap-2 flex-wrap">
             <OrderLinkButton
