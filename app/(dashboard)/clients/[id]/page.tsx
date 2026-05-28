@@ -6,6 +6,7 @@
 
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { PageHeader } from '@/components/page-header'
 import { Badge } from '@/components/ui/badge'
 import { ClientContacts } from '@/components/clients/client-contacts'
@@ -156,7 +157,14 @@ export default async function ClientDetailPage({
   // OrdersSection accordion. Two-pass: orders first (need IDs for items),
   // then bulk-fetch items by order_id IN list. Both queries scoped to
   // client_id, ordered newest-first.
-  const { data: clientOrdersData } = await supabase
+  //
+  // BUGFIX (28.05.2026) — orders + order_items mają RLS enabled bez policies
+  // (migration 069 Option B: service-role only). Anon-based `supabase` (cookie
+  // session) zwraca 0 rows → empty state nawet gdy real orders istnieją.
+  // Używamy adminSupabase (jak /operacje/zamowienia/page.tsx). Auth guard
+  // na linii ~50 (redirect '/auth/login') juz zatrzymał anon access do strony.
+  const adminSupabase = createAdminClient()
+  const { data: clientOrdersData } = await adminSupabase
     .from('orders')
     .select(
       'id, order_number, status, cennik_tier, price_mode, total_net, total_brutto, total_vat, delivery_address, preferred_delivery_date, customer_notes, submitted_at, created_at, link_opened_at, confirmed_at, proforma_fakturownia_number, vat_fakturownia_number',
@@ -185,7 +193,7 @@ export default async function ClientDetailPage({
   const orderIds = clientOrders.map((o) => o.id)
   let orderItemsByOrder: Record<string, Array<{ product_name_snapshot: string; qty: number; gramatura_snapshot: string | null }>> = {}
   if (orderIds.length > 0) {
-    const { data: itemsData } = await supabase
+    const { data: itemsData } = await adminSupabase
       .from('order_items')
       .select('order_id, product_name_snapshot, qty, gramatura_snapshot, created_at')
       .in('order_id', orderIds)
