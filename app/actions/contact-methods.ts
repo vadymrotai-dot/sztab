@@ -220,21 +220,22 @@ export async function setPrimaryContactMethod(
   } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: 'Sesja wygasła' }
 
-  // Sprint TYDZIEN2.T2.4.C1 FIX (28.05.2026) — atomic primary toggle via RPC.
-  // Migration 075 created PL/pgSQL function `set_primary_contact_method`
-  // що robi ONE UPDATE statement: SET is_primary = (id = p_method_id)
-  // WHERE client_id+kind+owner_id. Partial UNIQUE INDEX idx_ccm_one_primary
-  // checked at end of statement — race-safe. SECURITY INVOKER → RLS natywne
-  // через auth.uid() match.
+  // Sprint TYDZIEN2.T2.4.C1 FIX2 (28.05.2026) — atomic primary toggle via RPC
+  // з explicit p_owner_id (NIE auth.uid() bo пропадає у server-action RPC
+  // context u @supabase/ssr).
   //
-  // Earlier 2-step sequential UPDATE (clear → set) działało w practice
-  // (single user, partial UNIQUE allows 0-primary intermediate), але RPC
-  // eliminuje race window całkowicie i jest semantically jednym statement.
+  // Migration 075 (FIX2 version): function приймає (p_method_id, p_owner_id)
+  // і robi ONE UPDATE: SET is_primary = (id = p_method_id) WHERE client_id+
+  // kind+owner_id=p_owner_id. Partial UNIQUE INDEX idx_ccm_one_primary
+  // checked at end of statement — race-safe.
+  //
+  // p_owner_id = user.id з auth.getUser() (validated wyżej). Server-side
+  // resolve, NIE z client request body — bezpieczne.
   //
   // RPC returns { client_id, kind, value, ok, error } — caller robi clients sync.
   const { data: rpcData, error: rpcErr } = await supabase.rpc(
     'set_primary_contact_method',
-    { p_method_id: parsed.data.methodId },
+    { p_method_id: parsed.data.methodId, p_owner_id: user.id },
   )
   if (rpcErr) return { ok: false, error: `RPC error: ${rpcErr.message}` }
 
