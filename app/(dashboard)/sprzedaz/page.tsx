@@ -186,7 +186,7 @@ async function KohortyContent({
                     {r.client_count} klientów / {r.prospect_count} prospекtów
                   </td>
                   <td className="px-4 py-2 text-xs text-muted-foreground">
-                    {new Date(r.created_at).toLocaleString('pl-PL')}
+                    {new Date(r.created_at).toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' })}
                   </td>
                   <td className="px-4 py-2 text-right">
                     <Button asChild size="sm" variant="outline">

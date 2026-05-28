@@ -107,7 +107,7 @@ export function SignalsSection({
         <ul className="ml-4 list-disc space-y-0.5 text-[11px] text-[#666]">
           {bzpRecent.slice(0, 3).map((t, i) => (
             <li key={i}>
-              {t.award_date ? new Date(t.award_date).toLocaleDateString('pl-PL') : '—'}
+              {t.award_date ? new Date(t.award_date).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' }) : '—'}
               {' · '}
               <span className="font-medium">{t.ordering_party ?? 'Nieznany zamawiający'}</span>
             </li>

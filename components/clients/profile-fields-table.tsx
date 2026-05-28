@@ -110,7 +110,7 @@ export function ProfileFieldsTable({ fields }: { fields: ProfileField[] }) {
               <div className="col-span-2 flex justify-end gap-1">
                 <Badge
                   className={`${SOURCE_COLORS[f.source] ?? 'bg-gray-500'} text-white h-5 text-[10px] font-mono`}
-                  title={`Verified: ${new Date(f.last_verified_at).toLocaleDateString('pl-PL')} | confidence: ${f.confidence}`}
+                  title={`Verified: ${new Date(f.last_verified_at).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' })} | confidence: ${f.confidence}`}
                 >
                   {f.source}
                 </Badge>

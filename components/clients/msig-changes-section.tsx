@@ -38,7 +38,7 @@ export function MsigChangesSection({ changes }: { changes: MsigChange[] }) {
             <li key={c.id} className="grid grid-cols-12 items-start gap-2 py-2 text-sm">
               <div className="col-span-2 text-xs font-mono text-muted-foreground pt-0.5">
                 {c.publication_date
-                  ? new Date(c.publication_date).toLocaleDateString('pl-PL')
+                  ? new Date(c.publication_date).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' })
                   : '—'}
               </div>
               <div className="col-span-2">

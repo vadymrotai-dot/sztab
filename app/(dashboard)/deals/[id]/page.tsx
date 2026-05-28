@@ -202,7 +202,7 @@ export default async function DealDetailPage({
                         {new Date(
                           (deal.expected_close_date as string) ??
                             (deal.close_date as string),
-                        ).toLocaleDateString('pl-PL')}
+                        ).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' })}
                       </p>
                     </div>
                   </div>
@@ -226,7 +226,7 @@ export default async function DealDetailPage({
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Utworzono</span>
                 <span className="text-sm">
-                  {new Date(deal.created_at as string).toLocaleDateString('pl-PL')}
+                  {new Date(deal.created_at as string).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' })}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -234,7 +234,7 @@ export default async function DealDetailPage({
                   Ostatnia aktualizacja
                 </span>
                 <span className="text-sm">
-                  {new Date(deal.updated_at as string).toLocaleDateString('pl-PL')}
+                  {new Date(deal.updated_at as string).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' })}
                 </span>
               </div>
               {deal.deal_type ? (

@@ -158,6 +158,7 @@ export default async function DailyDashboardPage() {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
+    timeZone: 'Europe/Warsaw',
   })
 
   return (

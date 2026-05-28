@@ -56,7 +56,7 @@ const EMPLOYEE_BADGE: Record<string, string> = {
 function formatDate(iso: string | null): string {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleString('pl-PL')
+    return new Date(iso).toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' })
   } catch {
     return iso
   }

@@ -66,7 +66,7 @@ export function ClientDeals({ clientId, deals }: ClientDealsProps) {
                   </Link>
                   {deal.close_date && (
                     <p className="text-sm text-muted-foreground">
-                      Planowane zamkniecie: {new Date(deal.close_date).toLocaleDateString('pl-PL')}
+                      Planowane zamkniecie: {new Date(deal.close_date).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' })}
                     </p>
                   )}
                 </div>

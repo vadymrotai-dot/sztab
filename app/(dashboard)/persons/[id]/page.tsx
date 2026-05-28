@@ -278,8 +278,8 @@ export default async function PersonProfilePage({
                 {links.map((l) => (
                   <li key={l.id} className="grid grid-cols-12 items-start gap-2 py-2 text-sm">
                     <div className="col-span-3 text-xs text-muted-foreground pt-0.5">
-                      {l.data_od ? new Date(l.data_od).toLocaleDateString('pl-PL') : '—'} →{' '}
-                      {l.data_do ? new Date(l.data_do).toLocaleDateString('pl-PL') : 'obecnie'}
+                      {l.data_od ? new Date(l.data_od).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' }) : '—'} →{' '}
+                      {l.data_do ? new Date(l.data_do).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' }) : 'obecnie'}
                     </div>
                     <div className="col-span-6 min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">

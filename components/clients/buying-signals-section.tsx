@@ -59,7 +59,7 @@ export function BuyingSignalsSection({ tenders }: { tenders: BzpTender[] }) {
           {tenders.slice(0, 8).map((t) => (
             <li key={t.id} className="grid grid-cols-12 items-start gap-2 py-2">
               <div className="col-span-2 text-xs font-mono text-muted-foreground pt-0.5">
-                {t.award_date ? new Date(t.award_date).toLocaleDateString('pl-PL') : '—'}
+                {t.award_date ? new Date(t.award_date).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' }) : '—'}
               </div>
               <div className="col-span-7 min-w-0 space-y-1">
                 <div className="font-medium text-sm truncate" title={t.subject ?? undefined}>

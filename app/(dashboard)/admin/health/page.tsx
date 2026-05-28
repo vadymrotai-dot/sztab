@@ -150,7 +150,7 @@ export default async function AdminHealthPage() {
                   {apifyTopExpensive.map((r) => (
                     <li key={r.id} className="grid grid-cols-12 items-center gap-2 py-1.5">
                       <div className="col-span-3 font-mono text-muted-foreground">
-                        {new Date(r.enriched_at).toLocaleDateString('pl-PL')}
+                        {new Date(r.enriched_at).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' })}
                       </div>
                       <div className="col-span-2">
                         <Badge
@@ -214,7 +214,7 @@ export default async function AdminHealthPage() {
                 </CardTitle>
                 <div className="text-xs text-muted-foreground">
                   {latest
-                    ? `Last: ${new Date(latest.started_at).toLocaleString('pl-PL')}`
+                    ? `Last: ${new Date(latest.started_at).toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' })}`
                     : 'No runs yet'}
                 </div>
               </CardHeader>
@@ -261,7 +261,7 @@ function RunRow({ run }: { run: CronRun }) {
   return (
     <li className="grid grid-cols-12 items-start gap-2 py-1.5">
       <div className="col-span-3 font-mono text-muted-foreground">
-        {start.toLocaleString('pl-PL')}
+        {start.toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' })}
       </div>
       <div className="col-span-2">{statusBadge}</div>
       <div className="col-span-2 font-mono">

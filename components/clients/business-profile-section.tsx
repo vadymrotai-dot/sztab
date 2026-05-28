@@ -160,7 +160,7 @@ export function BusinessProfileSection({
         </CardTitle>
         <div className="flex items-start gap-3">
           <div className="text-right text-xs text-muted-foreground">
-            {profile.analyzed_at && new Date(profile.analyzed_at).toLocaleDateString('pl-PL')}
+            {profile.analyzed_at && new Date(profile.analyzed_at).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' })}
             <div className="font-mono">{profile.model_used}</div>
           </div>
           {/* Sprint S6A Step 4 — inline re-run AI tylko (BEZ refresh sources).
