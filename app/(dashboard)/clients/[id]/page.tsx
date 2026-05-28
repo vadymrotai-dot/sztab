@@ -4,6 +4,7 @@
 // Drops: sticky 5-action bar, horizontal anchor nav, debug "Profil canonical
 // 18 pól", raw JSON dumps, stale "Sprawozdania niedostępne HTTP 400".
 
+import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -31,8 +32,8 @@ import { OrderLinkButton } from '@/components/clients/order-link-button'
 import { SendOfferButton } from '@/components/clients/send-offer-button'
 import { ClientTypeBadge } from '@/components/clients/client-type-badge'
 import { MenuSection, type MenuDish, type MenuCoverage, type MenuDishesSource } from '@/components/clients/menu-section'
-import { PredictionsSection } from '@/components/clients/predictions-section'
-import { aggregateMonthlyIngredients } from '@/lib/predictions/aggregate-ingredients'
+import { PredictionsSectionAsync } from '@/components/clients/predictions-section-async'
+import { PredictionsLoadingSkeleton } from '@/components/clients/predictions-loading-skeleton'
 import type { ClientType } from '@/lib/ai/business-analysis'
 import { SectionActionLink } from '@/components/clients/section-action-link'
 import { KrsRefreshButton } from '@/components/clients/krs-refresh-button'
@@ -42,6 +43,12 @@ const statusColor: Record<string, string> = {
   aktywny: 'bg-green-500',
   nieaktywny: 'bg-gray-400',
 }
+
+// Sprint TYDZIEN2 PERF (28.05.2026) — page maxDuration safety net.
+// Vercel Pro plan dozwala do 60s. Suspense + async PredictionsSection robi
+// AI agregację у tle (5-30s typowo), maxDuration zapewnia że nawet jeśli
+// streaming utknie — Vercel nie zwróci 503 zbyt wcześnie.
+export const maxDuration = 60
 
 export default async function ClientDetailPage({
   params,
@@ -94,10 +101,10 @@ export default async function ClientDetailPage({
     { data: branches },
     { data: topMatch },
     { data: pkdMain },
-    // Sprint S6B-UI-A — Apify Google Maps data для SignalsSection card
-    { data: apifyEnrichment },
-    // Sprint S6D Day 3 — menu enrichment rows (www_menu / wedo_pdf_menu / blocked)
-    { data: menuRows },
+    // Sprint TYDZIEN2 PERF (28.05.2026) — combined contact_enrichment fetch
+    // (apify_gmaps + menus). Wcześniej 2 osobne queries dla тих самих rows;
+    // teraz 1 z .in() filter + client-side split. Saves 1 round-trip.
+    { data: enrichmentRows },
   ] = await Promise.all([
     supabase.from('clients').select('*').eq('id', id).single(),
     supabase.from('contacts').select('*').eq('client_id', id).order('created_at', { ascending: false }),
@@ -149,45 +156,43 @@ export default async function ClientDetailPage({
       .is('superseded_at', null)
       .limit(1)
       .maybeSingle(),
-    // Sprint S6B-UI-A — Apify Google Maps card data (Phase B STEP 5).
-    // contact_enrichment row з gmaps_rating, reviews_count, gmaps_url, phone.
+    // Sprint TYDZIEN2 PERF (28.05.2026) — combined contact_enrichment for
+    // Apify GMaps (gmaps_rating/reviews/phone) + menu sources
+    // (restaumatic/wedo/www/blocked). Single query з .in() filter + ALL fields
+    // potrzebne dla obu use cases; split у TypeScript poniżej.
     supabase
       .from('contact_enrichment')
-      .select('status, gmaps_rating, gmaps_reviews_count, gmaps_url, phone, raw_payload')
+      .select('source, status, gmaps_rating, gmaps_reviews_count, gmaps_url, phone, raw_payload, enriched_at')
       .eq('target_id', id)
       .eq('target_type', 'client')
-      .eq('source', 'apify_gmaps')
-      .maybeSingle(),
-    // Sprint S6D Day 3 — fetch menu sources для MenuSection.
-    // Order priority: wedo_pdf_menu (full PDF) > www_menu (full HTML) >
-    //   www_menu_blocked (UpMenu marker) > apify_gmaps (popular subset).
-    // Read all sources, merge у component-side prep below.
-    supabase
-      .from('contact_enrichment')
-      .select('source, status, raw_payload, enriched_at')
-      .eq('target_id', id)
-      .eq('target_type', 'client')
-      // Sprint S-MENU Day 3.2 (15.05.2026) — added 'restaumatic_menu' (top
-      // priority JSON-LD source from Restaumatic-hosted PL gastronomy).
-      .in('source', ['restaumatic_menu', 'wedo_pdf_menu', 'www_menu', 'www_menu_blocked']),
+      .in('source', ['apify_gmaps', 'restaumatic_menu', 'wedo_pdf_menu', 'www_menu', 'www_menu_blocked']),
   ])
 
   if (!client) notFound()
 
-  // S-ORDER.1.D — resolve cohort_id для tracking order leads
-  const { data: cohortMember } = await supabase
-    .from('cohort_members')
-    .select('cohort_id')
-    .eq('subject_id', id)
-    .eq('subject_type', 'client')
-    .limit(1)
-    .maybeSingle()
-  const orderCohortId = cohortMember?.cohort_id ?? null
+  // Sprint TYDZIEN2 PERF — split combined enrichment rows do dwóch shapes:
+  //   apifyEnrichment — single row apify_gmaps (backward-compat z poprzednim
+  //     code path: { status, gmaps_rating, gmaps_reviews_count, gmaps_url,
+  //     phone, raw_payload })
+  //   menuRows — array menu source rows (restaumatic/wedo/www/blocked)
+  type EnrichmentRow = {
+    source: string
+    status: string | null
+    gmaps_rating: number | null
+    gmaps_reviews_count: number | null
+    gmaps_url: string | null
+    phone: string | null
+    raw_payload: unknown
+    enriched_at: string | null
+  }
+  const enrichmentAll = (enrichmentRows ?? []) as EnrichmentRow[]
+  const apifyEnrichment = enrichmentAll.find((r) => r.source === 'apify_gmaps') ?? null
+  const menuRows = enrichmentAll.filter((r) => r.source !== 'apify_gmaps')
 
-  // Sprint TYDZIEN2.T2.2 (28.05.2026) — fetch orders + items preview для
-  // OrdersSection accordion. Two-pass: orders first (need IDs for items),
-  // then bulk-fetch items by order_id IN list. Both queries scoped to
-  // client_id, ordered newest-first.
+  // Sprint TYDZIEN2 PERF (28.05.2026) — parallelize 3 post-initial queries
+  // (cohort_member, orders, client_contact_methods). Wcześniej każdy był osobny
+  // await sequential → 3 round-trips. Tepere — Promise.all → 1 batch, ~200-400ms
+  // saved typically. order_items zostaje sequential bo depends od orders.ids.
   //
   // BUGFIX (28.05.2026) — orders + order_items mają RLS enabled bez policies
   // (migration 069 Option B: service-role only). Anon-based `supabase` (cookie
@@ -195,13 +200,37 @@ export default async function ClientDetailPage({
   // Używamy adminSupabase (jak /operacje/zamowienia/page.tsx). Auth guard
   // na linii ~50 (redirect '/auth/login') juz zatrzymał anon access do strony.
   const adminSupabase = createAdminClient()
-  const { data: clientOrdersData } = await adminSupabase
-    .from('orders')
-    .select(
-      'id, order_number, status, cennik_tier, price_mode, total_net, total_brutto, total_vat, delivery_address, preferred_delivery_date, customer_notes, submitted_at, created_at, link_opened_at, confirmed_at, proforma_fakturownia_number, vat_fakturownia_number',
-    )
-    .eq('client_id', id)
-    .order('created_at', { ascending: false })
+  const [
+    { data: cohortMember },
+    { data: clientOrdersData },
+    { data: contactMethodsData },
+  ] = await Promise.all([
+    // S-ORDER.1.D — resolve cohort_id для tracking order leads
+    supabase
+      .from('cohort_members')
+      .select('cohort_id')
+      .eq('subject_id', id)
+      .eq('subject_type', 'client')
+      .limit(1)
+      .maybeSingle(),
+    // Sprint TYDZIEN2.T2.2 — orders (admin client bypassuje RLS deny)
+    adminSupabase
+      .from('orders')
+      .select(
+        'id, order_number, status, cennik_tier, price_mode, total_net, total_brutto, total_vat, delivery_address, preferred_delivery_date, customer_notes, submitted_at, created_at, link_opened_at, confirmed_at, proforma_fakturownia_number, vat_fakturownia_number',
+      )
+      .eq('client_id', id)
+      .order('created_at', { ascending: false }),
+    // Sprint TYDZIEN2.T2.4.B — client_contact_methods (RLS auth.uid()=owner_id)
+    supabase
+      .from('client_contact_methods')
+      .select('id, kind, value, label, is_primary, source, created_at')
+      .eq('client_id', id)
+      .order('kind', { ascending: true })
+      .order('is_primary', { ascending: false })
+      .order('created_at', { ascending: true }),
+  ])
+  const orderCohortId = cohortMember?.cohort_id ?? null
   const clientOrders = (clientOrdersData ?? []) as Array<{
     id: string
     order_number: string
@@ -245,19 +274,7 @@ export default async function ClientDetailPage({
     }
   }
 
-  // Sprint TYDZIEN2.T2.4.B (28.05.2026) — fetch client_contact_methods dla
-  // ContactSectionV3 (replaces V2 single-cascade z multi-row grouped display).
-  // RLS auth.uid()=owner_id, anon supabase OK (verified ccm.owner_id matches
-  // clients.owner_id post-seed). 664 rows total у DB, ~2 methods/client avg.
-  // Sort priority: kind alphabetically NIE — explicit order у component;
-  // tu wystarczy is_primary DESC, created_at ASC, kind grouped client-side.
-  const { data: contactMethodsData } = await supabase
-    .from('client_contact_methods')
-    .select('id, kind, value, label, is_primary, source, created_at')
-    .eq('client_id', id)
-    .order('kind', { ascending: true })
-    .order('is_primary', { ascending: false })
-    .order('created_at', { ascending: true })
+  // Sprint TYDZIEN2.T2.4.B — client_contact_methods fetched у Promise.all wyżej.
   const contactMethods = (contactMethodsData ?? []) as Array<{
     id: string
     kind: string
@@ -509,35 +526,10 @@ export default async function ClientDetailPage({
     }
   }
 
-  // Sprint S6D Day 4 — fetch aggregated ingredient prediction (lazy, only
-  // when gastronomia + Anthropic key configured). Runs AI calls per dish
-  // server-side; cache hits y dish_ingredient_mappings keep cost low after
-  // warm-up. Якщо anthropicKey missing OR not gastronomia → null prediction.
-  let aggregatedPrediction: Awaited<
-    ReturnType<typeof aggregateMonthlyIngredients>
-  >['prediction'] = null
-  if (isGastronomia) {
-    try {
-      const { data: paramsRow } = await supabase
-        .from('params')
-        .select('anthropic_api_key')
-        .limit(1)
-        .maybeSingle()
-      const anthropicKey =
-        (paramsRow as { anthropic_api_key?: string } | null)?.anthropic_api_key ?? ''
-      if (anthropicKey) {
-        const { prediction } = await aggregateMonthlyIngredients(
-          supabase,
-          id,
-          anthropicKey,
-        )
-        aggregatedPrediction = prediction
-      }
-    } catch (err) {
-      // Non-fatal — log + render empty
-      console.error('[predictions] aggregation failed:', err)
-    }
-  }
+  // Sprint TYDZIEN2 PERF (28.05.2026) — defer aggregateMonthlyIngredients
+  // do PredictionsSectionAsync (Suspense fallback skeleton). Wcześniej tu
+  // robiło się sync AI calls (Haiku per dish) i blokowało page render → 503.
+  // Tepere: page renderuje HTML natychmiast; section stremuje gdy AI ready.
 
   return (
     <div className="flex flex-col bg-[#FAFAF7] min-h-screen">
@@ -651,48 +643,27 @@ export default async function ClientDetailPage({
             Always renders для gastronomia — fallback empty state якщо
             aggregation returned null (e.g. anthropic_api_key missing).
             Server-side aggregation runs AI per dish (cached у dish_ingredient_mappings). */}
+        {/* Sprint TYDZIEN2 PERF (28.05.2026) — Suspense + async server component.
+            Page renderuje natychmiast z LoadingSkeleton fallback; PredictionsSectionAsync
+            streamuje siebie po zakończeniu AI calls (typowo 5-30s dla gastronomy).
+            Meta accordion lite ("Prognoza miesięczna") bo prawdziwy count znamy
+            dopiero po agregacji — pokazujemy go wewnątrz PredictionsSection. */}
         {isGastronomia && (
           <AccordionSection
             id="predictions"
             title="Prognoza miesięcznej potrzeby"
-            meta={
-              aggregatedPrediction
-                ? aggregatedPrediction.coverage_tier === 'full_menu'
-                  ? `${aggregatedPrediction.ingredients.length} składników z pełnego menu`
-                  : aggregatedPrediction.coverage_tier === 'popular_only'
-                    ? `${aggregatedPrediction.ingredients.length} składników z popularnych`
-                    : `${aggregatedPrediction.ingredients.length} składników wg podtypu`
-                : 'Niedostępne'
-            }
+            meta="Analiza menu"
             defaultOpen={true}
           >
-            {aggregatedPrediction ? (
-              <PredictionsSection
-                predictionId={aggregatedPrediction.prediction_id ?? null}
-                coverage={aggregatedPrediction.coverage_tier}
-                predictionConfidence={aggregatedPrediction.prediction_confidence}
-                dishesCount={aggregatedPrediction.dishes_count}
-                dishesSource={aggregatedPrediction.dishes_source}
-                volume={aggregatedPrediction.volume}
-                ingredients={aggregatedPrediction.ingredients}
+            <Suspense fallback={<PredictionsLoadingSkeleton />}>
+              <PredictionsSectionAsync
+                clientId={id}
                 reviewsCount={
                   (apifyEnrichment as { gmaps_reviews_count?: number | null } | null)
                     ?.gmaps_reviews_count ?? 0
                 }
               />
-            ) : (
-              <div className="rounded border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-                <p className="font-medium">Prognoza niedostępna</p>
-                <p className="mt-1 text-xs">
-                  Możliwe przyczyny: brak <code>anthropic_api_key</code> w params,
-                  brak business_profile.client_type=&apos;gastronomia&apos; w DB
-                  (sprawdź badge), lub agregacja zwróciła błąd (sprawdź logs serwera).
-                </p>
-                <p className="mt-2 text-xs text-amber-800">
-                  Uruchom &quot;Pełna re-analiza&quot; aby odświeżyć źródła danych.
-                </p>
-              </div>
-            )}
+            </Suspense>
           </AccordionSection>
         )}
 
