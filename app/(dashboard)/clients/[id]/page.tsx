@@ -23,6 +23,7 @@ import { FinancialStatementsTable } from '@/components/clients/financial-stateme
 import { PersonsSectionV2 } from '@/components/clients/persons-section-v2'
 import { SignalsSection } from '@/components/clients/signals-section'
 import { ContactSectionV2 } from '@/components/clients/contact-section-v2'
+import { OrdersSection } from '@/components/clients/orders-section'
 import { ClientDetailActions } from '@/components/clients/client-detail-actions'
 import { OrderLinkButton } from '@/components/clients/order-link-button'
 import { SendOfferButton } from '@/components/clients/send-offer-button'
@@ -150,6 +151,60 @@ export default async function ClientDetailPage({
     .limit(1)
     .maybeSingle()
   const orderCohortId = cohortMember?.cohort_id ?? null
+
+  // Sprint TYDZIEN2.T2.2 (28.05.2026) — fetch orders + items preview для
+  // OrdersSection accordion. Two-pass: orders first (need IDs for items),
+  // then bulk-fetch items by order_id IN list. Both queries scoped to
+  // client_id, ordered newest-first.
+  const { data: clientOrdersData } = await supabase
+    .from('orders')
+    .select(
+      'id, order_number, status, cennik_tier, price_mode, total_net, total_brutto, total_vat, delivery_address, preferred_delivery_date, customer_notes, submitted_at, created_at, link_opened_at, confirmed_at, proforma_fakturownia_number, vat_fakturownia_number',
+    )
+    .eq('client_id', id)
+    .order('created_at', { ascending: false })
+  const clientOrders = (clientOrdersData ?? []) as Array<{
+    id: string
+    order_number: string
+    status: string
+    cennik_tier: string | null
+    price_mode: string | null
+    total_net: number
+    total_brutto: number
+    total_vat: number
+    delivery_address: string | null
+    preferred_delivery_date: string | null
+    customer_notes: string | null
+    submitted_at: string | null
+    created_at: string
+    link_opened_at: string | null
+    confirmed_at: string | null
+    proforma_fakturownia_number: string | null
+    vat_fakturownia_number: string | null
+  }>
+  const orderIds = clientOrders.map((o) => o.id)
+  let orderItemsByOrder: Record<string, Array<{ product_name_snapshot: string; qty: number; gramatura_snapshot: string | null }>> = {}
+  if (orderIds.length > 0) {
+    const { data: itemsData } = await supabase
+      .from('order_items')
+      .select('order_id, product_name_snapshot, qty, gramatura_snapshot, created_at')
+      .in('order_id', orderIds)
+      .order('created_at', { ascending: true })
+    type ItemRow = {
+      order_id: string
+      product_name_snapshot: string
+      qty: number
+      gramatura_snapshot: string | null
+    }
+    for (const row of (itemsData ?? []) as ItemRow[]) {
+      if (!orderItemsByOrder[row.order_id]) orderItemsByOrder[row.order_id] = []
+      orderItemsByOrder[row.order_id]!.push({
+        product_name_snapshot: row.product_name_snapshot,
+        qty: row.qty,
+        gramatura_snapshot: row.gramatura_snapshot,
+      })
+    }
+  }
 
   const c = client as Record<string, unknown> & {
     id: string
@@ -698,6 +753,22 @@ export default async function ClientDetailPage({
               website: !websiteValue ? 'Brak własnej domeny' : undefined,
             }}
           />
+        </AccordionSection>
+
+        {/* Sprint TYDZIEN2.T2.2 (28.05.2026) — lista zamówień klienta.
+            Hidden 'draft' i 'cancelled' default; toggle pokazuje całość.
+            Empty state ok dla 0 zamówień. */}
+        <AccordionSection
+          id="zamowienia"
+          title="Zamówienia"
+          meta={
+            clientOrders.length === 0
+              ? 'brak'
+              : `${clientOrders.filter((o) => ['submitted', 'confirmed', 'in_realization', 'shipped', 'invoiced'].includes(o.status)).length} realnych / ${clientOrders.length} total`
+          }
+          defaultOpen={clientOrders.length > 0}
+        >
+          <OrdersSection orders={clientOrders} itemsByOrder={orderItemsByOrder} />
         </AccordionSection>
 
         <AccordionSection
