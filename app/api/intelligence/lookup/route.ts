@@ -938,7 +938,42 @@ async function runPhaseB({
     existingClientTypeForGmaps === 'sklep_detal' ||
     existingClientTypeForGmaps === 'sieci_handlowe'
 
-  if (skipApifyGmapsForB2B) {
+  // Sprint TYDZIEN1.A.2.7 (27.05.2026) — TEMPORARY ENV gate. Apify Compass GMaps
+  // duration variance 95-214s observed — incompatible з Vercel sync function
+  // (even 170s timeout missed by 44s у 16:30 run). Pending async polling pattern
+  // (sprint A.4). Default: disabled. Re-enable via APIFY_GMAPS_ENABLED=true
+  // after A.4 ships. NO Apify call made when disabled — saves Apify $ on every
+  // re-analiza + clears "Apify: error" з UI.
+  const APIFY_GMAPS_ENABLED = process.env.APIFY_GMAPS_ENABLED === 'true'
+
+  if (!APIFY_GMAPS_ENABLED) {
+    console.log(
+      `[apify_gmaps] disabled by ENV (APIFY_GMAPS_ENABLED != 'true') — pending A.4 async pattern`,
+    )
+    await supabase.from('contact_enrichment').upsert(
+      {
+        target_type: 'client',
+        target_id: clientId,
+        source: 'apify_gmaps',
+        status: 'skipped',
+        error_message: 'apify_gmaps_disabled_env — pending async pattern A.4',
+        raw_payload: {
+          skip_reason: 'apify_gmaps_disabled_env',
+          pending_sprint: 'A.4 async polling',
+          cowork_session: 'TYDZIEN1.A.2.7 27.05.2026',
+        },
+        cost_usd: 0,
+        enriched_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
+      },
+      { onConflict: 'target_type,target_id,source' },
+    )
+    response.sources_completed.push({
+      source: 'Apify_GMaps',
+      status: 'skipped',
+      note: 'apify_gmaps_disabled_env — pending async pattern A.4',
+    })
+  } else if (skipApifyGmapsForB2B) {
     console.warn('[apify_gmaps] skipped — b2b_bad_fit (Step 6.8)', {
       clientId,
       client_type: existingClientTypeForGmaps,

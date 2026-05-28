@@ -116,47 +116,63 @@ export function SignalsSection({
       )}
 
       {/* Apify Google Maps card — Sprint S6B-UI-A.
-          contact_enrichment.source='apify_gmaps' з Phase B STEP 5. */}
-      {apify && (
+          contact_enrichment.source='apify_gmaps' з Phase B STEP 5.
+          Sprint TYDZIEN1.A.2.7 (27.05.2026) — status='skipped' (env-disabled OR
+          b2b_bad_fit) OR status='error' (timeout, billing, network) → render
+          neutral "tymczasowo wyłączone" zamiast głośnego "Apify: error". Apify
+          GMaps is temporarily off pending async polling pattern (sprint A.4). */}
+      {apify && (apify.status === 'success' || apify.status === 'partial') && (
         <div className="rounded border border-[#E5E1D8] bg-white p-3">
           <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-wider text-[#888]">
             <span>📍</span>
             <span>Google Maps</span>
           </div>
-          {apify.status === 'success' || apify.status === 'partial' ? (
-            <div className="space-y-1.5 text-[12px]">
-              {apify.gmaps_rating !== null && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-amber-600">{renderStars(apify.gmaps_rating)}</span>
-                  <span className="font-medium">{apify.gmaps_rating.toFixed(1)} / 5</span>
-                  {apify.gmaps_reviews_count !== null && (
-                    <span className="text-[#666]">({apify.gmaps_reviews_count} opinii)</span>
-                  )}
-                </div>
-              )}
-              {apify.phone && (
-                <div className="text-[#555]">
-                  📞 <span className="font-mono">{apify.phone}</span>
-                </div>
-              )}
-              {apify.gmaps_url && (
-                <a
-                  href={apify.gmaps_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block text-[#4F46E5] hover:underline"
-                >
-                  Otwórz w Google Maps ↗
-                </a>
-              )}
-            </div>
-          ) : (
-            <div className="text-[12px] text-[#888]">
-              {apify.status === 'no_match'
-                ? 'Nie znaleziono w Google Maps'
-                : `Apify: ${apify.status ?? 'brak danych'}`}
-            </div>
-          )}
+          <div className="space-y-1.5 text-[12px]">
+            {apify.gmaps_rating !== null && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-amber-600">{renderStars(apify.gmaps_rating)}</span>
+                <span className="font-medium">{apify.gmaps_rating.toFixed(1)} / 5</span>
+                {apify.gmaps_reviews_count !== null && (
+                  <span className="text-[#666]">({apify.gmaps_reviews_count} opinii)</span>
+                )}
+              </div>
+            )}
+            {apify.phone && (
+              <div className="text-[#555]">
+                📞 <span className="font-mono">{apify.phone}</span>
+              </div>
+            )}
+            {apify.gmaps_url && (
+              <a
+                href={apify.gmaps_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block text-[#4F46E5] hover:underline"
+              >
+                Otwórz w Google Maps ↗
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+      {apify && apify.status === 'no_match' && (
+        <div className="rounded border border-[#E5E1D8] bg-white p-3">
+          <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-wider text-[#888]">
+            <span>📍</span>
+            <span>Google Maps</span>
+          </div>
+          <div className="text-[12px] text-[#888]">Nie znaleziono w Google Maps</div>
+        </div>
+      )}
+      {apify && (apify.status === 'skipped' || apify.status === 'error') && (
+        <div className="rounded border border-[#E5E1D8] bg-[#FAFAF7] p-3">
+          <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-wider text-[#888]">
+            <span>📍</span>
+            <span>Google Maps</span>
+          </div>
+          <div className="text-[12px] text-[#888] italic">
+            Tymczasowo wyłączone (w przygotowaniu)
+          </div>
         </div>
       )}
     </div>
