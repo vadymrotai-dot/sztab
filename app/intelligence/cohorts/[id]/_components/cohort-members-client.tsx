@@ -169,6 +169,11 @@ interface Props {
   clients: ClientMemberRow[]
   statusFilter: CohortMemberStatus | null
   statusFilterLabel: string | null
+  /** Sprint TYDZIEN2.T2.3.1 (28.05.2026) — map NIP → existing clients.id.
+   *  Pozwala prospect row link directly do /clients/{id}?from=cohort/ gdy
+   *  parallel clients row istnieje (KRS unification). Fallback do
+   *  /intelligence/lookup gdy nie ma. Server-resolved bulk SELECT. */
+  nipToClientId?: Record<string, string>
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────
@@ -261,6 +266,7 @@ export function CohortMembersClient({
   clients,
   statusFilter,
   statusFilterLabel,
+  nipToClientId,
 }: Props) {
   const router = useRouter()
 
@@ -529,15 +535,31 @@ export function CohortMembersClient({
               </span>
             )
           }
+          // Sprint TYDZIEN2.T2.3.1 (28.05.2026) — conditional href.
+          // Якщо parallel clients.id row istnieje (NIP resolved) → bezpośredni
+          // profile link з ?from=cohort/ context (blue, як clients rows).
+          // Inaczej fallback do /intelligence/lookup?nip= (emerald, як wcześniej)
+          // — auto-uruchomi enrichment przy pierwszym otwarciu i utworzy profil.
+          const directClientId = p.nip ? nipToClientId?.[p.nip] : undefined
           return (
             <div>
               {p.nip ? (
-                <Link
-                  href={`/intelligence/lookup?nip=${p.nip}`}
-                  className="font-medium hover:text-emerald-700 hover:underline"
-                >
-                  {p.name}
-                </Link>
+                directClientId ? (
+                  <Link
+                    href={`/clients/${directClientId}?from=cohort/${cohortId}`}
+                    className="font-medium text-blue-700 hover:underline"
+                  >
+                    {p.name}
+                  </Link>
+                ) : (
+                  <Link
+                    href={`/intelligence/lookup?nip=${p.nip}`}
+                    className="font-medium hover:text-emerald-700 hover:underline"
+                    title="Pierwszy lookup utworzy profil"
+                  >
+                    {p.name}
+                  </Link>
+                )
               ) : (
                 <div className="font-medium">{p.name}</div>
               )}

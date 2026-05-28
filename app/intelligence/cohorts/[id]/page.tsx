@@ -339,6 +339,31 @@ export default async function CohortDetailPage({
     )
   }
 
+  // Sprint TYDZIEN2.T2.3.1 (28.05.2026) — resolve prospects' NIPs do existing
+  // `clients.id` (sprint P unification creates parallel clients row for each
+  // KRS-bootstrap prospect). Direct profile link instead of /intelligence/lookup
+  // gdy resolved. RLS: clients SELECT policy = auth.uid() = owner_id, czyli
+  // anon supabase (cookie session = Vadym) widzi swoje rows. Coverage varies
+  // by cohort: KRS-based 100%, CEIDG-based 20-38%, niektóre 0%.
+  let nipToClientId: Record<string, string> = {}
+  const prospectNips = prospectMembers
+    .map((m) => prospectMap.get(m.subject_id)?.nip)
+    .filter((n): n is string => typeof n === 'string' && n.length > 0)
+  if (prospectNips.length > 0) {
+    const uniqueNips = Array.from(new Set(prospectNips))
+    const { data: clientsByNip } = await supabase
+      .from('clients')
+      .select('id, nip')
+      .in('nip', uniqueNips)
+    const map: Record<string, string> = {}
+    for (const row of (clientsByNip ?? []) as Array<{ id: string; nip: string }>) {
+      // First-wins jeśli >1 clients row na ten sam NIP (rare). Vadym może
+      // manualnie dedupe później; navigation deterministic w międzyczasie.
+      if (row.nip && !map[row.nip]) map[row.nip] = row.id
+    }
+    nipToClientId = map
+  }
+
   // Compose final row shapes для client component
   const prospectRows: ProspectMemberRow[] = prospectMembers.map((m) => {
     const snap = prospectMap.get(m.subject_id)
@@ -489,6 +514,7 @@ export default async function CohortDetailPage({
         statusFilterLabel={
           statusFilter ? STATUS_LABELS[statusFilter] : null
         }
+        nipToClientId={nipToClientId}
       />
 
       <div className="px-6 pb-6">
