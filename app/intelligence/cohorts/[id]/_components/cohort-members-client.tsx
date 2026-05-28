@@ -228,12 +228,17 @@ function num(v: number | string | null | undefined): number {
 function formatDateTime(iso: string): string {
   try {
     const d = new Date(iso)
+    // Sprint TYDZIEN2 BUGFIX (28.05.2026) — fixed timeZone aby uniknąć React
+    // #418 hydration mismatch (Node UTC vs browser Europe/Warsaw — text content
+    // SSR vs client різний, hydration aborted, downstream Link click handlers
+    // не attached). Sztab = PL B2B, Europe/Warsaw natural choice (DST auto).
     return d.toLocaleString('pl-PL', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      timeZone: 'Europe/Warsaw',
     })
   } catch {
     return iso

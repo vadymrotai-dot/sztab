@@ -157,10 +157,14 @@ function chipHref(
 function formatDate(iso: string): string {
   try {
     const d = new Date(iso)
+    // Sprint TYDZIEN2 BUGFIX (28.05.2026) — fixed timeZone defensively.
+    // Tu Server Component (renderowane raz, без hydration), ale fixed TZ
+    // zapobiega edge case daty UTC vs PL na granicy północy ("27.05" vs "28.05").
     return d.toLocaleDateString('pl-PL', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
+      timeZone: 'Europe/Warsaw',
     })
   } catch {
     return iso

@@ -71,10 +71,14 @@ function StatusBadge({ status }: { status: string }) {
 function formatDate(iso: string | null): string {
   if (!iso) return '—'
   try {
+    // Sprint TYDZIEN2 BUGFIX (28.05.2026) — fixed timeZone defensively aby
+    // uniknąć React #418 hydration mismatch na /clients/[id] page (gdy Vadym
+    // tam pojdzie). SSR Node UTC vs browser Europe/Warsaw → text mismatch.
     return new Date(iso).toLocaleDateString('pl-PL', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
+      timeZone: 'Europe/Warsaw',
     })
   } catch {
     return iso
