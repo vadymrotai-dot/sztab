@@ -52,6 +52,14 @@ const addSchema = z.object({
 
 const idSchema = z.object({ methodId: z.string().uuid('Nieprawidłowy methodId') })
 
+// Sprint TYDZIEN2.T2.4.C2 (28.05.2026) — update schema. methodId required,
+// value+label оба supplied always (form sends current state, не diff).
+const updateSchema = z.object({
+  methodId: z.string().uuid('Nieprawidłowy methodId'),
+  value: z.string().min(1, 'Wartość wymagana').max(500, 'Wartość za długa'),
+  label: z.string().max(50).optional().nullable(),
+})
+
 // ─── Result type ─────────────────────────────────────────────────────
 
 export type ContactMethodActionResult =
@@ -281,5 +289,106 @@ export async function setPrimaryContactMethod(
 
   revalidatePath(`/clients/${clientId}`)
   revalidatePath('/clients')
+  return { ok: true, id: parsed.data.methodId }
+}
+
+// ─── Action 4: updateContactMethod (T2.4.C2) ─────────────────────────
+
+export async function updateContactMethod(
+  methodId: string,
+  value: string,
+  label: string | null,
+): Promise<ContactMethodActionResult> {
+  const parsed = updateSchema.safeParse({ methodId, value, label: label ?? null })
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? 'Nieprawidłowe dane',
+    }
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Sesja wygasła' }
+
+  // SELECT method aby dostać kind + is_primary + old_value (dla sync decision)
+  // i client_id (revalidatePath target). RLS .eq('owner_id') zabezpiecza.
+  const { data: row, error: readErr } = await supabase
+    .from('client_contact_methods')
+    .select('client_id, kind, value, is_primary')
+    .eq('id', parsed.data.methodId)
+    .eq('owner_id', user.id)
+    .maybeSingle()
+  if (readErr) return { ok: false, error: readErr.message }
+  if (!row) return { ok: false, error: 'Metoda nie znaleziona albo brak dostępu' }
+
+  const {
+    client_id: clientId,
+    kind,
+    value: oldValue,
+    is_primary: isPrimary,
+  } = row as {
+    client_id: string
+    kind: string
+    value: string
+    is_primary: boolean
+  }
+
+  // Validate + normalize new value per kind (reuse helper z addContactMethod).
+  const normResult = validateAndNormalize(
+    kind as (typeof KIND_VALUES)[number],
+    parsed.data.value,
+  )
+  if ('error' in normResult) return { ok: false, error: normResult.error }
+  const normalizedValue = normResult.value
+
+  const trimmedLabel =
+    parsed.data.label && parsed.data.label.trim().length > 0
+      ? parsed.data.label.trim()
+      : null
+
+  // UPDATE з RLS defense (owner_id eq) + dedup catch via UNIQUE INDEX
+  // idx_ccm_dedup (client_id, kind, value). Postgres 23505 → user-friendly.
+  // Self-edit (same value) does NOT trigger 23505 — Postgres no-op detect.
+  const { error: updErr } = await supabase
+    .from('client_contact_methods')
+    .update({
+      value: normalizedValue,
+      label: trimmedLabel,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', parsed.data.methodId)
+    .eq('owner_id', user.id)
+  if (updErr) {
+    if (updErr.code === '23505') {
+      return { ok: false, error: 'Taka wartość już istnieje na liście' }
+    }
+    return { ok: false, error: updErr.message }
+  }
+
+  // Sync clients.{kind} ТІЛЬКИ jeśli ВСІ 3 conditions match:
+  //   - row była primary (UPDATE не змінює is_primary, тільки value/label),
+  //   - kind ∈ {email, phone, website} (тільки ці колонки клонуються до clients),
+  //   - value реально змінився (skip sync якщо edited тільки label).
+  // Non-fatal на error — UI re-fetch покаже actual ccm state.
+  if (
+    isPrimary &&
+    (kind === 'email' || kind === 'phone' || kind === 'website') &&
+    oldValue !== normalizedValue
+  ) {
+    const { error: syncErr } = await supabase
+      .from('clients')
+      .update({ [kind]: normalizedValue, updated_at: new Date().toISOString() })
+      .eq('id', clientId)
+      .eq('owner_id', user.id)
+    if (syncErr) {
+      console.error('[updateContactMethod] clients sync failed:', syncErr.message)
+    }
+  }
+
+  revalidatePath(`/clients/${clientId}`)
+  if (isPrimary) revalidatePath('/clients')
   return { ok: true, id: parsed.data.methodId }
 }

@@ -23,6 +23,7 @@ import {
   StarIcon,
   Trash2Icon,
   PlusIcon,
+  PencilIcon,
   Loader2Icon,
 } from 'lucide-react'
 
@@ -154,44 +155,70 @@ function renderValue(kind: string, value: string): React.ReactNode {
 interface MethodRowProps {
   m: ContactMethod
   busy: boolean
+  /** Sprint T2.4.C2 — gdy true, hide ⭐/✏/🗑 icons (row jest w edit mode,
+   *  form ниже rendered → user unikne accidental delete / star toggle). */
+  isEditing: boolean
   onToggleStar: () => void
+  onEdit: () => void
   onDelete: () => void
 }
 
-function MethodRow({ m, busy, onToggleStar, onDelete }: MethodRowProps) {
+function MethodRow({ m, busy, isEditing, onToggleStar, onEdit, onDelete }: MethodRowProps) {
   return (
     <div className="group flex items-center gap-2 text-sm">
       <span className="shrink-0">{kindIcon(m.kind)}</span>
-      {/* Star button — clickable, fills якщо primary. Tooltip via title attr. */}
-      <button
-        type="button"
-        onClick={onToggleStar}
-        disabled={busy || m.is_primary}
-        title={m.is_primary ? 'Główny kontakt' : 'Ustaw jako główny'}
-        className={`shrink-0 ${
-          m.is_primary ? 'text-amber-500 cursor-default' : 'text-[#CCC] hover:text-amber-400'
-        } disabled:opacity-50`}
-      >
-        <StarIcon className="size-3.5" fill={m.is_primary ? 'currentColor' : 'none'} />
-      </button>
+      {/* Star button — clickable, fills якщо primary. Tooltip via title attr.
+          T2.4.C2 — hidden gdy editing (form renderowany poniżej). */}
+      {!isEditing && (
+        <button
+          type="button"
+          onClick={onToggleStar}
+          disabled={busy || m.is_primary}
+          title={m.is_primary ? 'Główny kontakt' : 'Ustaw jako główny'}
+          className={`shrink-0 ${
+            m.is_primary ? 'text-amber-500 cursor-default' : 'text-[#CCC] hover:text-amber-400'
+          } disabled:opacity-50`}
+        >
+          <StarIcon className="size-3.5" fill={m.is_primary ? 'currentColor' : 'none'} />
+        </button>
+      )}
       <span className="min-w-0 flex-1 truncate">{renderValue(m.kind, m.value)}</span>
       {m.label && <LabelBadge label={m.label} />}
       <SourceBadge source={m.source} />
-      <button
-        type="button"
-        onClick={onDelete}
-        disabled={busy}
-        title="Usuń"
-        className="shrink-0 text-[#CCC] opacity-0 transition hover:text-rose-600 group-hover:opacity-100 disabled:opacity-50"
-      >
-        <Trash2Icon className="size-3.5" />
-      </button>
+      {/* Sprint T2.4.C2 — ✏ edit button + 🗑 delete. Both hover-revealed
+          (group-hover:opacity-100). Hidden gdy editing (mutual exclusion). */}
+      {!isEditing && (
+        <>
+          <button
+            type="button"
+            onClick={onEdit}
+            disabled={busy}
+            title="Edytuj"
+            className="shrink-0 text-[#CCC] opacity-0 transition hover:text-indigo-600 group-hover:opacity-100 disabled:opacity-50"
+          >
+            <PencilIcon className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={busy}
+            title="Usuń"
+            className="shrink-0 text-[#CCC] opacity-0 transition hover:text-rose-600 group-hover:opacity-100 disabled:opacity-50"
+          >
+            <Trash2Icon className="size-3.5" />
+          </button>
+        </>
+      )}
     </div>
   )
 }
 
 export function ContactSectionV3({ clientId, methods }: Props) {
   const [addingKind, setAddingKind] = useState<ContactMethodKind | null>(null)
+  // Sprint T2.4.C2 — editingId for inline edit form. Mutual exclusion z
+  // addingKind: открытие edit closes add and vice versa (only one form
+  // at a time prevents UX confusion).
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -226,6 +253,14 @@ export function ContactSectionV3({ clientId, methods }: Props) {
     })
   }
 
+  // Sprint T2.4.C2 — open edit form for method. Mutual exclusion закриває
+  // add form (якщо open). Toggle: повторний клік ✏ на тому ж row закриває.
+  function handleEditOpen(m: ContactMethod) {
+    setError(null)
+    setAddingKind(null)
+    setEditingId((curr) => (curr === m.id ? null : m.id))
+  }
+
   // Always render всі sections з KIND_ORDER, navet з 0 rows (щоб + Dodaj
   // button у всіх kind dostępny). Hide 'linkedin' / 'other' якщо empty.
   const visibleKinds = KIND_ORDER.filter((k) => {
@@ -258,7 +293,11 @@ export function ContactSectionV3({ clientId, methods }: Props) {
               {!isAdding && (
                 <button
                   type="button"
-                  onClick={() => setAddingKind(kind)}
+                  onClick={() => {
+                    // T2.4.C2 — open add closes edit (mutual exclusion).
+                    setEditingId(null)
+                    setAddingKind(kind)
+                  }}
                   disabled={isPending}
                   className="inline-flex items-center gap-1 rounded border border-[#E5E1D8] bg-white px-2 py-0.5 text-[10px] font-medium text-[#555] hover:bg-[#F5F5F5] disabled:opacity-50"
                 >
@@ -268,15 +307,33 @@ export function ContactSectionV3({ clientId, methods }: Props) {
               )}
             </div>
             <div className="space-y-1 pl-1">
-              {rows.map((m) => (
-                <MethodRow
-                  key={m.id}
-                  m={m}
-                  busy={busyId === m.id || isPending}
-                  onToggleStar={() => handleSetPrimary(m)}
-                  onDelete={() => handleDelete(m)}
-                />
-              ))}
+              {rows.map((m) => {
+                const isEditing = editingId === m.id
+                return (
+                  <div key={m.id} className="space-y-1.5">
+                    <MethodRow
+                      m={m}
+                      busy={busyId === m.id || isPending}
+                      isEditing={isEditing}
+                      onToggleStar={() => handleSetPrimary(m)}
+                      onEdit={() => handleEditOpen(m)}
+                      onDelete={() => handleDelete(m)}
+                    />
+                    {isEditing && (
+                      <ContactMethodForm
+                        clientId={clientId}
+                        kind={kind}
+                        mode="edit"
+                        methodId={m.id}
+                        initialValue={m.value}
+                        initialLabel={m.label}
+                        onSuccess={() => setEditingId(null)}
+                        onCancel={() => setEditingId(null)}
+                      />
+                    )}
+                  </div>
+                )
+              })}
               {rows.length === 0 && !isAdding && (
                 <div className="text-xs italic text-[#AAA]">— brak —</div>
               )}
@@ -284,6 +341,7 @@ export function ContactSectionV3({ clientId, methods }: Props) {
                 <ContactMethodForm
                   clientId={clientId}
                   kind={kind}
+                  mode="add"
                   onSuccess={() => setAddingKind(null)}
                   onCancel={() => setAddingKind(null)}
                 />
