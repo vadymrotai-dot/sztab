@@ -352,12 +352,15 @@ export async function updateContactMethod(
   // UPDATE з RLS defense (owner_id eq) + dedup catch via UNIQUE INDEX
   // idx_ccm_dedup (client_id, kind, value). Postgres 23505 → user-friendly.
   // Self-edit (same value) does NOT trigger 23505 — Postgres no-op detect.
+  // Sprint TYDZIEN2.T2.4.C2 BUGFIX (28.05.2026) — usunięto `updated_at` z
+  // payload. Migration 074 NIE utworzyła tej kolumny w client_contact_methods
+  // (tylko created_at). PostgREST zwracał PGRST204 → updErr → {ok:false}.
+  // Consistent z addContactMethod (теж не writes updated_at).
   const { error: updErr } = await supabase
     .from('client_contact_methods')
     .update({
       value: normalizedValue,
       label: trimmedLabel,
-      updated_at: new Date().toISOString(),
     })
     .eq('id', parsed.data.methodId)
     .eq('owner_id', user.id)
