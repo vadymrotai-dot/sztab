@@ -26,6 +26,7 @@ import { PersonsSectionV2 } from '@/components/clients/persons-section-v2'
 import { SignalsSection } from '@/components/clients/signals-section'
 import { ContactSectionV2 } from '@/components/clients/contact-section-v2'
 import { ContactSectionV3 } from '@/components/clients/contact-section-v3'
+import { ClientNotesSection } from '@/components/clients/client-notes-section'
 import { OrdersSection } from '@/components/clients/orders-section'
 import { ClientDetailActions } from '@/components/clients/client-detail-actions'
 import { OrderLinkButton } from '@/components/clients/order-link-button'
@@ -204,6 +205,7 @@ export default async function ClientDetailPage({
     { data: cohortMember },
     { data: clientOrdersData },
     { data: contactMethodsData },
+    { data: clientNotesData },
   ] = await Promise.all([
     // S-ORDER.1.D — resolve cohort_id для tracking order leads
     supabase
@@ -229,6 +231,13 @@ export default async function ClientDetailPage({
       .order('kind', { ascending: true })
       .order('is_primary', { ascending: false })
       .order('created_at', { ascending: true }),
+    // Sprint TYDZIEN2.T2.5 — client_notes (RLS auth.uid()=owner_id, migration 076)
+    // Newest first dla UI display. Anon supabase wystarczy bo RLS authenticated.
+    supabase
+      .from('client_notes')
+      .select('id, body, created_at, updated_at')
+      .eq('client_id', id)
+      .order('created_at', { ascending: false }),
   ])
   const orderCohortId = cohortMember?.cohort_id ?? null
   const clientOrders = (clientOrdersData ?? []) as Array<{
@@ -283,6 +292,16 @@ export default async function ClientDetailPage({
     is_primary: boolean
     source: string
     created_at: string
+  }>
+
+  // Sprint TYDZIEN2.T2.5 (29.05.2026) — client_notes fetched у Promise.all wyżej.
+  // Sorted DESC za created_at z server query. UI ClientNotesSection renderowany
+  // jak-is bez resortowania.
+  const clientNotes = (clientNotesData ?? []) as Array<{
+    id: string
+    body: string
+    created_at: string
+    updated_at: string
   }>
 
   const c = client as Record<string, unknown> & {
@@ -801,6 +820,32 @@ export default async function ClientDetailPage({
               V2 cascade-fallback retired — теперь nawet client без ccm seed
               ma full interactivity. */}
           <ContactSectionV3 clientId={id} methods={contactMethods} />
+        </AccordionSection>
+
+        {/* Sprint TYDZIEN2.T2.5 (29.05.2026) — multi-row notatki klienta.
+            Replaces legacy clients.notes (single-field display, edit form only).
+            ClientNotesSection — newest first, inline add/edit/delete, mutual
+            exclusion add↔edit, "(edytowano)" badge gdy update.
+            defaultOpen jeśli już istnieją notatki (seeded z legacy lub user-added). */}
+        <AccordionSection
+          id="notatki"
+          title="Notatki"
+          meta={
+            clientNotes.length === 0
+              ? 'brak'
+              : `${clientNotes.length} ${
+                  clientNotes.length === 1
+                    ? 'notatka'
+                    : clientNotes.length % 10 >= 2 &&
+                        clientNotes.length % 10 <= 4 &&
+                        (clientNotes.length % 100 < 10 || clientNotes.length % 100 >= 20)
+                      ? 'notatki'
+                      : 'notatek'
+                }`
+          }
+          defaultOpen={clientNotes.length > 0}
+        >
+          <ClientNotesSection clientId={id} notes={clientNotes} />
         </AccordionSection>
 
         {/* Sprint TYDZIEN2.T2.2 (28.05.2026) — lista zamówień klienta.
