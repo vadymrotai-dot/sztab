@@ -247,9 +247,14 @@ function AddEntryForm({ clientId, onSuccess, onCancel }: AddFormProps) {
 
 interface EventRowProps {
   event: TimelineEvent
+  /** Last row in list — skip connecting line below dot (T2.6 FIX 29.05.2026:
+   *  was via styled-jsx :global selector targetujący Tailwind arbitrary value
+   *  class — Turbopack lightningcss strict parser nie tolerował \[\# escape.
+   *  Pure Tailwind conditional render = czysty fix, zero CSS surface). */
+  isLast: boolean
 }
 
-function EventRow({ event }: EventRowProps) {
+function EventRow({ event, isLast }: EventRowProps) {
   const style = KIND_STYLE[event.kind] ?? KIND_STYLE.note
   const Icon = style.icon
   return (
@@ -261,9 +266,11 @@ function EventRow({ event }: EventRowProps) {
         >
           <Icon className="size-3.5" />
         </span>
-        {/* Connecting line — wypełnia space-y poniżej; pusty placeholder,
-            styling przez parent space-y-3 + last-child rule. */}
-        <span className="mt-1 w-px flex-1 bg-[#E5E1D8]" aria-hidden="true" />
+        {/* Connecting line — wypełnia space-y poniżej dot, łączy z next event.
+            Skip dla last row — inaczej linia wystaje pod ostatnim wpisem. */}
+        {!isLast && (
+          <span className="mt-1 w-px flex-1 bg-[#E5E1D8]" aria-hidden="true" />
+        )}
       </div>
       <div className="min-w-0 flex-1 pb-3">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
@@ -329,17 +336,12 @@ export function ClientTimelineSection({ clientId, events }: Props) {
       {events.length > 0 && (
         <div className="relative">
           {events.map((event, idx) => (
-            <div key={event.key} className={idx === events.length - 1 ? 'last-row' : ''}>
-              <EventRow event={event} />
-            </div>
+            <EventRow
+              key={event.key}
+              event={event}
+              isLast={idx === events.length - 1}
+            />
           ))}
-          {/* Mask spojąca-linia at last row — quick hack vs per-row :last-child styling.
-              Pseudo absolute element pokryje wystającą linię ostatniego dot. */}
-          <style jsx>{`
-            .last-row :global(.bg-\\[\\#E5E1D8\\]) {
-              background-color: transparent;
-            }
-          `}</style>
         </div>
       )}
     </div>
