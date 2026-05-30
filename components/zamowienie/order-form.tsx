@@ -5,8 +5,16 @@
 
 'use client'
 
-import { useMemo, useState } from 'react'
-import { Minus, Plus, ChevronRight, ChevronLeft, CheckCircle2, Loader2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  Minus,
+  Plus,
+  ChevronRight,
+  ChevronLeft,
+  ChevronDown,
+  CheckCircle2,
+  Loader2,
+} from 'lucide-react'
 
 // Sprint S-CENNIK-WH.1 (26.05.2026) — wielki_hurt 4-й tier (locked).
 // Sprint S-CENNIK-WH.2 (26.05.2026) — wielki_hurt_entry 5-й tier (Hurt < 10k).
@@ -22,6 +30,11 @@ type Product = {
   name: string
   gramatura: string | null
   category: string | null
+  // Sprint T-ORDER.4a-UI (30.05.2026) — 2-poziomowa hierarchia + in_stock + jednostka.
+  grupa: string | null      // 'czudowa_marka' | 'owoce_morza' | NULL (legacy)
+  podgrupa: string | null   // 'kiszonki' | 'surowki' | 'warzywa_gotowane' | 'kalmary' | 'filety_rybne' | NULL
+  in_stock: boolean         // FALSE = niedostępny, wygaszony w UI, kontrolki disabled
+  unit: string | null       // 'szt' (dziś wszystko); wyświetlane obok qty
   sort: number | null
   prices: {
     maly: number
@@ -188,15 +201,106 @@ export function OrderForm({
   )
   const cartNotEmpty = itemsCount > 0
 
-  const groupedProducts = useMemo(() => {
-    const groups = new Map<string, Product[]>()
+  // Sprint T-ORDER.4a-UI (30.05.2026) — 2-poziomowe grupowanie grupa → podgrupa.
+  // Kolejność grup: czudowa_marka, owoce_morza, inne/null na końcu.
+  // W obrębie podgrupy sort wg `sort` (= order_form_sort).
+  const groupedHierarchy = useMemo(() => {
+    type GroupedSub = { key: string; items: Product[] }
+    type GroupedTop = { key: string; subs: GroupedSub[] }
+
+    const tmp = new Map<string, Map<string, Product[]>>()
     for (const p of products) {
-      const cat = p.category ?? 'Inne'
-      if (!groups.has(cat)) groups.set(cat, [])
-      groups.get(cat)!.push(p)
+      const g = p.grupa ?? '__inne__'
+      const s = p.podgrupa ?? '__inne__'
+      if (!tmp.has(g)) tmp.set(g, new Map())
+      const subMap = tmp.get(g)!
+      if (!subMap.has(s)) subMap.set(s, [])
+      subMap.get(s)!.push(p)
     }
-    return [...groups.entries()]
+    // Sort items in each subgroup by `sort` then name
+    for (const subMap of tmp.values()) {
+      for (const arr of subMap.values()) {
+        arr.sort((a, b) => {
+          const sa = a.sort ?? 9999
+          const sb = b.sort ?? 9999
+          return sa - sb || a.name.localeCompare(b.name, 'pl')
+        })
+      }
+    }
+
+    const TOP_ORDER = ['czudowa_marka', 'owoce_morza']
+    const result: GroupedTop[] = []
+    // Najpierw grupy w fixed order
+    for (const g of TOP_ORDER) {
+      if (tmp.has(g)) {
+        result.push({
+          key: g,
+          subs: [...tmp.get(g)!.entries()].map(([key, items]) => ({ key, items })),
+        })
+        tmp.delete(g)
+      }
+    }
+    // Reszta (włącznie z __inne__) na końcu, posortowane alfabetycznie
+    const rest = [...tmp.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    for (const [g, subMap] of rest) {
+      result.push({
+        key: g,
+        subs: [...subMap.entries()].map(([key, items]) => ({ key, items })),
+      })
+    }
+    return result
   }, [products])
+
+  // Sprint T-ORDER.4a-UI — etykiety PL dla grupa/podgrupa.
+  const GRUPA_LABEL: Record<string, string> = {
+    czudowa_marka: 'Czudowa Marka',
+    owoce_morza: 'Owoce morza',
+    __inne__: 'Inne',
+  }
+  const PODGRUPA_LABEL: Record<string, string> = {
+    kiszonki: 'Kiszonki',
+    surowki: 'Surówki',
+    warzywa_gotowane: 'Warzywa gotowane',
+    kalmary: 'Kalmary',
+    filety_rybne: 'Filety rybne',
+    __inne__: 'Inne',
+  }
+
+  // Sprint T-ORDER.4a-UI — collapse state dla akordeonu (grupy + podgrupy).
+  // Klucze: 'g:<grupa>' dla grupy, 's:<grupa>:<podgrupa>' dla podgrupy.
+  // Domyślnie: wszystkie grupy rozwinięte + PIERWSZA podgrupa w każdej grupie
+  // rozwinięta, reszta podgrup zwinięte (wariant-A-final z prototypu).
+  const initialOpen = useMemo(() => {
+    const open = new Set<string>()
+    for (const grp of groupedHierarchy) {
+      open.add(`g:${grp.key}`)
+      if (grp.subs.length > 0) {
+        open.add(`s:${grp.key}:${grp.subs[0]!.key}`)
+      }
+    }
+    return open
+  }, [groupedHierarchy])
+  const [openKeys, setOpenKeys] = useState<Set<string>>(initialOpen)
+  // Sync openKeys gdy hierarchia się zmieni (np. po pierwszym fetch albo po
+  // zmianie tier który ukryje/odsłoni SKU). Pattern: trzymamy "initialized"
+  // flag — pierwsza hydracja z initialOpen, po tym user-driven toggles
+  // mają pierwszeństwo i nie nadpisujemy ich. Re-hydracja TYLKO gdy
+  // openKeys stało się puste (np. SSR fallback).
+  useEffect(() => {
+    if (openKeys.size === 0 && initialOpen.size > 0) {
+      setOpenKeys(initialOpen)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOpen])
+
+  function toggleKey(key: string) {
+    setOpenKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   function setQty(productId: string, qty: number) {
     if (qty <= 0) {
@@ -395,101 +499,197 @@ export function OrderForm({
             )}
           </div>
 
-          {/* Product list */}
-          <div className="p-4 space-y-5 max-h-[60vh] overflow-y-auto">
-            {groupedProducts.map(([cat, items]) => (
-              <div key={cat}>
-                <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-2">
-                  {cat}
-                </div>
-                <div className="space-y-2">
-                  {items.map((p) => {
-                    const isPomidor = /pomidor/i.test(p.name)
-                    // Sprint S-CENNIK-WH.2 — tier→priceKey map (handles 'wielki_hurt_entry' → 'hurt_wh').
-                    // ?? 0 coerces NULL price_hurt_wh do 0 (UX fallback dla SKU bez WH-Hurt oferty;
-                    // klient widzi "Brak w Hurcie" badge + disabled state — nie powinien móc add).
-                    const price = p.prices[tierToPriceKey(tier)] ?? 0
-                    // Sprint S-CENNIK-WH.1 — line-through показуємо vs maly (retail anchor).
-                    const originalPrice = p.prices.maly
-                    const qty = cart[p.id] ?? 0
-                    // Sprint S-CENNIK-WH.2 — WH+auto: disable jeśli SKU не ma price_hurt_wh
-                    const whAutoUnavailable = isAutoWH && p.prices.hurt_wh == null
-                    return (
-                      <div
-                        key={p.id}
-                        className={`bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-start gap-3 ${whAutoUnavailable ? 'opacity-50' : ''}`}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start gap-2 mb-1">
-                            <div className="font-medium text-sm text-slate-900 leading-tight">{p.name}</div>
-                            {isPomidor && (
-                              <span className="shrink-0 text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold uppercase">
-                                Ostatnie
-                              </span>
-                            )}
-                            {whAutoUnavailable && (
-                              <span className="shrink-0 text-[9px] bg-slate-300 text-slate-600 px-1.5 py-0.5 rounded font-bold uppercase">
-                                Brak w Hurcie
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-xs text-slate-500 mb-1.5">{p.gramatura}</div>
-                          {/* WH+auto: show Hurt + Wielki Hurt side-by-side */}
-                          {isAutoWH && !whAutoUnavailable ? (
-                            <div className="flex items-baseline gap-2 flex-wrap">
-                              <span className={`text-sm font-bold ${tier === 'wielki_hurt' ? 'text-violet-700' : 'text-slate-900'}`}>
-                                {tier === 'wielki_hurt' ? fmt(p.prices.wielki_hurt) : fmt(p.prices.hurt_wh ?? 0)} zł
-                              </span>
-                              <span className="text-[10px] text-slate-500">
-                                {tier === 'wielki_hurt'
-                                  ? `(Hurt: ${fmt(p.prices.hurt_wh ?? 0)} zł)`
-                                  : `(Wielki Hurt: ${fmt(p.prices.wielki_hurt)} zł)`}
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="flex items-baseline gap-2">
-                              <span className="text-sm font-bold text-slate-900">{fmt(price)} zł</span>
-                              {tier !== 'maly' && price < originalPrice && (
-                                <span className="text-[10px] text-slate-400 line-through">
-                                  {fmt(originalPrice)} zł
-                                </span>
+          {/* Sprint T-ORDER.4a-UI (30.05.2026) — 2-poziomowy akordeon:
+              GRUPA (granat, duży) → PODGRUPA (szary, mniejszy) → SKU (duże nazwy).
+              in_stock=false → wygaszone + "niedostępny" badge + disabled qty.
+              Logika cen (tier/priceKey/whAutoUnavailable) bez zmian — tylko wygląd. */}
+          <div className="p-4 space-y-3 max-h-[60vh] overflow-y-auto">
+            {groupedHierarchy.map((grp) => {
+              const grpKey = `g:${grp.key}`
+              const grpOpen = openKeys.has(grpKey)
+              const grpLabel = GRUPA_LABEL[grp.key] ?? grp.key
+              const grpCount = grp.subs.reduce((s, sub) => s + sub.items.length, 0)
+              return (
+                <div
+                  key={grp.key}
+                  className="rounded-lg overflow-hidden border border-slate-200"
+                >
+                  {/* GRUPA header — granatowy bg, duży tekst */}
+                  <button
+                    type="button"
+                    onClick={() => toggleKey(grpKey)}
+                    className="w-full bg-[#1F2B4A] text-white px-4 py-3 flex items-center justify-between gap-3 hover:bg-[#2A3A60] transition"
+                  >
+                    <span className="flex items-center gap-2">
+                      {grpOpen ? (
+                        <ChevronDown className="w-5 h-5 shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-5 h-5 shrink-0" />
+                      )}
+                      <span className="text-[17px] font-bold tracking-tight">
+                        {grpLabel}
+                      </span>
+                    </span>
+                    <span className="text-xs opacity-70 font-medium">{grpCount}</span>
+                  </button>
+
+                  {grpOpen &&
+                    grp.subs.map((sub) => {
+                      const subKey = `s:${grp.key}:${sub.key}`
+                      const subOpen = openKeys.has(subKey)
+                      const subLabel = PODGRUPA_LABEL[sub.key] ?? sub.key
+                      return (
+                        <div key={sub.key}>
+                          {/* PODGRUPA header — szary bg, średni tekst uppercase */}
+                          <button
+                            type="button"
+                            onClick={() => toggleKey(subKey)}
+                            className="w-full bg-slate-100 border-t border-slate-200 px-4 py-2.5 flex items-center justify-between gap-2 hover:bg-slate-200 transition"
+                          >
+                            <span className="flex items-center gap-2">
+                              {subOpen ? (
+                                <ChevronDown className="w-4 h-4 shrink-0 text-slate-600" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 shrink-0 text-slate-600" />
                               )}
+                              <span className="text-[13px] font-bold uppercase tracking-wide text-slate-700">
+                                {subLabel}
+                              </span>
+                            </span>
+                            <span className="text-[11px] text-slate-500 font-medium">
+                              {sub.items.length}
+                            </span>
+                          </button>
+
+                          {subOpen && (
+                            <div className="divide-y divide-slate-100">
+                              {sub.items.map((p) => {
+                                const isPomidor = /pomidor/i.test(p.name)
+                                // Sprint S-CENNIK-WH.2 — tier→priceKey map (handles 'wielki_hurt_entry' → 'hurt_wh').
+                                const price = p.prices[tierToPriceKey(tier)] ?? 0
+                                // Sprint S-CENNIK-WH.1 — line-through pokazujemy vs maly (retail anchor).
+                                const originalPrice = p.prices.maly
+                                const qty = cart[p.id] ?? 0
+                                // Sprint S-CENNIK-WH.2 — WH+auto: disable jeśli SKU не ma price_hurt_wh
+                                const whAutoUnavailable =
+                                  isAutoWH && p.prices.hurt_wh == null
+                                // Sprint T-ORDER.4a-UI — in_stock=false → wygaszone +
+                                // disabled. Łączymy z whAutoUnavailable (legacy reason).
+                                const unavailable =
+                                  !p.in_stock || whAutoUnavailable
+                                const unit = p.unit ?? 'szt'
+                                return (
+                                  <div
+                                    key={p.id}
+                                    className={`bg-white px-4 py-3 flex items-start gap-3 ${
+                                      unavailable ? 'opacity-50' : ''
+                                    }`}
+                                  >
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-start gap-2 mb-1 flex-wrap">
+                                        {/* Sprint T-ORDER.4a-UI — duża czytelna nazwa SKU (16px, semibold). */}
+                                        <div className="text-[16px] font-semibold text-[#15202e] leading-snug">
+                                          {p.name}
+                                        </div>
+                                        {!p.in_stock && (
+                                          <span className="shrink-0 text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded font-bold uppercase">
+                                            niedostępny
+                                          </span>
+                                        )}
+                                        {isPomidor && p.in_stock && (
+                                          <span className="shrink-0 text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold uppercase">
+                                            Ostatnie
+                                          </span>
+                                        )}
+                                        {whAutoUnavailable && p.in_stock && (
+                                          <span className="shrink-0 text-[10px] bg-slate-300 text-slate-600 px-1.5 py-0.5 rounded font-bold uppercase">
+                                            Brak w Hurcie
+                                          </span>
+                                        )}
+                                      </div>
+                                      {p.gramatura && (
+                                        <div className="text-xs text-slate-500 mb-1.5">
+                                          {p.gramatura}
+                                        </div>
+                                      )}
+                                      {/* Cena ukryta gdy unavailable — zamiast "0 zł" myślącego klienta. */}
+                                      {unavailable ? (
+                                        <div className="text-xs text-slate-400 italic">—</div>
+                                      ) : isAutoWH ? (
+                                        <div className="flex items-baseline gap-2 flex-wrap">
+                                          <span
+                                            className={`text-[15px] font-bold ${tier === 'wielki_hurt' ? 'text-violet-700' : 'text-[#1F2B4A]'}`}
+                                          >
+                                            {tier === 'wielki_hurt'
+                                              ? fmt(p.prices.wielki_hurt)
+                                              : fmt(p.prices.hurt_wh ?? 0)}{' '}
+                                            zł
+                                          </span>
+                                          <span className="text-[10px] text-slate-500">
+                                            {tier === 'wielki_hurt'
+                                              ? `(Hurt: ${fmt(p.prices.hurt_wh ?? 0)} zł)`
+                                              : `(Wielki Hurt: ${fmt(p.prices.wielki_hurt)} zł)`}
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-baseline gap-2">
+                                          <span className="text-[15px] font-bold text-[#1F2B4A]">
+                                            {fmt(price)} zł
+                                          </span>
+                                          {tier !== 'maly' && price < originalPrice && (
+                                            <span className="text-[11px] text-slate-400 line-through">
+                                              {fmt(originalPrice)} zł
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                    {/* Sprint T-ORDER.4a-UI — większe przyciski (38px) z granatową ramką + "szt" obok. */}
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => setQty(p.id, qty - 1)}
+                                        disabled={qty <= 0 || unavailable}
+                                        className="w-9 h-9 rounded-lg bg-white border border-[#1F2B4A]/30 flex items-center justify-center text-[#1F2B4A] disabled:opacity-30 disabled:border-slate-300 hover:bg-slate-50"
+                                        aria-label="Zmniejsz"
+                                      >
+                                        <Minus className="w-4 h-4" />
+                                      </button>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        max={9999}
+                                        value={qty}
+                                        disabled={unavailable}
+                                        onChange={(e) =>
+                                          setQty(p.id, Number(e.target.value) || 0)
+                                        }
+                                        className="w-12 h-9 text-center text-[15px] font-semibold border border-[#1F2B4A]/30 rounded-lg outline-none focus:border-[#1F2B4A] disabled:opacity-30 disabled:bg-slate-50"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => setQty(p.id, qty + 1)}
+                                        disabled={unavailable}
+                                        className="w-9 h-9 rounded-lg bg-white border border-[#1F2B4A]/30 flex items-center justify-center text-[#1F2B4A] disabled:opacity-30 disabled:border-slate-300 hover:bg-slate-50"
+                                        aria-label="Zwiększ"
+                                      >
+                                        <Plus className="w-4 h-4" />
+                                      </button>
+                                      <span className="text-[11px] text-slate-500 ml-0.5 self-center">
+                                        {unit}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )
+                              })}
                             </div>
                           )}
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => setQty(p.id, qty - 1)}
-                            disabled={qty <= 0}
-                            className="w-7 h-7 rounded bg-white border border-slate-300 flex items-center justify-center disabled:opacity-40 hover:bg-slate-100"
-                            aria-label="Zmniejsz"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <input
-                            type="number"
-                            min={0}
-                            max={9999}
-                            value={qty}
-                            onChange={(e) => setQty(p.id, Number(e.target.value) || 0)}
-                            className="w-12 text-center text-sm font-semibold border border-slate-300 rounded py-1 outline-none focus:border-amber-500"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setQty(p.id, qty + 1)}
-                            className="w-7 h-7 rounded bg-white border border-slate-300 flex items-center justify-center hover:bg-slate-100"
-                            aria-label="Zwiększ"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           {/* Footer actions */}

@@ -91,8 +91,11 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
   // Sprint S-CENNIK-WH.2 — also fetch price_hurt_wh для wielki_hurt + auto matrix cell.
   const { data: products, error: prodErr } = await supabase
     .from('products')
+    // Sprint T-ORDER.4a-UI (30.05.2026) — dodano grupa, podgrupa, in_stock, unit
+    // dla 2-poziomowego akordeonu w formie + display jednostki + wygaszania
+    // produktów niedostępnych (in_stock=false).
     .select(
-      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, order_form_sort, category',
+      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, order_form_sort, category, grupa, podgrupa, in_stock, unit',
     )
     .eq('show_in_orders', true)
     .order('order_form_sort', { ascending: true })
@@ -146,6 +149,11 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       name: p.display_name || p.name,
       gramatura: p.gramatura,
       category: p.category,
+      // Sprint T-ORDER.4a-UI — nowe pola dla 2-poziomowej hierarchii + wygaszania
+      grupa: p.grupa,
+      podgrupa: p.podgrupa,
+      in_stock: p.in_stock,
+      unit: p.unit,
       sort: p.order_form_sort,
       prices: {
         maly: Number(p.price_maly_opt),
