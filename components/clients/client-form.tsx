@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Select,
@@ -45,7 +44,6 @@ export function ClientForm({ client }: ClientFormProps) {
     industry: client?.industry || '',
     email: client?.email || '',
     phone: client?.phone || '',
-    notes: client?.notes || '',
     segment: client?.segment || 'niesklasyfikowany',
     status: client?.status || 'nowy',
     client_type: client?.client_type || ('standard' as 'standard' | 'strategic_partner'),
@@ -91,23 +89,16 @@ export function ClientForm({ client }: ClientFormProps) {
         return
       }
       const d = json.data || {}
-      // Auto-fill form fields from MF API response
+      // Auto-fill form fields from MF API response.
+      // Sprint TYDZIEN2.T2.7 (29.05.2026) — REGON/KRS/VAT data formerly
+      // pre-filled as fallback text. Removed: those signals are canonical in
+      // company_profile_fields (re-analiza zapełni), не у tej formie.
       setFormData((prev) => ({
         ...prev,
         title: d.name || prev.title,
         nip: d.nip || prev.nip,
         address: d.address || prev.address,
         city: d.city || prev.city,
-        notes:
-          prev.notes ||
-          [
-            d.regon ? `REGON: ${d.regon}` : null,
-            d.krs ? `KRS: ${d.krs}` : null,
-            d.statusVat ? `Status VAT: ${d.statusVat}` : null,
-            d.registrationDate ? `Data rejestracji: ${d.registrationDate}` : null,
-          ]
-            .filter(Boolean)
-            .join('\n'),
       }))
       setNipStatus({
         kind: 'ok',
@@ -341,16 +332,9 @@ export function ClientForm({ client }: ClientFormProps) {
                 </Select>
               </Field>
             </div>
-            <Field>
-              <FieldLabel htmlFor="notes">Notatki</FieldLabel>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                rows={4}
-              />
-            </Field>
-
+            {/* Sprint TYDZIEN2.T2.7 (29.05.2026) — Notatki section removed.
+                Edit + display żyje teraz w T2.5 ClientNotesSection (sekcja
+                Notatki na /clients/[id]). */}
             <div className="space-y-3 rounded-md border p-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -433,3 +417,5 @@ export function ClientForm({ client }: ClientFormProps) {
     </form>
   )
 }
+
+
