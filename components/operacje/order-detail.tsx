@@ -167,6 +167,10 @@ export function OrderDetail({
   const [vatLoading, setVatLoading] = useState(false)
   const [vatNotice, setVatNotice] = useState<string | null>(null)
   const [vatError, setVatError] = useState<string | null>(null)
+  // Sprint T-ORDER.1 (30.05.2026) — manual proforma send state
+  const [proformaLoading, setProformaLoading] = useState(false)
+  const [proformaNotice, setProformaNotice] = useState<string | null>(null)
+  const [proformaError, setProformaError] = useState<string | null>(null)
 
   const canEdit = EDITABLE_STATUSES.includes(order.status)
   const tier = order.tier_at_submit || 'maly'
@@ -236,6 +240,35 @@ export function OrderDetail({
         setStatusError(data.error || 'Błąd zmiany statusu')
       }
     })
+  }
+
+  // Sprint T-ORDER.1 (30.05.2026) — manual proforma send handler.
+  // Mirror pattern z issueVatInvoice — confirm + POST + toast + delayed refresh.
+  const sendProforma = async () => {
+    if (
+      !confirm(
+        `Wysłać fakturę proforma dla ${order.order_number}?\n\nProforma zostanie wystawiona w Fakturowni i wysłana na adres ${order.contact_email}.`,
+      )
+    )
+      return
+    setProformaLoading(true)
+    setProformaError(null)
+    setProformaNotice(null)
+    const res = await fetch(
+      `/api/orders/admin/${order.id}/send-proforma`,
+      { method: 'POST' },
+    )
+    const data = await res.json().catch(() => ({}))
+    setProformaLoading(false)
+    if (res.ok) {
+      setProformaNotice(
+        'Wysyłanie faktury proforma uruchomione w tle (~30s). Status zaktualizuje się automatycznie po odświeżeniu.',
+      )
+      // Background task ~10-30s. Polling cheap — refresh раз через 8s.
+      setTimeout(() => router.refresh(), 8000)
+    } else {
+      setProformaError(data.error || 'Błąd wysyłania faktury proforma')
+    }
   }
 
   const issueVatInvoice = async () => {
@@ -594,11 +627,15 @@ export function OrderDetail({
             )
           )}
 
-          {/* Proforma summary (read-only — pokazuj завжди коли existуй) */}
-          {order.proforma_fakturownia_id && (
+          {/* Sprint T-ORDER.1 (30.05.2026) — Proforma block.
+              Gdy proforma_fakturownia_id NULL i order nie cancelled → button
+              "Potwierdź i wyślij proformę". Gdy istnieje → summary z numerem +
+              PDF link (read-only). */}
+          {order.proforma_fakturownia_id ? (
+            // Proforma już wysłana — summary
             <div className="bg-white border border-slate-200 rounded-lg p-4">
               <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
-                Faktura proforma
+                ✓ Faktura proforma wysłana
               </div>
               <div className="font-mono text-sm font-semibold text-slate-900 mb-1">
                 {order.proforma_fakturownia_number}
@@ -617,6 +654,39 @@ export function OrderDetail({
                 </a>
               )}
             </div>
+          ) : (
+            order.status !== 'cancelled' &&
+            order.contact_email && (
+              // Eligible — show button "Potwierdź i wyślij proformę"
+              <div className="bg-white border border-slate-200 rounded-lg p-4">
+                <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-3">
+                  Faktura proforma
+                </div>
+                <button
+                  onClick={sendProforma}
+                  disabled={proformaLoading}
+                  className="w-full px-3 py-2 rounded-lg text-sm font-semibold transition bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+                >
+                  {proformaLoading
+                    ? 'Wysyłanie...'
+                    : '📧 Potwierdź i wyślij proformę'}
+                </button>
+                <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                  Wystawia proformę w Fakturowni i wysyła email z PDF do{' '}
+                  <strong className="break-all">{order.contact_email}</strong>.
+                </p>
+                {proformaNotice && (
+                  <div className="mt-3 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5">
+                    {proformaNotice}
+                  </div>
+                )}
+                {proformaError && (
+                  <div className="mt-3 text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded px-2 py-1.5">
+                    {proformaError}
+                  </div>
+                )}
+              </div>
+            )
           )}
 
           {/* Client info */}

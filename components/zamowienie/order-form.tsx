@@ -738,7 +738,7 @@ export function OrderForm({
           {contactEmail && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-left mb-4">
               <div className="text-sm text-emerald-900">
-                📧 Faktura proforma została wysłana na adres{' '}
+                📧 Vadym potwierdzi zamówienie i wyśle fakturę proforma na adres{' '}
                 <strong className="break-all">{contactEmail}</strong>
               </div>
             </div>
