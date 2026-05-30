@@ -25,18 +25,54 @@ export const dynamic = 'force-dynamic'
 
 const UUID_RE = /^[0-9a-f-]{36}$/i
 
+// Sprint T-ORDER.4b-API (30.05.2026) — rozszerzenie o wielopunktowość.
+// delivery_address + preferred_delivery_date zostają OPTIONAL (back-compat dla
+// 1-punktowego payload). delivery_mode='jeden' (default) = stary tryb albo nowy
+// payload z jednym punktem strukturyzowanym. delivery_mode='kilka' wymaga
+// delivery_points >=2 + items muszą mieć delivery_point_index.
+// UI 4b-UI dosyła nowy payload; stary klient (curl, legacy) działa nadal.
+
+const DeliveryPointSchema = z
+  .object({
+    label: z.string().max(100).optional().nullable(),
+    ulica: z.string().min(2, 'Ulica (min. 2 znaki)').max(200),
+    kod_pocztowy: z.string().max(10).optional().nullable(),
+    miasto: z.string().min(2, 'Miasto (min. 2 znaki)').max(100),
+    typ: z.enum(['dostawa', 'odbior']).default('dostawa'),
+    termin_typ: z.enum(['najblizszy', 'data']).default('najblizszy'),
+    preferred_date: z.string().optional().nullable(),
+    odbiorca_imie: z.string().max(150).optional().nullable(),
+    odbiorca_telefon: z.string().max(20).optional().nullable(),
+  })
+  .refine(
+    (p) =>
+      p.termin_typ !== 'data' ||
+      (typeof p.preferred_date === 'string' && p.preferred_date.length > 0),
+    {
+      message: 'preferred_date wymagane dla termin_typ=data',
+      path: ['preferred_date'],
+    },
+  )
+
 const SubmitSchema = z.object({
   contact_person: z.string().min(2, 'Imię i nazwisko (min. 2 znaki)').max(100),
   contact_phone: z.string().min(9, 'Telefon (min. 9 cyfr)').max(20),
   contact_email: z.string().email('Niepoprawny e-mail').max(100),
-  delivery_address: z.string().min(5, 'Adres dostawy (min. 5 znaków)').max(300),
+  // Sprint T-ORDER.4b-API — legacy fields (optional dla back-compat).
+  delivery_address: z.string().min(5).max(300).optional().nullable(),
   preferred_delivery_date: z.string().optional().nullable(),
   customer_notes: z.string().max(1000).optional().nullable(),
+  // Sprint T-ORDER.4b-API — nowe pola multipoint.
+  delivery_mode: z.enum(['jeden', 'kilka']).optional().default('jeden'),
+  documents_mode: z.enum(['wspolna', 'osobne']).optional().default('wspolna'),
+  delivery_points: z.array(DeliveryPointSchema).optional(),
   items: z
     .array(
       z.object({
         product_id: z.string().regex(UUID_RE, 'Niepoprawne ID produktu'),
         qty: z.number().int().min(1).max(9999),
+        // Sprint T-ORDER.4b-API — indeks do delivery_points (UUID powstaje po INSERT).
+        delivery_point_index: z.number().int().min(0).optional(),
       }),
     )
     .min(1, 'Wybierz przynajmniej jeden produkt'),
@@ -104,6 +140,58 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   }
   const input = parsed.data
 
+  // Sprint T-ORDER.4b-API — walidacja krzyżowa multipoint.
+  // delivery_mode='kilka' wymaga delivery_points >=2 i delivery_point_index na
+  // każdej pozycji (w zakresie). 'jeden' bez delivery_points → fallback do
+  // legacy delivery_address (min. 5 znaków). documents_mode='osobne' tylko gdy
+  // delivery_mode='kilka' (dla jednego punktu rozdzielanie dokumentów nie ma sensu).
+  if (input.delivery_mode === 'kilka') {
+    if (!input.delivery_points || input.delivery_points.length < 2) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Tryb "kilka punktów" wymaga przynajmniej 2 punktów dostawy',
+        },
+        { status: 422 },
+      )
+    }
+    const dpCount = input.delivery_points.length
+    for (const it of input.items) {
+      if (it.delivery_point_index == null) {
+        return NextResponse.json(
+          { ok: false, error: 'Pozycja nieprzypisana do punktu dostawy' },
+          { status: 422 },
+        )
+      }
+      if (it.delivery_point_index < 0 || it.delivery_point_index >= dpCount) {
+        return NextResponse.json(
+          { ok: false, error: 'Niepoprawny indeks punktu dostawy' },
+          { status: 422 },
+        )
+      }
+    }
+  }
+  if (input.documents_mode === 'osobne' && input.delivery_mode !== 'kilka') {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'Tryb dokumentów "osobne" dostępny tylko przy kilku punktach',
+      },
+      { status: 422 },
+    )
+  }
+  if (
+    input.delivery_mode === 'jeden' &&
+    (!input.delivery_points || input.delivery_points.length === 0)
+  ) {
+    if (!input.delivery_address || input.delivery_address.trim().length < 5) {
+      return NextResponse.json(
+        { ok: false, error: 'Adres dostawy wymagany (min. 5 znaków)' },
+        { status: 422 },
+      )
+    }
+  }
+
   let supabase
   try {
     supabase = createAdminClient()
@@ -148,7 +236,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   const { data: products } = await supabase
     .from('products')
     .select(
-      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, show_in_orders',
+      // Sprint T-ORDER.4b-API — dodano `unit` dla snapshotu pozycji (unit_snapshot).
+      'id, name, display_name, gramatura, unit, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, show_in_orders',
     )
     .in('id', productIds)
   if (!products || products.length !== productIds.length) {
@@ -246,6 +335,25 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   const orderNumber =
     (numRow as unknown as string) || `ZIO-${new Date().getFullYear()}-0000`
 
+  // Sprint T-ORDER.4b-API — dla back-compat starych raportów/admin views które
+  // czytają orders.delivery_address/preferred_delivery_date: jeśli nowy payload
+  // ma delivery_points, sklej "ulica, kod miasto" z pierwszego punktu i wypisz
+  // tu (też preferred_date pierwszego punktu jeśli termin_typ='data'). Stary
+  // payload z delivery_address — zachowujemy bez zmian.
+  const firstPoint = input.delivery_points?.[0]
+  const legacyAddressFromPoints = firstPoint
+    ? [
+        firstPoint.ulica,
+        [firstPoint.kod_pocztowy, firstPoint.miasto].filter(Boolean).join(' '),
+      ]
+        .filter((s) => s && s.length > 0)
+        .join(', ')
+    : null
+  const legacyDateFromPoints =
+    firstPoint && firstPoint.termin_typ === 'data'
+      ? firstPoint.preferred_date ?? null
+      : null
+
   // Update orders + insert items (TODO transactional RPC у 1.B.3)
   const now = new Date().toISOString()
   const { error: updErr } = await supabase
@@ -256,9 +364,14 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       contact_person: input.contact_person,
       contact_phone: input.contact_phone,
       contact_email: input.contact_email,
-      delivery_address: input.delivery_address,
-      preferred_delivery_date: input.preferred_delivery_date || null,
+      // Sprint T-ORDER.4b-API — fallback do sklejonego adresu z pierwszego punktu.
+      delivery_address: input.delivery_address ?? legacyAddressFromPoints,
+      preferred_delivery_date:
+        input.preferred_delivery_date || legacyDateFromPoints || null,
       customer_notes: input.customer_notes || null,
+      // Sprint T-ORDER.4b-API — tryby (default 'jeden'/'wspolna' z Zod default).
+      delivery_mode: input.delivery_mode,
+      documents_mode: input.documents_mode,
       tier_at_submit: tier,
       total_net: totalNet.toFixed(2),
       total_vat: totalVat.toFixed(2),
@@ -274,15 +387,62 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     )
   }
 
-  // Insert order_items snapshot (frozen name + gramatura + unit_price)
+  // Sprint T-ORDER.4b-API — INSERT order_delivery_points (jeśli payload zawiera).
+  // Supabase .insert(array).select() zachowuje kolejność wstawiania → mapowanie
+  // delivery_point_index → realne UUID przez pointIds[index].
+  let pointIds: string[] = []
+  if (input.delivery_points && input.delivery_points.length > 0) {
+    const pointsToInsert = input.delivery_points.map((dp) => ({
+      order_id: order.id,
+      label: dp.label || null,
+      ulica: dp.ulica,
+      kod_pocztowy: dp.kod_pocztowy || null,
+      miasto: dp.miasto,
+      typ: dp.typ,
+      termin_typ: dp.termin_typ,
+      preferred_date:
+        dp.termin_typ === 'data' && dp.preferred_date ? dp.preferred_date : null,
+      odbiorca_imie: dp.odbiorca_imie || null,
+      odbiorca_telefon: dp.odbiorca_telefon || null,
+    }))
+    const { data: insertedPoints, error: pointsErr } = await supabase
+      .from('order_delivery_points')
+      .insert(pointsToInsert)
+      .select('id')
+    if (
+      pointsErr ||
+      !insertedPoints ||
+      insertedPoints.length !== pointsToInsert.length
+    ) {
+      console.error(
+        '[orders][token][POST] delivery_points insert failed:',
+        pointsErr?.message,
+      )
+      return NextResponse.json(
+        { ok: false, error: 'Błąd zapisu punktów dostawy' },
+        { status: 500 },
+      )
+    }
+    pointIds = (insertedPoints as Array<{ id: string }>).map((r) => r.id)
+  }
+
+  // Insert order_items snapshot (frozen name + gramatura + unit + unit_price)
+  // Sprint T-ORDER.4b-API — dodano unit_snapshot + delivery_point_id.
+  // PRICING NIETKNIĘTY: unit_price/line_total z priceKey jak wcześniej.
   const itemsToInsert = input.items.map((item) => {
     const p = products.find((pp) => pp.id === item.product_id)!
     const unitPrice = Number(p[priceKey])
+    const unitSnap = (p as { unit?: string | null }).unit ?? 'szt'
     return {
       order_id: order.id,
       product_id: item.product_id,
       product_name_snapshot: p.display_name || p.name,
       gramatura_snapshot: p.gramatura,
+      unit_snapshot: unitSnap,
+      delivery_point_id:
+        item.delivery_point_index != null && pointIds.length > 0
+          ? pointIds[item.delivery_point_index]
+          : null,
       qty: item.qty,
       unit_price: unitPrice.toFixed(2),
       line_total: (item.qty * unitPrice).toFixed(2),
