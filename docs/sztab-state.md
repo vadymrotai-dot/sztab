@@ -1,5 +1,7 @@
 ﻿# SZTAB — STATE OF PRODUCT (audit revised)
 
+> **Останній стан: 30.05.2026 — Тиждень 2 закрито 7/7 (T2.6 timeline + T2.7 notes drift). Деталі: docs/sztab-audit-log/2026-05-30-tydzien2-zamkniety.md**
+
 **Date:** 01.05.2026, 11:00 (REVISED після Audit #2)
 **Audited by:** Claude (browser MCP, live + repo file structure)
 **Method:** живий обхід sztab.vercel.app + ls app/api/ + ls app/(dashboard) pages
@@ -2602,4 +2604,10 @@ STEP 6.6 gate fires коли: `primaryBrand non-empty AND NOT websiteIsManual AN
 - ~5% edge cases (generic legal names, foreign-script titles) → manual override UI fallback (Day 3 shipped)
 
 **Cumulative auto-discovery: ~95% gastronomy.** Manual override safety net для remaining 5%.
+
+---
+
+## Активні точки контакту
+
+- **Pikniko** — гуртовня овочів/фруктів, Варшава. Vadym з 01.06.2026 бригадир нічної зміни (вхід зсередини). Фаза: 2-3 тижні чистого спостереження, потім friend-developer фрейм. Детальний живий стан: [docs/sztab-pikniko.md](sztab-pikniko.md)
 
