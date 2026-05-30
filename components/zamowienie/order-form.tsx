@@ -200,6 +200,25 @@ export function OrderForm({
     [cart],
   )
   const cartNotEmpty = itemsCount > 0
+  // Sprint T-ORDER.4a-UI-FIX (30.05.2026) — suma kg w koszyku dla paska na dole.
+  // gramatura jest TEXT free-form ("3000 g", "5000g / ~3000g", "1 kg") — bierzemy
+  // PIERWSZĄ liczbę z stringa + heurystycznie zakładamy że gramy chyba że jest "kg".
+  // Bezpieczny fallback dla NULL/parse fail → 0.
+  const totalKg = useMemo(() => {
+    let grams = 0
+    for (const [pid, qty] of Object.entries(cart)) {
+      if (qty <= 0) continue
+      const p = products.find((pp) => pp.id === pid)
+      if (!p || !p.gramatura) continue
+      const m = p.gramatura.match(/(\d+(?:[.,]\d+)?)/)
+      if (!m) continue
+      const num = Number(m[1]!.replace(',', '.'))
+      if (!Number.isFinite(num)) continue
+      const isKg = /\bkg\b/i.test(p.gramatura)
+      grams += qty * (isKg ? num * 1000 : num)
+    }
+    return grams / 1000
+  }, [cart, products])
 
   // Sprint T-ORDER.4a-UI (30.05.2026) — 2-poziomowe grupowanie grupa → podgrupa.
   // Kolejność grup: czudowa_marka, owoce_morza, inne/null na końcu.
@@ -264,6 +283,12 @@ export function OrderForm({
     kalmary: 'Kalmary',
     filety_rybne: 'Filety rybne',
     __inne__: 'Inne',
+  }
+  // Sprint T-ORDER.4a-UI-FIX (30.05.2026) — badge marki obok nazwy grupy
+  // w prototypowym wyglądzie. Czudowa Marka = partnerska, Owoce morza = Ziomek Fish własna.
+  const BRAND_BADGE: Record<string, string> = {
+    czudowa_marka: 'marka partnerska',
+    owoce_morza: 'Ziomek Fish',
   }
 
   // Sprint T-ORDER.4a-UI — collapse state dla akordeonu (grupy + podgrupy).
@@ -499,179 +524,212 @@ export function OrderForm({
             )}
           </div>
 
-          {/* Sprint T-ORDER.4a-UI (30.05.2026) — 2-poziomowy akordeon:
-              GRUPA (granat, duży) → PODGRUPA (szary, mniejszy) → SKU (duże nazwy).
-              in_stock=false → wygaszone + "niedostępny" badge + disabled qty.
-              Logika cen (tier/priceKey/whAutoUnavailable) bez zmian — tylko wygląd. */}
-          <div className="p-4 space-y-3 max-h-[60vh] overflow-y-auto">
-            {groupedHierarchy.map((grp) => {
-              const grpKey = `g:${grp.key}`
-              const grpOpen = openKeys.has(grpKey)
-              const grpLabel = GRUPA_LABEL[grp.key] ?? grp.key
-              const grpCount = grp.subs.reduce((s, sub) => s + sub.items.length, 0)
-              return (
-                <div
-                  key={grp.key}
-                  className="rounded-lg overflow-hidden border border-slate-200"
-                >
-                  {/* GRUPA header — granatowy bg, duży tekst */}
-                  <button
-                    type="button"
-                    onClick={() => toggleKey(grpKey)}
-                    className="w-full bg-[#1F2B4A] text-white px-4 py-3 flex items-center justify-between gap-3 hover:bg-[#2A3A60] transition"
+          {/* Sprint T-ORDER.4a-UI-FIX (30.05.2026) — wygląd 1:1 z zatwierdzonym prototypem.
+              GRUPA = pełna granatowa plansza #1F3A5F + badge marki (marka partnerska / Ziomek Fish).
+              PODGRUPA = jasny pasek #e9edf2 + UPPERCASE 13px font-700 #2d4364.
+              SKU = nazwa 16px font-600 #15202e + cena "X zł/szt" 15px font-700 #1F3A5F.
+              Przyciski qty = 38px square border 1.5px #1F3A5F rounded-8px hover:bg-granat.
+              Pusta grupa (brak SKU) pomijana — Owoce morza nie wyświetli się dopóki nie ma SKU. */}
+          <div className="p-4 space-y-3 max-h-[55vh] overflow-y-auto">
+            {groupedHierarchy
+              .filter((grp) => grp.subs.some((sub) => sub.items.length > 0))
+              .map((grp) => {
+                const grpKey = `g:${grp.key}`
+                const grpOpen = openKeys.has(grpKey)
+                const grpLabel = GRUPA_LABEL[grp.key] ?? grp.key
+                const grpBadge = BRAND_BADGE[grp.key] ?? null
+                const grpCount = grp.subs.reduce((s, sub) => s + sub.items.length, 0)
+                return (
+                  <div
+                    key={grp.key}
+                    className="rounded-lg overflow-hidden border border-[#dde3ea]"
                   >
-                    <span className="flex items-center gap-2">
-                      {grpOpen ? (
-                        <ChevronDown className="w-5 h-5 shrink-0" />
-                      ) : (
-                        <ChevronRight className="w-5 h-5 shrink-0" />
-                      )}
-                      <span className="text-[17px] font-bold tracking-tight">
-                        {grpLabel}
+                    {/* GRUPA header — pełna granatowa plansza #1F3A5F */}
+                    <button
+                      type="button"
+                      onClick={() => toggleKey(grpKey)}
+                      className="w-full bg-[#1F3A5F] text-white px-4 py-[15px] flex items-center justify-between gap-3 hover:bg-[#264a76] transition"
+                    >
+                      <span className="flex items-center gap-2.5 min-w-0">
+                        {grpOpen ? (
+                          <ChevronDown className="w-5 h-5 shrink-0" />
+                        ) : (
+                          <ChevronRight className="w-5 h-5 shrink-0" />
+                        )}
+                        <span
+                          className="text-[17px] font-extrabold text-white truncate"
+                          style={{ letterSpacing: '0.3px' }}
+                        >
+                          {grpLabel}
+                        </span>
+                        {grpBadge && (
+                          <span className="ml-2.5 shrink-0 text-[12px] bg-[#2d4d73] text-white px-[9px] py-[2px] rounded-[5px] font-medium">
+                            {grpBadge}
+                          </span>
+                        )}
                       </span>
-                    </span>
-                    <span className="text-xs opacity-70 font-medium">{grpCount}</span>
-                  </button>
+                      <span className="text-[13px] text-white/85 font-medium shrink-0">
+                        {grpCount} produktów
+                      </span>
+                    </button>
 
-                  {grpOpen &&
-                    grp.subs.map((sub) => {
-                      const subKey = `s:${grp.key}:${sub.key}`
-                      const subOpen = openKeys.has(subKey)
-                      const subLabel = PODGRUPA_LABEL[sub.key] ?? sub.key
-                      return (
-                        <div key={sub.key}>
-                          {/* PODGRUPA header — szary bg, średni tekst uppercase */}
-                          <button
-                            type="button"
-                            onClick={() => toggleKey(subKey)}
-                            className="w-full bg-slate-100 border-t border-slate-200 px-4 py-2.5 flex items-center justify-between gap-2 hover:bg-slate-200 transition"
-                          >
-                            <span className="flex items-center gap-2">
-                              {subOpen ? (
-                                <ChevronDown className="w-4 h-4 shrink-0 text-slate-600" />
-                              ) : (
-                                <ChevronRight className="w-4 h-4 shrink-0 text-slate-600" />
-                              )}
-                              <span className="text-[13px] font-bold uppercase tracking-wide text-slate-700">
-                                {subLabel}
-                              </span>
-                            </span>
-                            <span className="text-[11px] text-slate-500 font-medium">
-                              {sub.items.length}
-                            </span>
-                          </button>
-
-                          {subOpen && (
-                            <div className="divide-y divide-slate-100">
-                              {sub.items.map((p) => {
-                                const isPomidor = /pomidor/i.test(p.name)
-                                // Sprint S-CENNIK-WH.2 — tier→priceKey map (handles 'wielki_hurt_entry' → 'hurt_wh').
-                                const price = p.prices[tierToPriceKey(tier)] ?? 0
-                                // Sprint S-CENNIK-WH.1 — line-through pokazujemy vs maly (retail anchor).
-                                const originalPrice = p.prices.maly
-                                const qty = cart[p.id] ?? 0
-                                // Sprint S-CENNIK-WH.2 — WH+auto: disable jeśli SKU не ma price_hurt_wh
-                                const whAutoUnavailable =
-                                  isAutoWH && p.prices.hurt_wh == null
-                                // Sprint T-ORDER.4a-UI — in_stock=false → wygaszone +
-                                // disabled. Łączymy z whAutoUnavailable (legacy reason).
-                                const unavailable =
-                                  !p.in_stock || whAutoUnavailable
-                                const unit = p.unit ?? 'szt'
-                                return (
-                                  <div
-                                    key={p.id}
-                                    className={`bg-white px-4 py-3 flex items-start gap-3 ${
-                                      unavailable ? 'opacity-50' : ''
-                                    }`}
+                    {grpOpen &&
+                      grp.subs
+                        .filter((sub) => sub.items.length > 0)
+                        .map((sub) => {
+                          const subKey = `s:${grp.key}:${sub.key}`
+                          const subOpen = openKeys.has(subKey)
+                          const subLabel = PODGRUPA_LABEL[sub.key] ?? sub.key
+                          return (
+                            <div key={sub.key}>
+                              {/* PODGRUPA header — jasny pasek #e9edf2 */}
+                              <button
+                                type="button"
+                                onClick={() => toggleKey(subKey)}
+                                className="w-full bg-[#e9edf2] border-t border-[#dde3ea] px-4 py-[11px] flex items-center justify-between gap-2 hover:bg-[#dde4ec] transition"
+                              >
+                                <span className="flex items-center gap-2 min-w-0">
+                                  {subOpen ? (
+                                    <ChevronDown className="w-4 h-4 shrink-0 text-[#2d4364]" />
+                                  ) : (
+                                    <ChevronRight className="w-4 h-4 shrink-0 text-[#2d4364]" />
+                                  )}
+                                  <span
+                                    className="text-[13px] font-bold uppercase text-[#2d4364] truncate"
+                                    style={{ letterSpacing: '0.6px' }}
                                   >
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-start gap-2 mb-1 flex-wrap">
-                                        {/* Sprint T-ORDER.4a-UI — duża czytelna nazwa SKU (16px, semibold). */}
-                                        <div className="text-[16px] font-semibold text-[#15202e] leading-snug">
-                                          {p.name}
-                                        </div>
-                                        {!p.in_stock && (
-                                          <span className="shrink-0 text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded font-bold uppercase">
-                                            niedostępny
-                                          </span>
-                                        )}
-                                        {isPomidor && p.in_stock && (
-                                          <span className="shrink-0 text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold uppercase">
-                                            Ostatnie
-                                          </span>
-                                        )}
-                                        {whAutoUnavailable && p.in_stock && (
-                                          <span className="shrink-0 text-[10px] bg-slate-300 text-slate-600 px-1.5 py-0.5 rounded font-bold uppercase">
-                                            Brak w Hurcie
-                                          </span>
-                                        )}
-                                      </div>
-                                      {p.gramatura && (
-                                        <div className="text-xs text-slate-500 mb-1.5">
-                                          {p.gramatura}
-                                        </div>
-                                      )}
-                                      {/* Cena ukryta gdy unavailable — zamiast "0 zł" myślącego klienta. */}
-                                      {unavailable ? (
-                                        <div className="text-xs text-slate-400 italic">—</div>
-                                      ) : isAutoWH ? (
-                                        <div className="flex items-baseline gap-2 flex-wrap">
-                                          <span
-                                            className={`text-[15px] font-bold ${tier === 'wielki_hurt' ? 'text-violet-700' : 'text-[#1F2B4A]'}`}
-                                          >
-                                            {tier === 'wielki_hurt'
-                                              ? fmt(p.prices.wielki_hurt)
-                                              : fmt(p.prices.hurt_wh ?? 0)}{' '}
-                                            zł
-                                          </span>
-                                          <span className="text-[10px] text-slate-500">
-                                            {tier === 'wielki_hurt'
-                                              ? `(Hurt: ${fmt(p.prices.hurt_wh ?? 0)} zł)`
-                                              : `(Wielki Hurt: ${fmt(p.prices.wielki_hurt)} zł)`}
-                                          </span>
-                                        </div>
-                                      ) : (
-                                        <div className="flex items-baseline gap-2">
-                                          <span className="text-[15px] font-bold text-[#1F2B4A]">
-                                            {fmt(price)} zł
-                                          </span>
-                                          {tier !== 'maly' && price < originalPrice && (
-                                            <span className="text-[11px] text-slate-400 line-through">
-                                              {fmt(originalPrice)} zł
-                                            </span>
+                                    {subLabel}
+                                  </span>
+                                </span>
+                                <span className="text-[12px] text-[#2d4364]/70 font-medium shrink-0">
+                                  {sub.items.length}
+                                </span>
+                              </button>
+
+                              {subOpen && (
+                                <div>
+                                  {sub.items.map((p) => {
+                                    const isPomidor = /pomidor/i.test(p.name)
+                                    // Sprint S-CENNIK-WH.2 — tier→priceKey map (handles 'wielki_hurt_entry' → 'hurt_wh').
+                                    const price = p.prices[tierToPriceKey(tier)] ?? 0
+                                    // Sprint S-CENNIK-WH.1 — line-through pokazujemy vs maly (retail anchor).
+                                    const originalPrice = p.prices.maly
+                                    const qty = cart[p.id] ?? 0
+                                    // Sprint S-CENNIK-WH.2 — WH+auto: disable jeśli SKU не ma price_hurt_wh
+                                    const whAutoUnavailable =
+                                      isAutoWH && p.prices.hurt_wh == null
+                                    // Sprint T-ORDER.4a-UI — in_stock=false → wygaszone +
+                                    // disabled. Łączymy z whAutoUnavailable (legacy reason).
+                                    const unavailable =
+                                      !p.in_stock || whAutoUnavailable
+                                    const unit = p.unit ?? 'szt'
+                                    return (
+                                      <div
+                                        key={p.id}
+                                        className={`bg-white px-4 py-[14px] border-t border-[#e4e9ef] flex items-start gap-3 ${
+                                          unavailable ? 'opacity-50' : ''
+                                        }`}
+                                      >
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-start gap-2 mb-1 flex-wrap">
+                                            {/* Nazwa SKU 16px font-600 #15202e */}
+                                            <div className="text-[16px] font-semibold text-[#15202e] leading-snug">
+                                              {p.name}
+                                            </div>
+                                            {!p.in_stock && (
+                                              <span
+                                                className="shrink-0 text-[11px] bg-[#f3d6d6] text-[#9a3434] px-[7px] py-[2px] rounded font-bold"
+                                              >
+                                                niedostępny
+                                              </span>
+                                            )}
+                                            {isPomidor && p.in_stock && (
+                                              <span className="shrink-0 text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold uppercase">
+                                                Ostatnie
+                                              </span>
+                                            )}
+                                            {whAutoUnavailable && p.in_stock && (
+                                              <span className="shrink-0 text-[10px] bg-slate-300 text-slate-600 px-1.5 py-0.5 rounded font-bold uppercase">
+                                                Brak w Hurcie
+                                              </span>
+                                            )}
+                                          </div>
+                                          {p.gramatura && (
+                                            <div className="text-[13px] text-slate-500 mb-1">
+                                              {p.gramatura}
+                                            </div>
+                                          )}
+                                          {/* Cena 15px font-700 #1F3A5F — format "X zł/szt" gdy unit znany. */}
+                                          {unavailable ? (
+                                            <div className="text-[13px] text-slate-400 italic">
+                                              —
+                                            </div>
+                                          ) : isAutoWH ? (
+                                            <div className="flex items-baseline gap-2 flex-wrap">
+                                              <span
+                                                className={`text-[15px] font-bold ${tier === 'wielki_hurt' ? 'text-violet-700' : 'text-[#1F3A5F]'}`}
+                                              >
+                                                {tier === 'wielki_hurt'
+                                                  ? fmt(p.prices.wielki_hurt)
+                                                  : fmt(p.prices.hurt_wh ?? 0)}{' '}
+                                                zł/{unit}
+                                              </span>
+                                              <span className="text-[11px] text-slate-500">
+                                                {tier === 'wielki_hurt'
+                                                  ? `(Hurt: ${fmt(p.prices.hurt_wh ?? 0)} zł)`
+                                                  : `(Wielki Hurt: ${fmt(p.prices.wielki_hurt)} zł)`}
+                                              </span>
+                                            </div>
+                                          ) : (
+                                            <div className="flex items-baseline gap-2">
+                                              <span className="text-[15px] font-bold text-[#1F3A5F]">
+                                                {fmt(price)} zł/{unit}
+                                              </span>
+                                              {tier !== 'maly' && price < originalPrice && (
+                                                <span className="text-[11px] text-slate-400 line-through">
+                                                  {fmt(originalPrice)} zł
+                                                </span>
+                                              )}
+                                            </div>
                                           )}
                                         </div>
-                                      )}
-                                    </div>
-                                    {/* Sprint T-ORDER.4a-UI — większe przyciski (38px) z granatową ramką + "szt" obok. */}
-                                    <div className="flex items-center gap-1.5 shrink-0">
-                                      <button
-                                        type="button"
-                                        onClick={() => setQty(p.id, qty - 1)}
-                                        disabled={qty <= 0 || unavailable}
-                                        className="w-9 h-9 rounded-lg bg-white border border-[#1F2B4A]/30 flex items-center justify-center text-[#1F2B4A] disabled:opacity-30 disabled:border-slate-300 hover:bg-slate-50"
-                                        aria-label="Zmniejsz"
-                                      >
-                                        <Minus className="w-4 h-4" />
-                                      </button>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        max={9999}
-                                        value={qty}
-                                        disabled={unavailable}
-                                        onChange={(e) =>
-                                          setQty(p.id, Number(e.target.value) || 0)
-                                        }
-                                        className="w-12 h-9 text-center text-[15px] font-semibold border border-[#1F2B4A]/30 rounded-lg outline-none focus:border-[#1F2B4A] disabled:opacity-30 disabled:bg-slate-50"
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => setQty(p.id, qty + 1)}
-                                        disabled={unavailable}
-                                        className="w-9 h-9 rounded-lg bg-white border border-[#1F2B4A]/30 flex items-center justify-center text-[#1F2B4A] disabled:opacity-30 disabled:border-slate-300 hover:bg-slate-50"
-                                        aria-label="Zwiększ"
+                                        {/* Sprint T-ORDER.4a-UI-FIX — 38px square buttons, border 1.5px #1F3A5F. */}
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          <button
+                                            type="button"
+                                            onClick={() => setQty(p.id, qty - 1)}
+                                            disabled={qty <= 0 || unavailable}
+                                            className="w-[38px] h-[38px] rounded-lg bg-white flex items-center justify-center text-[#1F3A5F] text-[20px] font-bold disabled:opacity-30 disabled:hover:bg-white hover:bg-[#1F3A5F] hover:text-white transition"
+                                            style={{
+                                              border: '1.5px solid #1F3A5F',
+                                            }}
+                                            aria-label="Zmniejsz"
+                                          >
+                                            <Minus className="w-4 h-4" strokeWidth={2.5} />
+                                          </button>
+                                          <input
+                                            type="number"
+                                            min={0}
+                                            max={9999}
+                                            value={qty}
+                                            disabled={unavailable}
+                                            onChange={(e) =>
+                                              setQty(p.id, Number(e.target.value) || 0)
+                                            }
+                                            className="w-[62px] h-[38px] text-center text-[16px] font-semibold rounded-lg outline-none focus:border-[#1F3A5F] disabled:opacity-30 disabled:bg-slate-50"
+                                            style={{
+                                              border: '1.5px solid #9fb0c4',
+                                            }}
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => setQty(p.id, qty + 1)}
+                                            disabled={unavailable}
+                                            className="w-[38px] h-[38px] rounded-lg bg-white flex items-center justify-center text-[#1F3A5F] text-[20px] font-bold disabled:opacity-30 disabled:hover:bg-white hover:bg-[#1F3A5F] hover:text-white transition"
+                                            style={{
+                                              border: '1.5px solid #1F3A5F',
+                                            }}
+                                            aria-label="Zwiększ"
                                       >
                                         <Plus className="w-4 h-4" />
                                       </button>
@@ -692,20 +750,55 @@ export function OrderForm({
             })}
           </div>
 
-          {/* Footer actions */}
-          <div className="sticky bottom-0 bg-white border-t border-slate-200 px-4 py-3 flex gap-2">
+          {/* Sprint T-ORDER.4a-UI-FIX (30.05.2026) — dolny pasek koszyka:
+              sticky granat #1F3A5F + statystyki (pozycje + kg) + buttons
+              (Szablon placeholder T-ORDER.4b + Dalej). Wstecz jako mniejszy
+              link po lewej. */}
+          <div
+            className="sticky bottom-0 bg-[#1F3A5F] text-white px-4 py-4 flex items-center gap-3 flex-wrap"
+            style={{ boxShadow: '0 -4px 12px rgba(0,0,0,0.12)', borderRadius: '10px 10px 0 0' }}
+          >
             <button
+              type="button"
               onClick={() => setStep(1)}
-              className="px-4 py-2.5 rounded-lg border border-slate-300 text-slate-700 font-medium text-sm flex items-center gap-1 hover:bg-slate-50"
+              className="text-[13px] text-white/80 hover:text-white flex items-center gap-1 shrink-0"
+              aria-label="Wstecz"
             >
-              <ChevronLeft className="w-4 h-4" /> Wstecz
+              <ChevronLeft className="w-4 h-4" />
+              Wstecz
+            </button>
+            <div className="flex-1 min-w-0 text-[16px] font-bold leading-tight">
+              <span className="text-white">
+                Koszyk: {itemsCount} {itemsCount === 1 ? 'pozycja' : itemsCount >= 2 && itemsCount <= 4 ? 'pozycje' : 'pozycji'}
+              </span>
+              {totalKg > 0 && (
+                <span className="text-white/85 font-medium">
+                  {' · '}
+                  {totalKg.toFixed(1)} kg
+                </span>
+              )}
+              <div className="text-[13px] font-medium text-white/85 mt-0.5">
+                Razem: {fmt(total)} zł
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                // TODO T-ORDER.4b — order_templates INSERT przez nowy endpoint.
+                alert('Zapisywanie szablonów dostępne wkrótce.')
+              }}
+              disabled={!cartNotEmpty}
+              className="px-3 py-2 rounded-lg bg-[#eef3f9] text-[#1F3A5F] text-[13px] font-semibold flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white shrink-0"
+            >
+              ★ Zapisz jako szablon
             </button>
             <button
+              type="button"
               onClick={() => setStep(3)}
               disabled={!cartNotEmpty}
-              className="flex-1 bg-[#1F2B4A] hover:bg-[#2A3A60] text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-4 py-2 rounded-lg bg-white text-[#1F3A5F] font-bold text-[14px] flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#eef3f9] shrink-0"
             >
-              Dalej · {fmt(total)} zł
+              Dalej
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
