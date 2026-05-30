@@ -857,26 +857,32 @@ export function OrderForm({
                           const subLabel = PODGRUPA_LABEL[sub.key] ?? sub.key
                           return (
                             <div key={sub.key}>
-                              {/* PODGRUPA header — jasny pasek #e9edf2 */}
+                              {/* Sprint T-ORDER.4a-UI-CONTRAST (30.05.2026) — wyraźniejsze
+                                  oddzielenie podgrup od wierszy SKU.
+                                  Tło #ccd6e3 (ciemniejszy szaro-niebieski zamiast #e9edf2)
+                                  + lewy border-left 3px solid #1F3A5F (granatowy akcent).
+                                  Tekst #1F3A5F (ciemniejszy granat) font-weight 700,
+                                  letter-spacing 0.8px (zwiększone z 0.6). */}
                               <button
                                 type="button"
                                 onClick={() => toggleKey(subKey)}
-                                className="w-full bg-[#e9edf2] border-t border-[#dde3ea] px-4 py-[11px] flex items-center justify-between gap-2 hover:bg-[#dde4ec] transition"
+                                className="w-full bg-[#ccd6e3] border-t border-[#a8b6c8] px-4 py-[11px] flex items-center justify-between gap-2 hover:bg-[#bfcbdb] transition"
+                                style={{ borderLeft: '3px solid #1F3A5F' }}
                               >
                                 <span className="flex items-center gap-2 min-w-0">
                                   {subOpen ? (
-                                    <ChevronDown className="w-4 h-4 shrink-0 text-[#2d4364]" />
+                                    <ChevronDown className="w-4 h-4 shrink-0 text-[#1F3A5F]" />
                                   ) : (
-                                    <ChevronRight className="w-4 h-4 shrink-0 text-[#2d4364]" />
+                                    <ChevronRight className="w-4 h-4 shrink-0 text-[#1F3A5F]" />
                                   )}
                                   <span
-                                    className="text-[13px] font-bold uppercase text-[#2d4364] truncate"
-                                    style={{ letterSpacing: '0.6px' }}
+                                    className="text-[13px] font-bold uppercase text-[#1F3A5F] truncate"
+                                    style={{ letterSpacing: '0.8px' }}
                                   >
                                     {subLabel}
                                   </span>
                                 </span>
-                                <span className="text-[12px] text-[#2d4364]/70 font-medium shrink-0">
+                                <span className="text-[12px] text-[#1F3A5F]/75 font-semibold shrink-0">
                                   {sub.items.length}
                                 </span>
                               </button>
