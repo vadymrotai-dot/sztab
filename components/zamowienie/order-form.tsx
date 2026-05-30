@@ -243,6 +243,21 @@ export function OrderForm({
     return grams / 1000
   }, [cart, products])
 
+  // Sprint T-ORDER.4a-SHELL-FIX (30.05.2026) — przeniesione PRZED groupedHierarchy
+  // bo TDZ: deps array [filteredProducts] w groupedHierarchy odwoływał się do
+  // const filteredProducts deklarowanej dopiero ~L368 → ReferenceError runtime 500.
+  // Sprint T-ORDER.4a-SHELL — filter products przez searchQuery (case-insensitive
+  // match na p.name + p.gramatura). Pusty query → zwraca wszystkie products.
+  const filteredProducts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return products
+    return products.filter((p) => {
+      if (p.name.toLowerCase().includes(q)) return true
+      if (p.gramatura && p.gramatura.toLowerCase().includes(q)) return true
+      return false
+    })
+  }, [products, searchQuery])
+
   // Sprint T-ORDER.4a-UI (30.05.2026) — 2-poziomowe grupowanie grupa → podgrupa.
   // Kolejność grup: czudowa_marka, owoce_morza, inne/null na końcu.
   // W obrębie podgrupy sort wg `sort` (= order_form_sort).
@@ -362,18 +377,6 @@ export function OrderForm({
       return next
     })
   }
-
-  // Sprint T-ORDER.4a-SHELL — filter products przez searchQuery (case-insensitive
-  // match na p.name + p.gramatura). Pusty query → zwraca wszystkie products.
-  const filteredProducts = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
-    if (!q) return products
-    return products.filter((p) => {
-      if (p.name.toLowerCase().includes(q)) return true
-      if (p.gramatura && p.gramatura.toLowerCase().includes(q)) return true
-      return false
-    })
-  }, [products, searchQuery])
 
   // Sprint T-ORDER.4a-SHELL — wczytaj cart z listy {product_id, qty}.
   // Używane przez Powtórz zamówienie + Szablony. Pomija qty<=0.
