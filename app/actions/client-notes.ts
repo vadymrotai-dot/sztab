@@ -33,6 +33,12 @@ import { createClient } from '@/lib/supabase/server'
 
 const MAX_BODY = 5000
 
+// Sprint TYDZIEN2.T2.6 (29.05.2026) — kind + occurred_at extension.
+// Migration 077 added: kind TEXT CHECK + occurred_at TIMESTAMPTZ NULL.
+// Schema-level enum matches DB CHECK constraint exactly.
+const KIND_VALUES = ['note', 'call', 'meeting', 'order_followup'] as const
+const kindEnum = z.enum(KIND_VALUES)
+
 // .trim() przed .min/.max — empty whitespace=invalid, długość liczona
 // po trim (consistent z DB CHECK length(body) BETWEEN 1 AND 5000 +
 // preventing user paste z accidental trailing whitespace overflowing).
@@ -43,6 +49,13 @@ const addSchema = z.object({
     .trim()
     .min(1, 'Treść wymagana')
     .max(MAX_BODY, `Notatka za długa (max ${MAX_BODY} znaków)`),
+  // T2.6 — kind optional w schemacie, default 'note' (DB DEFAULT pokrywa
+  // gdy server-side action nie wysyła kind, ale Zod wymusza enum jeśli set).
+  kind: kindEnum.optional(),
+  // T2.6 — occurred_at ISO string, optional. NULL = fallback do created_at.
+  // Format datetime ISO 8601 (datetime-local input zwraca bez TZ, server
+  // dodaje 'Z' = UTC traktowanie, accepts both formats).
+  occurredAt: z.string().datetime({ offset: true }).optional().nullable(),
 })
 
 const updateSchema = z.object({
@@ -67,8 +80,19 @@ export type ClientNoteActionResult =
 export async function addClientNote(
   clientId: string,
   body: string,
+  // Sprint TYDZIEN2.T2.6 (29.05.2026) — optional kind + occurredAt.
+  // Backward-compat: T2.5 callers (ClientNoteForm add) wywołują z 2 args,
+  // dostają kind='note' DEFAULT z DB + occurred_at=NULL → UI fallback do
+  // created_at. T2.6 timeline form sends both.
+  kind?: 'note' | 'call' | 'meeting' | 'order_followup',
+  occurredAt?: string | null,
 ): Promise<ClientNoteActionResult> {
-  const parsed = addSchema.safeParse({ clientId, body })
+  const parsed = addSchema.safeParse({
+    clientId,
+    body,
+    kind: kind ?? undefined,
+    occurredAt: occurredAt ?? null,
+  })
   if (!parsed.success) {
     return {
       ok: false,
@@ -82,14 +106,20 @@ export async function addClientNote(
   } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: 'Sesja wygasła' }
 
+  // Build INSERT payload — kind/occurred_at only included gdy explicitly
+  // wysłane (DB DEFAULT 'note' i NULL pokryją reszta).
+  const payload: Record<string, unknown> = {
+    client_id: parsed.data.clientId,
+    owner_id: user.id,
+    body: parsed.data.body,
+    // created_at + updated_at fill via DEFAULT NOW() (migration 076).
+  }
+  if (parsed.data.kind) payload.kind = parsed.data.kind
+  if (parsed.data.occurredAt) payload.occurred_at = parsed.data.occurredAt
+
   const { data: inserted, error: insertErr } = await supabase
     .from('client_notes')
-    .insert({
-      client_id: parsed.data.clientId,
-      owner_id: user.id,
-      body: parsed.data.body,
-      // created_at + updated_at fill via DEFAULT NOW() (migration 076).
-    })
+    .insert(payload)
     .select('id')
     .single()
 

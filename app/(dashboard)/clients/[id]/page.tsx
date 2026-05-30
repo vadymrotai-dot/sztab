@@ -27,6 +27,8 @@ import { SignalsSection } from '@/components/clients/signals-section'
 import { ContactSectionV2 } from '@/components/clients/contact-section-v2'
 import { ContactSectionV3 } from '@/components/clients/contact-section-v3'
 import { ClientNotesSection } from '@/components/clients/client-notes-section'
+import { ClientTimelineSection } from '@/components/clients/client-timeline-section'
+import { buildTimelineEvents } from '@/lib/timeline/build-events'
 import { OrdersSection } from '@/components/clients/orders-section'
 import { ClientDetailActions } from '@/components/clients/client-detail-actions'
 import { OrderLinkButton } from '@/components/clients/order-link-button'
@@ -233,9 +235,11 @@ export default async function ClientDetailPage({
       .order('created_at', { ascending: true }),
     // Sprint TYDZIEN2.T2.5 — client_notes (RLS auth.uid()=owner_id, migration 076)
     // Newest first dla UI display. Anon supabase wystarczy bo RLS authenticated.
+    // T2.6 (29.05.2026) — extended select z kind + occurred_at (migration 077)
+    // dla timeline UNION. T2.5 ClientNotesSection ignoruje te kolumny.
     supabase
       .from('client_notes')
-      .select('id, body, created_at, updated_at')
+      .select('id, body, kind, occurred_at, created_at, updated_at')
       .eq('client_id', id)
       .order('created_at', { ascending: false }),
   ])
@@ -297,12 +301,32 @@ export default async function ClientDetailPage({
   // Sprint TYDZIEN2.T2.5 (29.05.2026) — client_notes fetched у Promise.all wyżej.
   // Sorted DESC za created_at z server query. UI ClientNotesSection renderowany
   // jak-is bez resortowania.
+  // T2.6 (29.05.2026) — extended z kind + occurred_at dla timeline.
   const clientNotes = (clientNotesData ?? []) as Array<{
     id: string
     body: string
+    kind: string
+    occurred_at: string | null
     created_at: string
     updated_at: string
   }>
+
+  // Sprint TYDZIEN2.T2.6 (29.05.2026) — Historia interakcji.
+  // Build timeline events list z orders + client_notes (UNION-style).
+  // ZERO new queries — reuses już fetchowane clientOrders + clientNotes.
+  // Sortowane DESC za COALESCE(occurred_at, created_at) inside helper.
+  const timelineEvents = buildTimelineEvents({
+    orders: clientOrders.map((o) => ({
+      id: o.id,
+      order_number: o.order_number,
+      status: o.status,
+      created_at: o.created_at,
+      link_opened_at: o.link_opened_at,
+      submitted_at: o.submitted_at,
+      confirmed_at: o.confirmed_at,
+    })),
+    notes: clientNotes,
+  })
 
   const c = client as Record<string, unknown> & {
     id: string
@@ -704,6 +728,33 @@ export default async function ClientDetailPage({
             pkd_total_count={c.pkd_codes?.length ?? 0}
             bank_account={bankAccount}
           />
+        </AccordionSection>
+
+        {/* Sprint TYDZIEN2.T2.6 (29.05.2026) — Historia interakcji.
+            Timeline UNION orders (4 events per row) + client_notes (z kind,
+            mig 077). User dodaje wpis (telefon/spotkanie/przypomnienie/notatka)
+            z opcjonalną datą zdarzenia. defaultOpen gdy są jakiekolwiek events.
+            Pozycja: wysoko (zaraz po Profil), bo to primary CRM view. */}
+        <AccordionSection
+          id="historia"
+          title="Historia"
+          meta={
+            timelineEvents.length === 0
+              ? 'brak wpisów'
+              : `${timelineEvents.length} ${
+                  timelineEvents.length === 1
+                    ? 'wpis'
+                    : timelineEvents.length % 10 >= 2 &&
+                        timelineEvents.length % 10 <= 4 &&
+                        (timelineEvents.length % 100 < 10 ||
+                          timelineEvents.length % 100 >= 20)
+                      ? 'wpisy'
+                      : 'wpisów'
+                }`
+          }
+          defaultOpen={timelineEvents.length > 0}
+        >
+          <ClientTimelineSection clientId={id} events={timelineEvents} />
         </AccordionSection>
 
         {/* Sprint S-MENU Day 3 (15.05.2026) — Manual website override.
