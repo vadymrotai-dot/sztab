@@ -173,8 +173,31 @@ export function OrderForm({
   const clientName = client?.title ?? ''
   const firstWord = clientName.split(' ')[0] || 'Kliencie'
 
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1)
+  // Sprint T-ORDER.4a-SHELL (30.05.2026) — przebudowa szkieletu pod wariant-A-final:
+  // dwa stany zamiast 5-krokowego linearnego wizard.
+  //   showWelcome=true (initial) → ekran Witaj z onboardingiem, po kliknięciu
+  //     "Rozpocznij zamówienie" przechodzi do tabs.
+  //   activeTab → po welcome, przełączanie "produkty"|"dostawa" tabs.
+  //   submitResult !== null → ekran potwierdzenia (terminal state, zastępuje tabs).
+  // Logika cen / submitOrder / cart / setQty BEZ ZMIAN.
+  const [showWelcome, setShowWelcome] = useState(true)
+  const [activeTab, setActiveTab] = useState<'produkty' | 'dostawa'>('produkty')
   const [cart, setCart] = useState<Record<string, number>>({})
+  // Sprint T-ORDER.4a-SHELL — search query filtruje akordeon na żywo.
+  const [searchQuery, setSearchQuery] = useState('')
+  // Sprint T-ORDER.4a-SHELL — szablony klienta (lazy load on click).
+  type Template = {
+    id: string
+    nazwa: string
+    pozycje: Array<{ product_id: string; qty: number }>
+    utworzyl: string
+    created_at: string
+  }
+  const [templates, setTemplates] = useState<Template[] | null>(null)
+  const [showTemplatesPanel, setShowTemplatesPanel] = useState(false)
+  const [templatesLoading, setTemplatesLoading] = useState(false)
+  const [actionNotice, setActionNotice] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const [contactPerson, setContactPerson] = useState(initial.order.contact_person ?? '')
   const [contactPhone, setContactPhone] = useState(initial.order.contact_phone ?? client?.phone ?? '')
@@ -228,7 +251,9 @@ export function OrderForm({
     type GroupedTop = { key: string; subs: GroupedSub[] }
 
     const tmp = new Map<string, Map<string, Product[]>>()
-    for (const p of products) {
+    // Sprint T-ORDER.4a-SHELL — używamy filteredProducts (po search) zamiast products,
+    // żeby akordeon na żywo pokazywał tylko pasujące.
+    for (const p of filteredProducts) {
       const g = p.grupa ?? '__inne__'
       const s = p.podgrupa ?? '__inne__'
       if (!tmp.has(g)) tmp.set(g, new Map())
@@ -268,7 +293,7 @@ export function OrderForm({
       })
     }
     return result
-  }, [products])
+  }, [filteredProducts])
 
   // Sprint T-ORDER.4a-UI — etykiety PL dla grupa/podgrupa.
   const GRUPA_LABEL: Record<string, string> = {
@@ -297,14 +322,21 @@ export function OrderForm({
   // rozwinięta, reszta podgrup zwinięte (wariant-A-final z prototypu).
   const initialOpen = useMemo(() => {
     const open = new Set<string>()
+    const isSearching = searchQuery.trim().length > 0
     for (const grp of groupedHierarchy) {
       open.add(`g:${grp.key}`)
-      if (grp.subs.length > 0) {
+      if (isSearching) {
+        // Sprint T-ORDER.4a-SHELL — przy aktywnym search rozwijamy WSZYSTKIE
+        // pasujące podgrupy żeby użytkownik widział trafienia bez klikania.
+        for (const sub of grp.subs) {
+          open.add(`s:${grp.key}:${sub.key}`)
+        }
+      } else if (grp.subs.length > 0) {
         open.add(`s:${grp.key}:${grp.subs[0]!.key}`)
       }
     }
     return open
-  }, [groupedHierarchy])
+  }, [groupedHierarchy, searchQuery])
   const [openKeys, setOpenKeys] = useState<Set<string>>(initialOpen)
   // Sync openKeys gdy hierarchia się zmieni (np. po pierwszym fetch albo po
   // zmianie tier który ukryje/odsłoni SKU). Pattern: trzymamy "initialized"
@@ -312,7 +344,11 @@ export function OrderForm({
   // mają pierwszeństwo i nie nadpisujemy ich. Re-hydracja TYLKO gdy
   // openKeys stało się puste (np. SSR fallback).
   useEffect(() => {
-    if (openKeys.size === 0 && initialOpen.size > 0) {
+    // Sprint T-ORDER.4a-SHELL — hydracja PRZY zmianie searchQuery (search → expand all,
+    // wyczyść search → przywróć default expand). Bez search → tylko initial mount.
+    if (searchQuery.trim().length > 0) {
+      setOpenKeys(initialOpen)
+    } else if (openKeys.size === 0 && initialOpen.size > 0) {
       setOpenKeys(initialOpen)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -325,6 +361,128 @@ export function OrderForm({
       else next.add(key)
       return next
     })
+  }
+
+  // Sprint T-ORDER.4a-SHELL — filter products przez searchQuery (case-insensitive
+  // match na p.name + p.gramatura). Pusty query → zwraca wszystkie products.
+  const filteredProducts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return products
+    return products.filter((p) => {
+      if (p.name.toLowerCase().includes(q)) return true
+      if (p.gramatura && p.gramatura.toLowerCase().includes(q)) return true
+      return false
+    })
+  }, [products, searchQuery])
+
+  // Sprint T-ORDER.4a-SHELL — wczytaj cart z listy {product_id, qty}.
+  // Używane przez Powtórz zamówienie + Szablony. Pomija qty<=0.
+  function fillCartFromList(list: Array<{ product_id: string; qty: number }>) {
+    const next: Record<string, number> = {}
+    for (const item of list) {
+      if (item.qty <= 0) continue
+      // Validate że product istnieje (filter list już to robi server-side,
+      // ale defense-in-depth — jeśli admin usunął SKU między fetch i klik).
+      const p = products.find((pp) => pp.id === item.product_id)
+      if (!p) continue
+      if (p.in_stock === false) continue
+      next[item.product_id] = Math.min(9999, Math.max(1, Math.floor(item.qty)))
+    }
+    setCart(next)
+  }
+
+  // Sprint T-ORDER.4a-SHELL — Powtórz zamówienie: GET /api/orders/[token]/last
+  async function handleRepeatOrder() {
+    setActionError(null)
+    setActionNotice(null)
+    try {
+      const res = await fetch(`/api/orders/${token}/last`, { method: 'GET' })
+      const data = await res.json()
+      if (!res.ok || !data.ok) {
+        setActionError(data.error ?? 'Nie udało się pobrać poprzedniego zamówienia.')
+        return
+      }
+      if (!data.has_history) {
+        setActionError('Brak wcześniejszych zamówień.')
+        return
+      }
+      if (!data.items || data.items.length === 0) {
+        setActionError('Wszystkie pozycje z poprzedniego zamówienia są obecnie niedostępne.')
+        return
+      }
+      fillCartFromList(data.items)
+      const msg =
+        data.skipped > 0
+          ? `Wypełniono z zamówienia ${data.source_order_number} (część pozycji niedostępna, pominięto ${data.skipped}).`
+          : `Wypełniono z zamówienia ${data.source_order_number}.`
+      setActionNotice(msg)
+    } catch (e) {
+      setActionError('Błąd sieci przy pobieraniu zamówienia.')
+    }
+  }
+
+  // Sprint T-ORDER.4a-SHELL — Moje szablony: GET /api/orders/[token]/templates
+  async function loadTemplates() {
+    setTemplatesLoading(true)
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/orders/${token}/templates`, { method: 'GET' })
+      const data = await res.json()
+      if (!res.ok || !data.ok) {
+        setActionError(data.error ?? 'Nie udało się załadować szablonów.')
+        setTemplatesLoading(false)
+        return
+      }
+      setTemplates(data.templates ?? [])
+      setShowTemplatesPanel(true)
+    } catch (e) {
+      setActionError('Błąd sieci przy ładowaniu szablonów.')
+    } finally {
+      setTemplatesLoading(false)
+    }
+  }
+
+  function applyTemplate(t: Template) {
+    fillCartFromList(t.pozycje)
+    setShowTemplatesPanel(false)
+    setActionNotice(`Wczytano szablon: ${t.nazwa}`)
+  }
+
+  // Sprint T-ORDER.4a-SHELL — Zapisz aktualny cart jako szablon (POST).
+  async function handleSaveTemplate() {
+    const list = Object.entries(cart)
+      .filter(([, qty]) => qty > 0)
+      .map(([product_id, qty]) => ({ product_id, qty }))
+    if (list.length === 0) {
+      setActionError('Koszyk jest pusty — nie można zapisać szablonu.')
+      return
+    }
+    const nazwa = prompt('Podaj nazwę szablonu (min. 2 znaki):', '')
+    if (nazwa === null) return
+    const trimmed = nazwa.trim()
+    if (trimmed.length < 2) {
+      setActionError('Nazwa musi mieć min. 2 znaki.')
+      return
+    }
+    setActionError(null)
+    setActionNotice(null)
+    try {
+      const res = await fetch(`/api/orders/${token}/templates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nazwa: trimmed, pozycje: list }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) {
+        setActionError(data.error ?? 'Nie udało się zapisać szablonu.')
+        return
+      }
+      // Invalidate cache — kolejny klik "Moje szablony" pobierze świeże.
+      setTemplates(null)
+      setActionNotice(`Szablon "${trimmed}" zapisany.`)
+    } catch (e) {
+      setActionError('Błąd sieci przy zapisie szablonu.')
+    }
   }
 
   function setQty(productId: string, qty: number) {
@@ -370,8 +528,9 @@ export function OrderForm({
         setSubmitting(false)
         return
       }
+      // Sprint T-ORDER.4a-SHELL — setStep(5) usunięte; ekran potwierdzenia
+      // renderowany gdy submitResult !== null (terminal state zastępuje tabs).
       setSubmitResult(data as SubmitOk)
-      setStep(5)
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : 'Błąd sieci')
     } finally {
@@ -379,41 +538,48 @@ export function OrderForm({
     }
   }
 
-  // ── Header bar ─────────────────────────────────────────────────────────────
-  const stepLabels: Record<number, string> = {
-    1: 'Witaj',
-    2: 'Wybór produktów',
-    3: 'Dane do dostawy',
-    4: 'Podsumowanie',
-    5: 'Potwierdzenie',
-  }
+  // Sprint T-ORDER.4a-SHELL (30.05.2026) — stary stepLabels usunięty,
+  // navigacja przez showWelcome + activeTab + submitResult (terminal).
 
   return (
-    <div className="mx-auto max-w-md bg-white rounded-2xl shadow-lg overflow-hidden">
-      {/* Header */}
-      <div className="bg-[#1F2B4A] text-white px-5 pt-4 pb-3">
-        <div className="flex items-baseline justify-between">
-          <div>
-            <div className="text-[10px] tracking-widest opacity-70">ZIOMEK·FISH · ZAMÓWIENIE B2B</div>
-            <div className="text-lg font-bold">Czudowa Marka</div>
+    <div className="mx-auto max-w-5xl bg-white shadow-sm">
+      {/* Sprint T-ORDER.4a-SHELL (30.05.2026) — szeroki nagłówek z tytułem zamówienia. */}
+      <div className="bg-[#1F3A5F] text-white px-6 py-5">
+        <h1 className="text-[22px] font-bold leading-tight">
+          Zamówienie — {client?.title ?? 'klient'}
+        </h1>
+        {initial.order.order_number && (
+          <div className="text-[12px] text-white/70 mt-1 font-mono">
+            {initial.order.order_number}
           </div>
-          <div className="text-[10px] opacity-70">Krok {step} z 5</div>
-        </div>
-        <div className="mt-3 flex items-center gap-1.5">
-          {[1, 2, 3, 4, 5].map((s) => (
-            <div
-              key={s}
-              className={`h-1.5 flex-1 rounded-full ${
-                s < step ? 'bg-amber-500/60' : s === step ? 'bg-amber-500' : 'bg-white/20'
-              }`}
-            />
-          ))}
-        </div>
-        <div className="mt-2 text-xs opacity-80">{stepLabels[step]}</div>
+        )}
       </div>
 
-      {/* ─── Step 1: Witaj ─────────────────────────────────────────────────── */}
-      {step === 1 && (
+      {/* Action notice/error toast — nad zakładkami */}
+      {(actionNotice || actionError) && (
+        <div
+          className={`px-6 py-2.5 text-sm border-b ${
+            actionError
+              ? 'bg-rose-50 border-rose-200 text-rose-800'
+              : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+          }`}
+        >
+          {actionError || actionNotice}
+          <button
+            type="button"
+            onClick={() => {
+              setActionError(null)
+              setActionNotice(null)
+            }}
+            className="ml-3 text-xs underline opacity-70 hover:opacity-100"
+          >
+            zamknij
+          </button>
+        </div>
+      )}
+
+      {/* ─── Welcome screen (overlay przed zakładkami) ──────────────────── */}
+      {showWelcome && !submitResult && (
         <div className="p-5">
           {client && (
             <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-5">
@@ -460,8 +626,8 @@ export function OrderForm({
           </div>
 
           <button
-            onClick={() => setStep(2)}
-            className="w-full bg-[#1F2B4A] hover:bg-[#2A3A60] text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors"
+            onClick={() => setShowWelcome(false)}
+            className="w-full bg-[#1F3A5F] hover:bg-[#264a76] text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors"
           >
             Rozpocznij zamówienie
             <ChevronRight className="w-4 h-4" />
@@ -469,8 +635,114 @@ export function OrderForm({
         </div>
       )}
 
-      {/* ─── Step 2: Wybór produktów ──────────────────────────────────────── */}
-      {step === 2 && (
+      {/* ─── Po welcome + przed submit: zakładki ───────────────────────── */}
+      {!showWelcome && !submitResult && (
+        <>
+          {/* Tab bar (segmented control) */}
+          <div className="bg-white border-b border-slate-200 px-6 pt-4">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('produkty')}
+                className={`flex-1 px-4 py-3 rounded-t-lg font-semibold text-[14px] transition border-b-2 ${
+                  activeTab === 'produkty'
+                    ? 'bg-[#1F3A5F] text-white border-[#1F3A5F]'
+                    : 'bg-slate-100 text-slate-600 border-transparent hover:bg-slate-200'
+                }`}
+              >
+                1 · Produkty
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (cartNotEmpty) setActiveTab('dostawa')
+                }}
+                disabled={!cartNotEmpty}
+                className={`flex-1 px-4 py-3 rounded-t-lg font-semibold text-[14px] transition border-b-2 ${
+                  activeTab === 'dostawa'
+                    ? 'bg-[#1F3A5F] text-white border-[#1F3A5F]'
+                    : 'bg-slate-100 text-slate-600 border-transparent hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed'
+                }`}
+              >
+                2 · Dostawa i dokumenty
+              </button>
+            </div>
+          </div>
+
+          {/* Sprint T-ORDER.4a-SHELL — górny pasek (search + Powtórz + szablony)
+              tylko gdy aktywna zakładka Produkty. */}
+          {activeTab === 'produkty' && (
+            <div className="bg-slate-50 border-b border-slate-200 px-6 py-3 flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Szukaj produktu lub SKU..."
+                className="flex-1 min-w-[180px] px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#1F3A5F] bg-white"
+              />
+              <button
+                type="button"
+                onClick={handleRepeatOrder}
+                className="px-3 py-2 rounded-lg bg-white border border-[#1F3A5F] text-[#1F3A5F] text-[13px] font-semibold hover:bg-[#1F3A5F] hover:text-white transition shrink-0"
+              >
+                ↻ Powtórz zamówienie
+              </button>
+              <button
+                type="button"
+                onClick={loadTemplates}
+                disabled={templatesLoading}
+                className="px-3 py-2 rounded-lg bg-white border border-[#1F3A5F] text-[#1F3A5F] text-[13px] font-semibold hover:bg-[#1F3A5F] hover:text-white transition shrink-0 disabled:opacity-50"
+              >
+                {templatesLoading ? '...' : '★ Moje szablony'}
+              </button>
+            </div>
+          )}
+
+          {/* Lista szablonów (rozwijana) */}
+          {activeTab === 'produkty' && showTemplatesPanel && templates && (
+            <div className="bg-white border-b border-slate-200 px-6 py-3 max-h-[260px] overflow-y-auto">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[13px] font-semibold text-slate-700">
+                  Twoje szablony ({templates.length})
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowTemplatesPanel(false)}
+                  className="text-xs text-slate-500 hover:text-slate-700 underline"
+                >
+                  zamknij
+                </button>
+              </div>
+              {templates.length === 0 ? (
+                <div className="text-xs text-slate-500 italic py-2">
+                  Brak zapisanych szablonów. Dodaj produkty do koszyka i kliknij &quot;★ Zapisz jako szablon&quot;.
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {templates.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => applyTemplate(t)}
+                      className="w-full text-left px-3 py-2 rounded border border-slate-200 hover:border-[#1F3A5F] hover:bg-slate-50 transition"
+                    >
+                      <div className="text-[14px] font-semibold text-[#15202e]">{t.nazwa}</div>
+                      <div className="text-[11px] text-slate-500">
+                        {t.pozycje.length} {t.pozycje.length === 1 ? 'pozycja' : 'pozycji'}
+                        {' · '}
+                        {t.utworzyl === 'vadym' ? 'od Vadyma' : 'mój'}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ─── Zakładka 1: Produkty ───────────────────────────────────────── */}
+      {!showWelcome && !submitResult && activeTab === 'produkty' && (
         <>
           {/* Sticky tier banner — Sprint S-CENNIK-WH.2 matrix 2x2 */}
           <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 py-3 shadow-sm">
@@ -760,7 +1032,7 @@ export function OrderForm({
           >
             <button
               type="button"
-              onClick={() => setStep(1)}
+              onClick={() => setShowWelcome(true)}
               className="text-[13px] text-white/80 hover:text-white flex items-center gap-1 shrink-0"
               aria-label="Wstecz"
             >
@@ -783,10 +1055,7 @@ export function OrderForm({
             </div>
             <button
               type="button"
-              onClick={() => {
-                // TODO T-ORDER.4b — order_templates INSERT przez nowy endpoint.
-                alert('Zapisywanie szablonów dostępne wkrótce.')
-              }}
+              onClick={handleSaveTemplate}
               disabled={!cartNotEmpty}
               className="px-3 py-2 rounded-lg bg-[#eef3f9] text-[#1F3A5F] text-[13px] font-semibold flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white shrink-0"
             >
@@ -794,7 +1063,7 @@ export function OrderForm({
             </button>
             <button
               type="button"
-              onClick={() => setStep(3)}
+              onClick={() => setActiveTab('dostawa')}
               disabled={!cartNotEmpty}
               className="px-4 py-2 rounded-lg bg-white text-[#1F3A5F] font-bold text-[14px] flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#eef3f9] shrink-0"
             >
@@ -805,8 +1074,8 @@ export function OrderForm({
         </>
       )}
 
-      {/* ─── Step 3: Dane do dostawy ──────────────────────────────────────── */}
-      {step === 3 && (
+      {/* ─── Zakładka 2: Dostawa i dokumenty (łączy stare step 3 + 4) ──── */}
+      {!showWelcome && !submitResult && activeTab === 'dostawa' && (
         <div className="p-5 space-y-4">
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
             <div>
@@ -881,24 +1150,17 @@ export function OrderForm({
 
           <div className="flex gap-2 pt-2">
             <button
-              onClick={() => setStep(2)}
+              onClick={() => setActiveTab('produkty')}
               className="px-4 py-2.5 rounded-lg border border-slate-300 text-slate-700 font-medium text-sm flex items-center gap-1 hover:bg-slate-50"
             >
-              <ChevronLeft className="w-4 h-4" /> Wstecz
-            </button>
-            <button
-              onClick={() => setStep(4)}
-              disabled={!step3Valid}
-              className="flex-1 bg-[#1F2B4A] hover:bg-[#2A3A60] text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Dalej <ChevronRight className="w-4 h-4" />
+              <ChevronLeft className="w-4 h-4" /> Wstecz do produktów
             </button>
           </div>
         </div>
       )}
 
-      {/* ─── Step 4: Podsumowanie ──────────────────────────────────────────── */}
-      {step === 4 && (
+      {/* ─── Łączone: Podsumowanie + Zgoda + Submit (stary step 4) ──────── */}
+      {!showWelcome && !submitResult && activeTab === 'dostawa' && step3Valid && (
         <div className="p-5 space-y-4">
           {/* Firma + kontakt */}
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs">
@@ -990,11 +1252,11 @@ export function OrderForm({
 
           <div className="flex gap-2 pt-2">
             <button
-              onClick={() => setStep(3)}
+              onClick={() => setActiveTab('produkty')}
               disabled={submitting}
               className="px-4 py-2.5 rounded-lg border border-slate-300 text-slate-700 font-medium text-sm flex items-center gap-1 hover:bg-slate-50 disabled:opacity-40"
             >
-              <ChevronLeft className="w-4 h-4" /> Wstecz
+              <ChevronLeft className="w-4 h-4" /> Wstecz do produktów
             </button>
             <button
               onClick={submitOrder}
@@ -1014,8 +1276,8 @@ export function OrderForm({
         </div>
       )}
 
-      {/* ─── Step 5: Potwierdzenie ─────────────────────────────────────────── */}
-      {step === 5 && submitResult && (
+      {/* ─── Ekran potwierdzenia (terminal: submitResult !== null) ────────── */}
+      {submitResult && (
         <div className="p-8 text-center">
           <div className="w-16 h-16 mx-auto rounded-full bg-emerald-50 flex items-center justify-center mb-4">
             <CheckCircle2 className="w-8 h-8 text-emerald-500" />
