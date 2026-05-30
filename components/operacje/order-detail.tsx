@@ -242,6 +242,43 @@ export function OrderDetail({
     })
   }
 
+  // Sprint T-ORDER.2 (30.05.2026) — trwałe usuwanie zamówienia. Podwójne
+  // potwierdzenie: confirm() z order_number + prompt() wpisywanie order_number.
+  // Match → DELETE → redirect do listy. Bez ograniczeń statusu (Vadym świadomie
+  // decyduje). Note przy buttonie: "Dokument w Fakturownia/KSeF pozostaje".
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const deleteOrder = async () => {
+    if (
+      !confirm(
+        `Usunąć TRWALE zamówienie ${order.order_number}?\n\nTej operacji nie można cofnąć.\nDokument w Fakturownia/KSeF pozostaje — usuwane jest tylko zamówienie w Sztabie.`,
+      )
+    )
+      return
+    const typed = prompt(
+      `Wpisz numer zamówienia aby potwierdzić: ${order.order_number}`,
+      '',
+    )
+    if (typed === null) return
+    if (typed.trim() !== order.order_number) {
+      alert('Wpisany numer nie zgadza się — usuwanie anulowane.')
+      return
+    }
+    setDeleteLoading(true)
+    setDeleteError(null)
+    const res = await fetch(`/api/orders/admin/${order.id}`, {
+      method: 'DELETE',
+    })
+    const data = await res.json().catch(() => ({}))
+    if (res.ok) {
+      router.push('/operacje/zamowienia')
+      router.refresh()
+    } else {
+      setDeleteLoading(false)
+      setDeleteError(data.error || 'Błąd usuwania zamówienia')
+    }
+  }
+
   // Sprint T-ORDER.1 (30.05.2026) — manual proforma send handler.
   // Mirror pattern z issueVatInvoice — confirm + POST + toast + delayed refresh.
   const sendProforma = async () => {
@@ -799,6 +836,33 @@ export function OrderDetail({
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* Sprint T-ORDER.2 (30.05.2026) — trwałe usuwanie. Osobno od
+              status switchera, czerwony, na samym dole right column.
+              Double-confirm (confirm dialog + prompt z numerem) opisany w
+              deleteOrder() handler. */}
+          <div className="bg-white border border-rose-200 rounded-lg p-4">
+            <div className="text-xs font-semibold text-rose-700 uppercase tracking-wider mb-3">
+              Strefa zagrożenia
+            </div>
+            <button
+              type="button"
+              onClick={deleteOrder}
+              disabled={deleteLoading}
+              className="w-full px-3 py-2 rounded-lg text-sm font-semibold transition bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50"
+            >
+              {deleteLoading ? 'Usuwanie...' : '🗑 Usuń trwale'}
+            </button>
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+              Dokument w Fakturownia/KSeF pozostaje — usuwane jest tylko
+              zamówienie w Sztabie. Wymagane podwójne potwierdzenie.
+            </p>
+            {deleteError && (
+              <div className="mt-3 text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded px-2 py-1.5">
+                {deleteError}
+              </div>
+            )}
           </div>
         </div>
       </div>

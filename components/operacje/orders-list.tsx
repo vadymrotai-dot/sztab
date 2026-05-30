@@ -1,9 +1,11 @@
 // components/operacje/orders-list.tsx
 // Sprint S-ORDER.1.C.1 (19.05.2026) — client-side filtering + table render.
+// Sprint T-ORDER.2 (30.05.2026) — sortable headers + cancelled pill + inline delete.
 
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 type OrderStatus =
@@ -91,12 +93,73 @@ function fmtDate(iso: string | null): string {
   )
 }
 
+// Sprint T-ORDER.2 — sort config. Order statusu dla "Status" sortowania = ten
+// sam co flow lifecycle: draft → submitted → confirmed → in_realization →
+// shipped → invoiced → cancelled. Pozwala posortować "od najwcześniejszego
+// etapu" / "od najpóźniejszego" sensownie zamiast alfabetycznie.
+const STATUS_ORDER: Record<OrderStatus, number> = {
+  draft: 0,
+  submitted: 1,
+  confirmed: 2,
+  in_realization: 3,
+  shipped: 4,
+  invoiced: 5,
+  cancelled: 6,
+}
+
+type SortBy = 'number' | 'client' | 'value' | 'status'
+type SortDir = 'asc' | 'desc'
+
 export function OrdersList({ orders }: { orders: OrderRow[] }) {
+  const router = useRouter()
   const [statusFilter, setStatusFilter] = useState<'all' | OrderStatus>('all')
   const [search, setSearch] = useState('')
+  // Sprint T-ORDER.2 — sort state. Default 'number' DESC = najnowsze ZIO-2026-NNNN pierwsze.
+  const [sortBy, setSortBy] = useState<SortBy>('number')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  // Sprint T-ORDER.2 — inline delete state (hover icon na row).
+  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null)
+
+  function handleSort(col: SortBy) {
+    if (sortBy === col) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(col)
+      setSortDir('desc')
+    }
+  }
+
+  // Sprint T-ORDER.2 — inline row delete z double confirm (mirror order-detail
+  // pattern). 1. confirm "Usunąć TRWALE?". 2. prompt z order_number. Match → DELETE.
+  async function handleInlineDelete(orderId: string, orderNumber: string) {
+    if (
+      !confirm(
+        `Usunąć TRWALE zamówienie ${orderNumber}?\n\nTej operacji nie można cofnąć.\nDokument w Fakturownia/KSeF pozostaje — usuwane jest tylko zamówienie w Sztabie.`,
+      )
+    )
+      return
+    const typed = prompt(
+      `Wpisz numer zamówienia aby potwierdzić: ${orderNumber}`,
+      '',
+    )
+    if (typed === null) return
+    if (typed.trim() !== orderNumber) {
+      alert('Wpisany numer nie zgadza się — usuwanie anulowane.')
+      return
+    }
+    setDeleteBusyId(orderId)
+    const res = await fetch(`/api/orders/admin/${orderId}`, { method: 'DELETE' })
+    const data = await res.json().catch(() => ({}))
+    setDeleteBusyId(null)
+    if (res.ok) {
+      router.refresh()
+    } else {
+      alert(data.error || 'Błąd usuwania zamówienia')
+    }
+  }
 
   const filtered = useMemo(() => {
-    return orders.filter((o) => {
+    const out = orders.filter((o) => {
       if (statusFilter !== 'all' && o.status !== statusFilter) return false
       if (search) {
         const q = search.toLowerCase()
@@ -110,7 +173,32 @@ export function OrdersList({ orders }: { orders: OrderRow[] }) {
       }
       return true
     })
-  }, [orders, statusFilter, search])
+
+    // Sprint T-ORDER.2 — sort filtered list. Stabilność: order_number jest
+    // UNIQUE więc tiebreaker по nim wystarczy. Nr jako fallback dla wszystkich
+    // pozostałych comparatorów (jeśli value/client/status sa equal — newer ZIO
+    // wyżej dla 'desc'/'asc' tiebreaker zgodnie z sortDir).
+    const dir = sortDir === 'asc' ? 1 : -1
+    out.sort((a, b) => {
+      let cmp = 0
+      if (sortBy === 'number') {
+        cmp = a.order_number.localeCompare(b.order_number, 'pl')
+      } else if (sortBy === 'value') {
+        cmp = Number(a.total_brutto || 0) - Number(b.total_brutto || 0)
+      } else if (sortBy === 'client') {
+        cmp = a.client.title.localeCompare(b.client.title, 'pl')
+      } else if (sortBy === 'status') {
+        cmp = STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
+      }
+      if (cmp === 0 && sortBy !== 'number') {
+        // tiebreaker — newer ZIO wyżej (DESC stable secondary)
+        cmp = a.order_number.localeCompare(b.order_number, 'pl') * -1
+      }
+      return cmp * dir
+    })
+
+    return out
+  }, [orders, statusFilter, search, sortBy, sortDir])
 
   // Aggregate metrics
   const submittedCount = orders.filter((o) => o.status === 'submitted').length
@@ -118,6 +206,10 @@ export function OrdersList({ orders }: { orders: OrderRow[] }) {
     .filter((o) => ACTIVE_STATUSES.includes(o.status))
     .reduce((s, o) => s + Number(o.total_brutto || 0), 0)
 
+  // Sprint T-ORDER.2 — 'cancelled' dodane jako 7-ма pill po 'invoiced'.
+  // Domyślnie 'all' pokazuje wszystko (włącznie z cancelled). User może
+  // kliknąć "Anulowane (N)" żeby zobaczyć tylko cancelled albo dowolny inny
+  // status żeby je odfiltrować.
   const statusPills: ('all' | OrderStatus)[] = [
     'all',
     'submitted',
@@ -125,7 +217,38 @@ export function OrdersList({ orders }: { orders: OrderRow[] }) {
     'in_realization',
     'shipped',
     'invoiced',
+    'cancelled',
   ]
+
+  // Sprint T-ORDER.2 — sortable header helper. Klik → handleSort. Strzałka
+  // ▲/▼ tylko przy aktywnej kolumnie. Wszystkie sortable nagłówki maja
+  // cursor-pointer + hover bg.
+  function SortableTh({
+    col,
+    label,
+    align,
+  }: {
+    col: SortBy
+    label: string
+    align?: 'right'
+  }) {
+    const active = sortBy === col
+    const arrow = active ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
+    return (
+      <th
+        onClick={() => handleSort(col)}
+        className={`px-4 py-3 cursor-pointer select-none hover:bg-slate-100 transition ${
+          align === 'right' ? 'text-right' : ''
+        }`}
+        title={`Sortuj wg ${label.toLowerCase()}`}
+      >
+        <span className={active ? 'text-slate-900' : ''}>
+          {label}
+          {arrow}
+        </span>
+      </th>
+    )
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -189,20 +312,21 @@ export function OrdersList({ orders }: { orders: OrderRow[] }) {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr className="text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                <th className="px-4 py-3">Nr / Data</th>
-                <th className="px-4 py-3">Klient</th>
+                <SortableTh col="number" label="Nr / Data" />
+                <SortableTh col="client" label="Klient" />
                 <th className="px-4 py-3">Kontakt</th>
-                <th className="px-4 py-3 text-right">Wartość</th>
+                <SortableTh col="value" label="Wartość" align="right" />
                 <th className="px-4 py-3">Tier</th>
-                <th className="px-4 py-3">Status</th>
+                <SortableTh col="status" label="Status" />
                 <th className="px-4 py-3">Dostawa</th>
+                <th className="px-4 py-3 w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtered.map((o) => (
                 <tr
                   key={o.id}
-                  className="hover:bg-amber-50/40 transition"
+                  className="group hover:bg-amber-50/40 transition"
                 >
                   <td className="px-4 py-3 align-top">
                     <Link
@@ -271,6 +395,22 @@ export function OrdersList({ orders }: { orders: OrderRow[] }) {
                           'pl-PL',
                         )
                       : '—'}
+                  </td>
+                  {/* Sprint T-ORDER.2 — inline delete (hover icon, double-confirm). */}
+                  <td className="px-2 py-3 align-top text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleInlineDelete(o.id, o.order_number)}
+                      disabled={deleteBusyId === o.id}
+                      title="Usuń trwale zamówienie"
+                      className="opacity-0 group-hover:opacity-100 transition text-slate-400 hover:text-rose-600 disabled:opacity-50"
+                    >
+                      {deleteBusyId === o.id ? (
+                        <span className="text-xs">...</span>
+                      ) : (
+                        <span className="text-base">🗑</span>
+                      )}
+                    </button>
                   </td>
                 </tr>
               ))}

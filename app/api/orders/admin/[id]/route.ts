@@ -104,3 +104,78 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
 
   return NextResponse.json({ ok: true, updated: updates })
 }
+
+// Sprint T-ORDER.2 (30.05.2026) — trwałe usuwanie zamówienia.
+//
+// DELETE /api/orders/admin/[id]
+//   - Auth required (cookies-based session, mirror PATCH pattern)
+//   - Bez ograniczeń statusu — można usunąć każde zamówienie (włącznie z
+//     invoiced/cancelled). Vadym świadomie potwierdza double-confirm w UI.
+//   - DB CASCADE: order_items.order_id REFERENCES orders(id) ON DELETE CASCADE
+//     (068:83) → wszystkie pozycje usuwane automatycznie.
+//   - notification_log.order_id REFERENCES orders(id) ON DELETE SET NULL (070)
+//     → audit trail email/proforma/VAT pozostaje (z NULL order_id).
+//   - Dokumenty w Fakturowni/KSeF NIE są dotykane — to tylko usuwa rekord
+//     z Sztaba. Faktury pozostają w urzędowym systemie.
+export async function DELETE(_req: NextRequest, ctx: RouteContext) {
+  const { id } = await ctx.params
+  if (!UUID_RE.test(id)) {
+    return NextResponse.json(
+      { ok: false, error: 'Niepoprawne ID' },
+      { status: 400 },
+    )
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json(
+      { ok: false, error: 'Nieautoryzowany' },
+      { status: 401 },
+    )
+  }
+
+  const admin = createAdminClient()
+
+  // Verify istnieje (404 friendly) + read order_number dla audit log.
+  const { data: order, error: readErr } = await admin
+    .from('orders')
+    .select('id, order_number')
+    .eq('id', id)
+    .maybeSingle()
+  if (readErr) {
+    console.error('[orders][admin][DELETE] read failed:', readErr.message)
+    return NextResponse.json(
+      { ok: false, error: 'Błąd bazy danych' },
+      { status: 500 },
+    )
+  }
+  if (!order) {
+    return NextResponse.json(
+      { ok: false, error: 'Zamówienie nie znalezione' },
+      { status: 404 },
+    )
+  }
+
+  const { error: delErr } = await admin.from('orders').delete().eq('id', id)
+  if (delErr) {
+    console.error('[orders][admin][DELETE] failed:', delErr.message)
+    return NextResponse.json(
+      { ok: false, error: 'Błąd usuwania' },
+      { status: 500 },
+    )
+  }
+
+  console.warn('[orders][admin][DELETE] zamówienie usunięte trwale', {
+    orderId: id,
+    orderNumber: order.order_number,
+    userId: user.id,
+  })
+
+  return NextResponse.json({
+    ok: true,
+    deleted: { id, order_number: order.order_number },
+  })
+}
