@@ -240,7 +240,12 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   }
 
   // Load products to verify pricing server-side (never trust client prices)
-  const productIds = input.items.map((i) => i.product_id)
+  // Przejście 2A-fix — DEDUP product_id. Multipoint: ten sam produkt w kilku
+  // punktach daje duplikaty w items; .in() zwraca distinct → products.length <
+  // productIds.length → fałszywe "Niektóre produkty nie istnieją". Ceny i
+  // order_items używają products.find(p => p.id === ...), więc dedup bezpieczny
+  // (per-item zapis z delivery_point_index pozostaje bez zmian).
+  const productIds = [...new Set(input.items.map((i) => i.product_id))]
   const { data: products } = await supabase
     .from('products')
     .select(
