@@ -245,7 +245,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     .from('products')
     .select(
       // Sprint T-ORDER.4b-API — dodano `unit` dla snapshotu pozycji (unit_snapshot).
-      'id, name, display_name, gramatura, unit, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, show_in_orders',
+      // Przejście 2A — dodano `grupa` (podział CM/seafood) i `vat_rate` (VAT mieszany).
+      'id, name, display_name, gramatura, unit, grupa, vat_rate, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, show_in_orders',
     )
     .in('id', productIds)
   if (!products || products.length !== productIds.length) {
@@ -261,81 +262,148 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     )
   }
 
-  // Sprint S-CENNIK-WH.2 — Matrix 2x2 (cennik_tier × price_mode):
-  //   standard + auto    → iterate maly/sredni/duzy (calcTier z 2k/4k thresholds)
-  //   standard + minimum → locked 'duzy' (najnizsza standard cena)
-  //   wielki_hurt + auto → 10k threshold (hurt nominal): <10k 'wielki_hurt_entry', >=10k 'wielki_hurt'
-  //   wielki_hurt + min  → locked 'wielki_hurt' (price_duzi_gracze)
+  // Przejście 2A — ceny dla zamówienia MIESZANEGO (CM + owoce morza).
+  // Każda grupa liczy SWÓJ poziom wg SWOJEJ osi, jeden price_mode na całość:
+  //   - Czudowa Marka / nie-seafood: istniejąca matryca cennik_tier×price_mode,
+  //     poziom wg sumy ZŁ netto pozycji CM (calcTier 2k/4k, WH itd) — BEZ ZMIAN.
+  //   - owoce_morza: TYLKO standard (ignoruje cennik_tier=wielki_hurt), poziom wg
+  //     sumy SZTUK seafood (1 szt = 1 kg): <100 maly, 100..300 (włącznie) sredni, >300 duzy.
+  //     price_mode='minimum' → zawsze 'duzy' (cena minimalna), niezależnie od ilości.
+  // VAT liczony per-pozycja wg product.vat_rate (CM 0.05, kalmary 0.23, putasu 0.05).
   const cennikTier: 'standard' | 'wielki_hurt' =
     order.cennik_tier === 'wielki_hurt' ? 'wielki_hurt' : 'standard'
   const priceMode: 'auto' | 'minimum' = order.price_mode === 'minimum' ? 'minimum' : 'auto'
 
-  let tier: TierAtSubmit
-  let total = 0
+  const isSeafood = (pid: string): boolean =>
+    products.find((pp) => pp.id === pid)?.grupa === 'owoce_morza'
+  const cmItems = input.items.filter((it) => !isSeafood(it.product_id))
+  const seafoodItems = input.items.filter((it) => isSeafood(it.product_id))
 
-  const sumWithKey = (priceKey: keyof (typeof products)[number]): number =>
-    input.items.reduce((sum, item) => {
+  // Suma (qty × cena[priceKey]) po PODZBIORZE pozycji. NaN gdy brak ceny (null).
+  const sumSubset = (
+    items: typeof input.items,
+    priceKey: keyof (typeof products)[number],
+  ): number =>
+    items.reduce((sum, item) => {
       const p = products.find((pp) => pp.id === item.product_id)!
       const raw = p[priceKey] as number | string | null
-      if (raw == null) {
-        // Will be caught by the NaN check у caller; this prevents silent 0 substitution.
-        return NaN
-      }
+      if (raw == null) return NaN
       return sum + item.qty * Number(raw)
     }, 0)
 
-  if (cennikTier === 'wielki_hurt' && priceMode === 'auto') {
-    // Threshold based on Hurt nominal (entry-tier prices). Guard: всі SKU must have price_hurt_wh.
-    const missingHurt = products.filter((p) => p.price_hurt_wh == null)
-    if (missingHurt.length > 0) {
+  // ── Gałąź CM (Czudowa Marka i inne nie-seafood) — istniejąca matryca 2x2 ──
+  let cmTier: TierAtSubmit | null = null
+  let cmTotal = 0
+  if (cmItems.length > 0) {
+    const cmProducts = products.filter((p) => p.grupa !== 'owoce_morza')
+    if (cennikTier === 'wielki_hurt' && priceMode === 'auto') {
+      const missingHurt = cmProducts.filter((p) => p.price_hurt_wh == null)
+      if (missingHurt.length > 0) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              'Produkty bez ceny w cenniku Hurt: ' +
+              missingHurt.map((p) => p.display_name || p.name).join(', '),
+          },
+          { status: 400 },
+        )
+      }
+      const hurtNominal = sumSubset(cmItems, 'price_hurt_wh')
+      if (hurtNominal >= WH_HURT_THRESHOLD) {
+        cmTier = 'wielki_hurt'
+        cmTotal = sumSubset(cmItems, 'price_duzi_gracze')
+      } else {
+        cmTier = 'wielki_hurt_entry'
+        cmTotal = hurtNominal
+      }
+    } else if (cennikTier === 'wielki_hurt') {
+      cmTier = 'wielki_hurt'
+      cmTotal = sumSubset(cmItems, 'price_duzi_gracze')
+    } else if (priceMode === 'minimum') {
+      cmTier = 'duzy'
+      cmTotal = sumSubset(cmItems, 'price_duzy')
+    } else {
+      let stdTier: StandardTier = 'maly'
+      for (let i = 0; i < 3; i++) {
+        cmTotal = sumSubset(cmItems, TIER_PRICE[stdTier])
+        const newTier = calcTier(cmTotal)
+        if (newTier === stdTier) break
+        stdTier = newTier
+      }
+      cmTier = stdTier
+    }
+  }
+
+  // ── Gałąź owoce_morza — TYLKO standard, poziom wg sumy SZTUK ──
+  let seafoodTier: StandardTier | null = null
+  let seafoodTotal = 0
+  if (seafoodItems.length > 0) {
+    const totalSzt = seafoodItems.reduce((sum, it) => sum + it.qty, 0)
+    seafoodTier =
+      priceMode === 'minimum'
+        ? 'duzy'
+        : totalSzt < 100
+          ? 'maly'
+          : totalSzt <= 300
+            ? 'sredni'
+            : 'duzy'
+    const sfKey = TIER_PRICE[seafoodTier] // tylko 3 standardowe kolumny
+    // Guard: dla seafood cena null LUB 0 = brak ceny (tylko 3 standardowe kolumny).
+    const sfMissing = seafoodItems
+      .map((it) => products.find((pp) => pp.id === it.product_id)!)
+      .filter((p) => {
+        const v = (p as Record<string, unknown>)[sfKey] as number | string | null
+        return v == null || Number(v) <= 0
+      })
+    if (sfMissing.length > 0) {
       return NextResponse.json(
         {
           ok: false,
           error:
-            'Produkty bez ceny w cenniku Hurt: ' +
-            missingHurt.map((p) => p.display_name || p.name).join(', '),
+            'Produkty bez ceny (owoce morza): ' +
+            sfMissing.map((p) => p.display_name || p.name).join(', '),
         },
         { status: 400 },
       )
     }
-    const hurtNominal = sumWithKey('price_hurt_wh')
-    if (hurtNominal >= WH_HURT_THRESHOLD) {
-      tier = 'wielki_hurt'
-      total = sumWithKey('price_duzi_gracze')
-    } else {
-      tier = 'wielki_hurt_entry'
-      total = hurtNominal
-    }
-  } else if (cennikTier === 'wielki_hurt') {
-    // wielki_hurt + minimum (locked WH — current S-CENNIK-WH.1 behavior)
-    tier = 'wielki_hurt'
-    total = sumWithKey('price_duzi_gracze')
-  } else if (priceMode === 'minimum') {
-    // standard + minimum (locked duzy)
-    tier = 'duzy'
-    total = sumWithKey('price_duzy')
-  } else {
-    // standard + auto (existing 3-tier auto from S-ORDER.1.B.1)
-    let stdTier: StandardTier = 'maly'
-    for (let i = 0; i < 3; i++) {
-      total = sumWithKey(TIER_PRICE[stdTier])
-      const newTier = calcTier(total)
-      if (newTier === stdTier) break
-      stdTier = newTier
-    }
-    tier = stdTier
+    seafoodTotal = sumSubset(seafoodItems, sfKey)
   }
 
-  if (!Number.isFinite(total)) {
+  if (!Number.isFinite(cmTotal) || !Number.isFinite(seafoodTotal)) {
     return NextResponse.json(
       { ok: false, error: 'Brak ceny dla produktu w wybranym cenniku — skontaktuj się z dostawcą' },
       { status: 400 },
     )
   }
 
-  const priceKey = TIER_PRICE[tier]
-  const totalNet = total
-  const totalVat = Math.round(totalNet * 0.05 * 100) / 100
+  // Cena jednostkowa per-pozycja wg właściwej gałęzi (CM albo seafood).
+  const cmPriceKey = cmTier ? TIER_PRICE[cmTier] : null
+  const seafoodPriceKey = seafoodTier ? TIER_PRICE[seafoodTier] : null
+  const unitPriceFor = (p: (typeof products)[number]): number => {
+    const key = p.grupa === 'owoce_morza' ? seafoodPriceKey : cmPriceKey
+    return key ? Number((p as Record<string, unknown>)[key]) : 0
+  }
+
+  // tier_at_submit (TEXT free-form) — reprezentatywny: CM jeśli jest, inaczej seafood.
+  const tier: TierAtSubmit = cmTier ?? seafoodTier ?? 'maly'
+
+  const totalNet = cmTotal + seafoodTotal
+
+  // VAT MIESZANY — księgowo: VAT liczony na sumie netto KAŻDEJ stawki osobno,
+  // zaokrąglony do grosza per stawka, potem suma (zamiast globalnego *0.05).
+  const netByVat = new Map<number, number>()
+  for (const item of input.items) {
+    const p = products.find((pp) => pp.id === item.product_id)!
+    const net = item.qty * unitPriceFor(p)
+    const rate = Number((p as { vat_rate?: number | string | null }).vat_rate ?? 0)
+    netByVat.set(rate, (netByVat.get(rate) ?? 0) + net)
+  }
+  let totalVat = 0
+  for (const [rate, net] of netByVat) {
+    totalVat += Math.round(net * rate * 100) / 100
+  }
+  totalVat = Math.round(totalVat * 100) / 100
   const totalBrutto = Math.round((totalNet + totalVat) * 100) / 100
 
   // Generate order_number via DB function
@@ -517,10 +585,10 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
   // Insert order_items snapshot (frozen name + gramatura + unit + unit_price)
   // Sprint T-ORDER.4b-API — dodano unit_snapshot + delivery_point_id.
-  // PRICING NIETKNIĘTY: unit_price/line_total z priceKey jak wcześniej.
+  // Przejście 2A — unit_price wg gałęzi pozycji (CM albo seafood) przez unitPriceFor.
   const itemsToInsert = input.items.map((item) => {
     const p = products.find((pp) => pp.id === item.product_id)!
-    const unitPrice = Number(p[priceKey])
+    const unitPrice = unitPriceFor(p)
     const unitSnap = (p as { unit?: string | null }).unit ?? 'szt'
     return {
       order_id: order.id,

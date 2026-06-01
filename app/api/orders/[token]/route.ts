@@ -107,7 +107,8 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     // dla 2-poziomowego akordeonu w formie + display jednostki + wygaszania
     // produktów niedostępnych (in_stock=false).
     .select(
-      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, order_form_sort, category, grupa, podgrupa, in_stock, unit',
+      // Przejście 2C — dodano vat_rate (front liczy VAT per-stawka jak serwer 2A).
+      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, order_form_sort, category, grupa, podgrupa, in_stock, unit, vat_rate',
     )
     .eq('show_in_orders', true)
     .order('order_form_sort', { ascending: true })
@@ -167,6 +168,8 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       in_stock: p.in_stock,
       unit: p.unit,
       sort: p.order_form_sort,
+      // Przejście 2C — vat_rate per produkt (CM 0.05, kalmary 0.23, putasu 0.05).
+      vat_rate: p.vat_rate == null ? 0.05 : Number(p.vat_rate),
       prices: {
         maly: Number(p.price_maly_opt),
         sredni: Number(p.price_sredni),

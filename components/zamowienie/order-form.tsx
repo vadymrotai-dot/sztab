@@ -4,8 +4,8 @@
 //   Podsumowanie). Multipoint (jeden/kilka punktów), koszyk per punkt, profil
 //   zapisanych punktów (initial.saved_delivery_points), szablony pełny snapshot.
 // CENY: UI nie liczy — wysyła product_id + qty + delivery_point_index. Serwer
-//   liczy tier z cennik_tier×price_mode (na orderze). computeTierAndTotal tu jest
-//   TYLKO do wyświetlania orientacyjnego.
+//   liczy tier z cennik_tier×price_mode (na orderze). computeOrderTotals tu jest
+//   front-mirror serwera 2A (mieszane CM+owoce morza, VAT per-stawka) — podgląd.
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -40,6 +40,7 @@ type Product = {
   in_stock: boolean
   unit: string | null
   sort: number | null
+  vat_rate: number
   prices: {
     maly: number
     sredni: number
@@ -110,9 +111,11 @@ const PODGRUPA_LABEL: Record<string, string> = {
   kiszonki: 'Kiszonki',
   surowki: 'Surówki',
   warzywa_gotowane: 'Warzywa gotowane',
+  kalmary: 'Kalmary',
+  filety_rybne: 'Filety rybne',
   __inne__: 'Inne',
 }
-const PODGRUPA_ORDER = ['kiszonki', 'surowki', 'warzywa_gotowane']
+const PODGRUPA_ORDER = ['kiszonki', 'surowki', 'warzywa_gotowane', 'kalmary', 'filety_rybne']
 
 const MARKETING_CONSENT_TEXT =
   'Zgadzam się na otrzymywanie ofert handlowych i informacji marketingowych od Ziomek Fish sp. z o.o. drogą elektroniczną (e-mail). Zgodę mogę wycofać w każdej chwili.'
@@ -126,45 +129,115 @@ function fmt(n: number): string {
   return n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-// Orientacyjny tier+total DO WYŚWIETLENIA (serwer i tak przelicza).
-function computeTierAndTotal(
+// Przejście 2C — front liczy DOKŁADNIE jak serwer 2A: mieszane CM + owoce morza,
+// poziom CM po ZŁ (matryca 2x2), poziom owoców morza po SZTUKACH, VAT per-stawka.
+function computeOrderTotals(
   cart: Record<string, number>,
   products: Product[],
   cennikTier: CennikTier,
   priceMode: PriceMode,
-): { tier: Tier; total: number; hurtNominal?: number } {
-  const sumWith = (selector: (p: Product) => number | null): number =>
-    Object.entries(cart).reduce((sum, [id, qty]) => {
-      if (qty <= 0) return sum
-      const p = products.find((pp) => pp.id === id)
+): {
+  tier: Tier
+  cmTier: Tier | null
+  seafoodTier: StandardTier | null
+  seafoodSzt: number
+  totalNet: number
+  totalVat: number
+  totalBrutto: number
+} {
+  const entries = Object.entries(cart).filter(([, q]) => q > 0)
+  const prodOf = (id: string): Product | undefined => products.find((p) => p.id === id)
+  const isSeafood = (id: string): boolean => prodOf(id)?.grupa === 'owoce_morza'
+  const cmEntries = entries.filter(([id]) => !isSeafood(id))
+  const seafoodEntries = entries.filter(([id]) => isSeafood(id))
+
+  const sumSubset = (
+    subset: Array<[string, number]>,
+    selector: (p: Product) => number | null,
+  ): number =>
+    subset.reduce((sum, [id, qty]) => {
+      const p = prodOf(id)
       if (!p) return sum
       const price = selector(p)
       if (price == null) return sum
       return sum + qty * price
     }, 0)
 
-  if (cennikTier === 'wielki_hurt' && priceMode === 'auto') {
-    const hurtNominal = sumWith((p) => p.prices.hurt_wh)
-    if (hurtNominal >= WH_HURT_THRESHOLD) {
-      return { tier: 'wielki_hurt', total: sumWith((p) => p.prices.wielki_hurt), hurtNominal }
+  // ── CM (Czudowa Marka / nie-seafood) — istniejąca matryca, na podzbiorze CM ──
+  let cmTier: Tier | null = null
+  let cmTotal = 0
+  if (cmEntries.length > 0) {
+    if (cennikTier === 'wielki_hurt' && priceMode === 'auto') {
+      const hurtNominal = sumSubset(cmEntries, (p) => p.prices.hurt_wh)
+      if (hurtNominal >= WH_HURT_THRESHOLD) {
+        cmTier = 'wielki_hurt'
+        cmTotal = sumSubset(cmEntries, (p) => p.prices.wielki_hurt)
+      } else {
+        cmTier = 'wielki_hurt_entry'
+        cmTotal = hurtNominal
+      }
+    } else if (cennikTier === 'wielki_hurt') {
+      cmTier = 'wielki_hurt'
+      cmTotal = sumSubset(cmEntries, (p) => p.prices.wielki_hurt)
+    } else if (priceMode === 'minimum') {
+      cmTier = 'duzy'
+      cmTotal = sumSubset(cmEntries, (p) => p.prices.duzy)
+    } else {
+      let t: StandardTier = 'maly'
+      for (let i = 0; i < 4; i++) {
+        cmTotal = sumSubset(cmEntries, (p) => p.prices[t])
+        const nt: StandardTier = cmTotal < 2000 ? 'maly' : cmTotal <= 4000 ? 'sredni' : 'duzy'
+        if (nt === t) break
+        t = nt
+      }
+      cmTier = t
     }
-    return { tier: 'wielki_hurt_entry', total: hurtNominal, hurtNominal }
   }
-  if (cennikTier === 'wielki_hurt') {
-    return { tier: 'wielki_hurt', total: sumWith((p) => p.prices.wielki_hurt) }
+
+  // ── Owoce morza — tylko standard, poziom wg SUMY SZTUK (1 szt = 1 kg) ──
+  let seafoodTier: StandardTier | null = null
+  let seafoodSzt = 0
+  let seafoodTotal = 0
+  if (seafoodEntries.length > 0) {
+    seafoodSzt = seafoodEntries.reduce((sum, [, q]) => sum + q, 0)
+    const sfTier: StandardTier =
+      priceMode === 'minimum'
+        ? 'duzy'
+        : seafoodSzt < 100
+          ? 'maly'
+          : seafoodSzt <= 300
+            ? 'sredni'
+            : 'duzy'
+    seafoodTier = sfTier
+    seafoodTotal = sumSubset(seafoodEntries, (p) => p.prices[sfTier])
   }
-  if (priceMode === 'minimum') {
-    return { tier: 'duzy', total: sumWith((p) => p.prices.duzy) }
+
+  // Cena jednostkowa per-produkt wg gałęzi (do VAT i wyświetlania).
+  const unitPriceOf = (p: Product): number => {
+    if (p.grupa === 'owoce_morza') return seafoodTier ? p.prices[seafoodTier] ?? 0 : 0
+    return cmTier ? p.prices[tierToPriceKey(cmTier)] ?? 0 : 0
   }
-  let tier: StandardTier = 'maly'
-  let total = 0
-  for (let i = 0; i < 4; i++) {
-    total = sumWith((p) => p.prices[tier])
-    const newTier: StandardTier = total < 2000 ? 'maly' : total <= 4000 ? 'sredni' : 'duzy'
-    if (newTier === tier) return { tier, total }
-    tier = newTier
+
+  const totalNet = cmTotal + seafoodTotal
+
+  // VAT MIESZANY — lustro serwera 2A: netto per stawka, round do grosza per stawka, suma.
+  const netByVat = new Map<number, number>()
+  for (const [id, qty] of entries) {
+    const p = prodOf(id)
+    if (!p) continue
+    const net = qty * unitPriceOf(p)
+    const rate = p.vat_rate ?? 0
+    netByVat.set(rate, (netByVat.get(rate) ?? 0) + net)
   }
-  return { tier, total }
+  let totalVat = 0
+  netByVat.forEach((net, rate) => {
+    totalVat += Math.round(net * rate * 100) / 100
+  })
+  totalVat = Math.round(totalVat * 100) / 100
+  const totalBrutto = Math.round((totalNet + totalVat) * 100) / 100
+
+  const tier: Tier = cmTier ?? seafoodTier ?? 'maly'
+  return { tier, cmTier, seafoodTier, seafoodSzt, totalNet, totalVat, totalBrutto }
 }
 
 // ─── Local form types ─────────────────────────────────────────────────────────
@@ -312,10 +385,15 @@ export function OrderForm({
     return m
   }, [carts])
 
-  const { tier, total, hurtNominal } = useMemo(
-    () => computeTierAndTotal(mergedCart, products, cennikTier, priceMode),
+  const { tier, cmTier, seafoodTier, seafoodSzt, totalNet, totalVat, totalBrutto } = useMemo(
+    () => computeOrderTotals(mergedCart, products, cennikTier, priceMode),
     [mergedCart, products, cennikTier, priceMode],
   )
+  // Przejście 2C — cena jednostkowa per-produkt wg jego gałęzi (CM albo owoce morza).
+  const productUnitPrice = (p: Product): number => {
+    if (p.grupa === 'owoce_morza') return seafoodTier ? p.prices[seafoodTier] ?? 0 : 0
+    return cmTier ? p.prices[tierToPriceKey(cmTier)] ?? 0 : 0
+  }
   const totalItems = useMemo(
     () => Object.values(mergedCart).filter((q) => q > 0).length,
     [mergedCart],
@@ -324,7 +402,8 @@ export function OrderForm({
   const podgrupy = useMemo(() => {
     const map = new Map<string, Product[]>()
     for (const p of products) {
-      if (p.grupa && p.grupa !== 'czudowa_marka') continue // tylko czudowa_marka (owoce morza = Przejście 2)
+      // Przejście 2C-fix — buduj zakładki z WSZYSTKICH show_in_orders (CM + owoce morza).
+      // Podgrupy nie kolidują: kiszonki/surowki/warzywa_gotowane vs kalmary/filety_rybne.
       const key = p.podgrupa ?? '__inne__'
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(p)
@@ -1294,7 +1373,32 @@ export function OrderForm({
                   )
                 })}
               </div>
-              <div className="px-5 pt-1 text-[11px] text-slate-400">marka partnerska — Czudowa Marka</div>
+              <div className="px-5 pt-1 text-[11px] text-slate-400">
+                {podgrupy.find((g) => g.key === activePodgrupa)?.items[0]?.grupa === 'owoce_morza'
+                  ? 'Owoce morza — Ziomek Fish'
+                  : 'marka partnerska — Czudowa Marka'}
+              </div>
+
+              {/* Przejście 2C — plansza poziomu owoców morza wg sumy szt (całe zamówienie) */}
+              {seafoodSzt > 0 && (
+                <div
+                  className="mx-4 mt-2 rounded-lg bg-[#eef3f9] px-3 py-2"
+                  style={{ borderLeft: '3px solid #1F3A5F' }}
+                >
+                  <div className="text-[12px] font-bold text-[#1F3A5F]">
+                    Owoce morza: {seafoodSzt} szt → poziom{' '}
+                    {seafoodTier === 'duzy' ? 'Duży' : seafoodTier === 'sredni' ? 'Średni' : 'Mały'}
+                    {isMinimum && ' (cena minimalna)'}
+                  </div>
+                  {!isMinimum && seafoodTier !== 'duzy' && (
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      {seafoodTier === 'maly'
+                        ? `Do poziomu Średni brakuje ${100 - seafoodSzt} szt (lepsza cena od 100 szt).`
+                        : `Do poziomu Duży brakuje ${301 - seafoodSzt} szt (najlepsza cena powyżej 300 szt).`}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Lista produktów aktywnej podgrupy */}
               <div className="p-4 space-y-2 max-h-[52vh] overflow-y-auto">
@@ -1304,10 +1408,12 @@ export function OrderForm({
                   if (!pg) return <div className="text-sm text-slate-400">Brak produktów.</div>
                   return pg.items.map((p) => {
                     const isPomidor = /pomidor/i.test(p.name)
-                    const price = p.prices[tierToPriceKey(tier)] ?? 0
+                    const price = productUnitPrice(p)
                     const originalPrice = p.prices.maly
                     const qty = getQty(apId, p.id)
-                    const whAutoUnavailable = isAutoWH && p.prices.hurt_wh == null
+                    // Przejście 2C — seafood nigdy nie jest "Brak w Hurcie" (zawsze standard).
+                    const whAutoUnavailable =
+                      isAutoWH && p.grupa !== 'owoce_morza' && p.prices.hurt_wh == null
                     const unavailable = !p.in_stock || whAutoUnavailable
                     const unit = p.unit ?? 'szt'
                     return (
@@ -1339,7 +1445,7 @@ export function OrderForm({
                               <span className="text-[15px] font-bold text-[#1F3A5F]">
                                 {fmt(price)} zł/{unit}
                               </span>
-                              {tier !== 'maly' && price < originalPrice && (
+                              {price < originalPrice && (
                                 <span className="text-[11px] text-slate-400 line-through">{fmt(originalPrice)} zł</span>
                               )}
                             </div>
@@ -1405,7 +1511,7 @@ export function OrderForm({
                 </button>
                 <div className="flex-1 min-w-0 text-[14px] font-bold leading-tight">
                   Koszyk: {totalItems} {totalItems === 1 ? 'pozycja' : 'pozycji'}
-                  <span className="block text-[12px] font-medium text-white/80">Suma netto: {fmt(total)} zł</span>
+                  <span className="block text-[12px] font-medium text-white/80">Suma netto: {fmt(totalNet)} zł</span>
                 </div>
                 <button
                   type="button"
@@ -1466,7 +1572,7 @@ export function OrderForm({
                         lines.map(([pid, q]) => {
                           const prod = products.find((pp) => pp.id === pid)
                           if (!prod) return null
-                          const price = prod.prices[tierToPriceKey(tier)] ?? 0
+                          const price = productUnitPrice(prod)
                           return (
                             <div key={pid} className="px-3 py-2 flex items-baseline gap-3 text-xs">
                               <div className="flex-1 min-w-0">
@@ -1497,15 +1603,15 @@ export function OrderForm({
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="opacity-80">Suma netto</span>
-                  <span>{fmt(total)} zł</span>
+                  <span>{fmt(totalNet)} zł</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="opacity-80">VAT 5%</span>
-                  <span>{fmt(total * 0.05)} zł</span>
+                  <span className="opacity-80">VAT</span>
+                  <span>{fmt(totalVat)} zł</span>
                 </div>
                 <div className="border-t border-white/20 pt-1.5 flex justify-between text-base font-bold">
                   <span>Razem brutto</span>
-                  <span>{fmt(total * 1.05)} zł</span>
+                  <span>{fmt(totalBrutto)} zł</span>
                 </div>
                 <div className="text-[10px] text-white/60 pt-1">
                   Ostateczne ceny potwierdza system po złożeniu zamówienia.
