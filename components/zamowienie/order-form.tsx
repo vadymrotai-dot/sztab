@@ -1,23 +1,28 @@
 // components/zamowienie/order-form.tsx
-// Sprint S-ORDER.1.B.2 (19.05.2026) — public 5-step order wizard.
-// Theme: navy #1F2B4A + amber #F59E0B + emerald #10B981 (tier upgraded).
-// Mobile-first, max-w-md frame, sticky tier banner on step 2.
-
+// Przejście 1B (T-ORDER.5-UI, 31.05.2026) — przepisany formularz pod prototyp A1.
+//   Ekran startowy (Powtórz / Szablon / Nowe) → 3 kroki (Dostawa → Produkty →
+//   Podsumowanie). Multipoint (jeden/kilka punktów), koszyk per punkt, profil
+//   zapisanych punktów (initial.saved_delivery_points), szablony pełny snapshot.
+// CENY: UI nie liczy — wysyła product_id + qty + delivery_point_index. Serwer
+//   liczy tier z cennik_tier×price_mode (na orderze). computeTierAndTotal tu jest
+//   TYLKO do wyświetlania orientacyjnego.
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Minus,
   Plus,
   ChevronRight,
   ChevronLeft,
-  ChevronDown,
   CheckCircle2,
   Loader2,
+  Trash2,
+  MapPin,
+  Star,
+  RotateCcw,
+  FilePlus,
 } from 'lucide-react'
 
-// Sprint S-CENNIK-WH.1 (26.05.2026) — wielki_hurt 4-й tier (locked).
-// Sprint S-CENNIK-WH.2 (26.05.2026) — wielki_hurt_entry 5-й tier (Hurt < 10k).
 type StandardTier = 'maly' | 'sredni' | 'duzy'
 type Tier = StandardTier | 'wielki_hurt' | 'wielki_hurt_entry'
 type CennikTier = 'standard' | 'wielki_hurt'
@@ -30,20 +35,29 @@ type Product = {
   name: string
   gramatura: string | null
   category: string | null
-  // Sprint T-ORDER.4a-UI (30.05.2026) — 2-poziomowa hierarchia + in_stock + jednostka.
-  grupa: string | null      // 'czudowa_marka' | 'owoce_morza' | NULL (legacy)
-  podgrupa: string | null   // 'kiszonki' | 'surowki' | 'warzywa_gotowane' | 'kalmary' | 'filety_rybne' | NULL
-  in_stock: boolean         // FALSE = niedostępny, wygaszony w UI, kontrolki disabled
-  unit: string | null       // 'szt' (dziś wszystko); wyświetlane obok qty
+  grupa: string | null
+  podgrupa: string | null
+  in_stock: boolean
+  unit: string | null
   sort: number | null
   prices: {
     maly: number
     sredni: number
     duzy: number
     wielki_hurt: number
-    // Sprint S-CENNIK-WH.2 — Hurt entry-tier (NULL if SKU не jest w WH cenniku Hurt)
     hurt_wh: number | null
   }
+}
+
+type SavedPoint = {
+  id: string
+  nazwa: string | null
+  ulica: string | null
+  kod_pocztowy: string | null
+  miasto: string | null
+  typ_punktu: string | null
+  odbiorca_imie: string | null
+  odbiorca_telefon: string | null
 }
 
 export type OrderInitial = {
@@ -57,9 +71,7 @@ export type OrderInitial = {
     delivery_address: string | null
     preferred_delivery_date: string | null
     customer_notes: string | null
-    // Sprint S-CENNIK-WH.1 — tier locked at offer-send.
     cennik_tier: CennikTier
-    // Sprint S-CENNIK-WH.2 — price mode locked at offer-send (matrix 2x2)
     price_mode: PriceMode
   }
   client: {
@@ -71,6 +83,10 @@ export type OrderInitial = {
     phone: string
   } | null
   products: Product[]
+  // Przejście 1B — zapisane punkty dostawy klienta (z loadera, profil).
+  saved_delivery_points?: SavedPoint[]
+  // Poprawki 1B — czy klient ma już zgodę marketingową.
+  has_marketing_consent?: boolean
 }
 
 type SubmitOk = {
@@ -90,14 +106,17 @@ const TIER_LABEL: Record<Tier, string> = {
   wielki_hurt_entry: 'Hurt',
 }
 
-const TIER_NEXT_THRESHOLD: Record<StandardTier, number | null> = {
-  maly: 2000,
-  sredni: 4000,
-  duzy: null,
+const PODGRUPA_LABEL: Record<string, string> = {
+  kiszonki: 'Kiszonki',
+  surowki: 'Surówki',
+  warzywa_gotowane: 'Warzywa gotowane',
+  __inne__: 'Inne',
 }
+const PODGRUPA_ORDER = ['kiszonki', 'surowki', 'warzywa_gotowane']
 
-// Sprint S-CENNIK-WH.2 — map TierAtSubmit (5 values) → Product.prices key (5 keys).
-// Note: 'wielki_hurt_entry' tier reads price з 'hurt_wh' field (different naming).
+const MARKETING_CONSENT_TEXT =
+  'Zgadzam się na otrzymywanie ofert handlowych i informacji marketingowych od Ziomek Fish sp. z o.o. drogą elektroniczną (e-mail). Zgodę mogę wycofać w każdej chwili.'
+
 function tierToPriceKey(t: Tier): keyof Product['prices'] {
   if (t === 'wielki_hurt_entry') return 'hurt_wh'
   return t
@@ -107,11 +126,7 @@ function fmt(n: number): string {
   return n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-// Sprint S-CENNIK-WH.2 — Matrix 2x2 (cennikTier × priceMode):
-//   standard + auto    → iterate maly/sredni/duzy (calcTier z 2k/4k thresholds)
-//   standard + minimum → locked 'duzy'
-//   wielki_hurt + auto → 10k hurt nominal threshold: <10k 'wielki_hurt_entry', >=10k 'wielki_hurt'
-//   wielki_hurt + min  → locked 'wielki_hurt'
+// Orientacyjny tier+total DO WYŚWIETLENIA (serwer i tak przelicza).
 function computeTierAndTotal(
   cart: Record<string, number>,
   products: Product[],
@@ -141,17 +156,77 @@ function computeTierAndTotal(
   if (priceMode === 'minimum') {
     return { tier: 'duzy', total: sumWith((p) => p.prices.duzy) }
   }
-  // standard + auto
   let tier: StandardTier = 'maly'
   let total = 0
   for (let i = 0; i < 4; i++) {
     total = sumWith((p) => p.prices[tier])
-    const newTier: StandardTier =
-      total < 2000 ? 'maly' : total <= 4000 ? 'sredni' : 'duzy'
+    const newTier: StandardTier = total < 2000 ? 'maly' : total <= 4000 ? 'sredni' : 'duzy'
     if (newTier === tier) return { tier, total }
     tier = newTier
   }
   return { tier, total }
+}
+
+// ─── Local form types ─────────────────────────────────────────────────────────
+type FormPoint = {
+  localId: string
+  label: string
+  ulica: string
+  miasto: string
+  kod_pocztowy: string
+  typ: 'dostawa' | 'odbior'
+  termin_typ: 'najblizszy' | 'data'
+  preferred_date: string
+  odbiorca_imie: string
+  odbiorca_telefon: string
+  prefilled: boolean
+}
+
+type TemplatePoint = {
+  label?: string | null
+  ulica?: string | null
+  miasto?: string | null
+  kod_pocztowy?: string | null
+  typ?: string | null
+  termin_typ?: string | null
+  preferred_date?: string | null
+  odbiorca_imie?: string | null
+  odbiorca_telefon?: string | null
+}
+type Template = {
+  id: string
+  nazwa: string
+  pozycje: Array<{ product_id: string; qty: number; delivery_point_index?: number }>
+  delivery_mode?: 'jeden' | 'kilka'
+  documents_mode?: 'wspolna' | 'osobne'
+  delivery_points?: TemplatePoint[]
+  wspolna_data?: boolean
+  wspolny_termin_typ?: 'najblizszy' | 'data' | null
+  wspolny_preferred_date?: string | null
+  utworzyl: string
+  created_at: string
+}
+
+let _idc = 0
+function newId(): string {
+  _idc += 1
+  return 'p' + _idc + '_' + Math.random().toString(36).slice(2, 7)
+}
+function emptyPoint(over: Partial<FormPoint> = {}): FormPoint {
+  return {
+    localId: newId(),
+    label: '',
+    ulica: '',
+    miasto: '',
+    kod_pocztowy: '',
+    typ: 'dostawa',
+    termin_typ: 'najblizszy',
+    preferred_date: '',
+    odbiorca_imie: '',
+    odbiorca_telefon: '',
+    prefilled: false,
+    ...over,
+  }
 }
 
 export function OrderForm({
@@ -162,269 +237,307 @@ export function OrderForm({
   initial: OrderInitial
 }) {
   const { client, products } = initial
-  // Sprint S-CENNIK-WH.1 — cennik_tier locked at offer-send.
+  const savedPoints = initial.saved_delivery_points ?? []
   const cennikTier: CennikTier = initial.order.cennik_tier ?? 'standard'
-  // Sprint S-CENNIK-WH.2 — price_mode locked at offer-send (matrix 2x2)
   const priceMode: PriceMode = initial.order.price_mode ?? 'auto'
   const isWielkiHurt = cennikTier === 'wielki_hurt'
   const isMinimum = priceMode === 'minimum'
   const isAutoStandard = cennikTier === 'standard' && priceMode === 'auto'
   const isAutoWH = cennikTier === 'wielki_hurt' && priceMode === 'auto'
-  const clientName = client?.title ?? ''
-  const firstWord = clientName.split(' ')[0] || 'Kliencie'
+  const firstWord = (client?.title ?? '').split(' ')[0] || 'Kliencie'
 
-  // Sprint T-ORDER.4a-SHELL (30.05.2026) — przebudowa szkieletu pod wariant-A-final:
-  // dwa stany zamiast 5-krokowego linearnego wizard.
-  //   showWelcome=true (initial) → ekran Witaj z onboardingiem, po kliknięciu
-  //     "Rozpocznij zamówienie" przechodzi do tabs.
-  //   activeTab → po welcome, przełączanie "produkty"|"dostawa" tabs.
-  //   submitResult !== null → ekran potwierdzenia (terminal state, zastępuje tabs).
-  // Logika cen / submitOrder / cart / setQty BEZ ZMIAN.
-  const [showWelcome, setShowWelcome] = useState(true)
-  const [activeTab, setActiveTab] = useState<'produkty' | 'dostawa'>('produkty')
-  const [cart, setCart] = useState<Record<string, number>>({})
-  // Sprint T-ORDER.4a-SHELL — search query filtruje akordeon na żywo.
-  const [searchQuery, setSearchQuery] = useState('')
-  // Sprint T-ORDER.4a-SHELL — szablony klienta (lazy load on click).
-  type Template = {
-    id: string
-    nazwa: string
-    pozycje: Array<{ product_id: string; qty: number }>
-    utworzyl: string
-    created_at: string
-  }
-  const [templates, setTemplates] = useState<Template[] | null>(null)
-  const [showTemplatesPanel, setShowTemplatesPanel] = useState(false)
-  const [templatesLoading, setTemplatesLoading] = useState(false)
-  const [actionNotice, setActionNotice] = useState<string | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
+  const [screen, setScreen] = useState<'start' | 'form'>('start')
+  const [step, setStep] = useState<1 | 2 | 3>(1)
+
+  const [deliveryMode, setDeliveryMode] = useState<'jeden' | 'kilka'>('jeden')
+  const [documentsMode, setDocumentsMode] = useState<'wspolna' | 'osobne'>('wspolna')
+  const [points, setPoints] = useState<FormPoint[]>([emptyPoint()])
+  const [wspolnaData, setWspolnaData] = useState(false)
+  const [wspolnyTerminTyp, setWspolnyTerminTyp] = useState<'najblizszy' | 'data'>('najblizszy')
+  const [wspolnyPreferredDate, setWspolnyPreferredDate] = useState('')
+
+  const [carts, setCarts] = useState<Record<string, Record<string, number>>>({})
+  const [activePointId, setActivePointId] = useState<string>('')
+  const [activePodgrupa, setActivePodgrupa] = useState<string>('')
 
   const [contactPerson, setContactPerson] = useState(initial.order.contact_person ?? '')
   const [contactPhone, setContactPhone] = useState(initial.order.contact_phone ?? client?.phone ?? '')
   const [contactEmail, setContactEmail] = useState(initial.order.contact_email ?? client?.email ?? '')
-  const [deliveryAddress, setDeliveryAddress] = useState(
-    initial.order.delivery_address ??
-      [client?.address, client?.city].filter(Boolean).join(', '),
-  )
-  const [preferredDate, setPreferredDate] = useState<string>(initial.order.preferred_delivery_date ?? '')
+  const [contactPrefilled, setContactPrefilled] = useState(false)
   const [notes, setNotes] = useState(initial.order.customer_notes ?? '')
-  const [termsAccepted, setTermsAccepted] = useState(false)
+  // Poprawki 1B — źródło wypełnienia (banner profilu tylko dla 'new').
+  const [source, setSource] = useState<'new' | 'repeat' | 'template'>('new')
+  // Poprawki 1B — dobrowolna zgoda marketingowa (galochka, nie blokuje submitu).
+  const [marketingConsent, setMarketingConsent] = useState(false)
+
+  const [templates, setTemplates] = useState<Template[] | null>(null)
+  const [templatesLoading, setTemplatesLoading] = useState(false)
+  const [showTemplates, setShowTemplates] = useState(false)
+  const [lastHasHistory, setLastHasHistory] = useState(false)
+  const lastDataRef = useRef<any>(null)
+
+  const [selectedSaved, setSelectedSaved] = useState<Set<string>>(new Set())
+
+  const [actionNotice, setActionNotice] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitResult, setSubmitResult] = useState<SubmitOk | null>(null)
 
-  const { tier, total, hurtNominal } = useMemo(
-    () => computeTierAndTotal(cart, products, cennikTier, priceMode),
-    [cart, products, cennikTier, priceMode],
-  )
-  const itemsCount = useMemo(
-    () => Object.values(cart).reduce((s, q) => s + (q > 0 ? 1 : 0), 0),
-    [cart],
-  )
-  const cartNotEmpty = itemsCount > 0
-  // Sprint T-ORDER.4a-UI-FIX (30.05.2026) — suma kg w koszyku dla paska na dole.
-  // gramatura jest TEXT free-form ("3000 g", "5000g / ~3000g", "1 kg") — bierzemy
-  // PIERWSZĄ liczbę z stringa + heurystycznie zakładamy że gramy chyba że jest "kg".
-  // Bezpieczny fallback dla NULL/parse fail → 0.
-  const totalKg = useMemo(() => {
-    let grams = 0
-    for (const [pid, qty] of Object.entries(cart)) {
-      if (qty <= 0) continue
-      const p = products.find((pp) => pp.id === pid)
-      if (!p || !p.gramatura) continue
-      const m = p.gramatura.match(/(\d+(?:[.,]\d+)?)/)
-      if (!m) continue
-      const num = Number(m[1]!.replace(',', '.'))
-      if (!Number.isFinite(num)) continue
-      const isKg = /\bkg\b/i.test(p.gramatura)
-      grams += qty * (isKg ? num * 1000 : num)
-    }
-    return grams / 1000
-  }, [cart, products])
-
-  // Sprint T-ORDER.4a-SHELL-FIX (30.05.2026) — przeniesione PRZED groupedHierarchy
-  // bo TDZ: deps array [filteredProducts] w groupedHierarchy odwoływał się do
-  // const filteredProducts deklarowanej dopiero ~L368 → ReferenceError runtime 500.
-  // Sprint T-ORDER.4a-SHELL — filter products przez searchQuery (case-insensitive
-  // match na p.name + p.gramatura). Pusty query → zwraca wszystkie products.
-  const filteredProducts = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
-    if (!q) return products
-    return products.filter((p) => {
-      if (p.name.toLowerCase().includes(q)) return true
-      if (p.gramatura && p.gramatura.toLowerCase().includes(q)) return true
-      return false
-    })
-  }, [products, searchQuery])
-
-  // Sprint T-ORDER.4a-UI (30.05.2026) — 2-poziomowe grupowanie grupa → podgrupa.
-  // Kolejność grup: czudowa_marka, owoce_morza, inne/null na końcu.
-  // W obrębie podgrupy sort wg `sort` (= order_form_sort).
-  const groupedHierarchy = useMemo(() => {
-    type GroupedSub = { key: string; items: Product[] }
-    type GroupedTop = { key: string; subs: GroupedSub[] }
-
-    const tmp = new Map<string, Map<string, Product[]>>()
-    // Sprint T-ORDER.4a-SHELL — używamy filteredProducts (po search) zamiast products,
-    // żeby akordeon na żywo pokazywał tylko pasujące.
-    for (const p of filteredProducts) {
-      const g = p.grupa ?? '__inne__'
-      const s = p.podgrupa ?? '__inne__'
-      if (!tmp.has(g)) tmp.set(g, new Map())
-      const subMap = tmp.get(g)!
-      if (!subMap.has(s)) subMap.set(s, [])
-      subMap.get(s)!.push(p)
-    }
-    // Sort items in each subgroup by `sort` then name
-    for (const subMap of tmp.values()) {
-      for (const arr of subMap.values()) {
-        arr.sort((a, b) => {
-          const sa = a.sort ?? 9999
-          const sb = b.sort ?? 9999
-          return sa - sb || a.name.localeCompare(b.name, 'pl')
-        })
-      }
-    }
-
-    const TOP_ORDER = ['czudowa_marka', 'owoce_morza']
-    const result: GroupedTop[] = []
-    // Najpierw grupy w fixed order
-    for (const g of TOP_ORDER) {
-      if (tmp.has(g)) {
-        result.push({
-          key: g,
-          subs: [...tmp.get(g)!.entries()].map(([key, items]) => ({ key, items })),
-        })
-        tmp.delete(g)
-      }
-    }
-    // Reszta (włącznie z __inne__) na końcu, posortowane alfabetycznie
-    const rest = [...tmp.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-    for (const [g, subMap] of rest) {
-      result.push({
-        key: g,
-        subs: [...subMap.entries()].map(([key, items]) => ({ key, items })),
-      })
-    }
-    return result
-  }, [filteredProducts])
-
-  // Sprint T-ORDER.4a-UI — etykiety PL dla grupa/podgrupa.
-  const GRUPA_LABEL: Record<string, string> = {
-    czudowa_marka: 'Czudowa Marka',
-    owoce_morza: 'Owoce morza',
-    __inne__: 'Inne',
-  }
-  const PODGRUPA_LABEL: Record<string, string> = {
-    kiszonki: 'Kiszonki',
-    surowki: 'Surówki',
-    warzywa_gotowane: 'Warzywa gotowane',
-    kalmary: 'Kalmary',
-    filety_rybne: 'Filety rybne',
-    __inne__: 'Inne',
-  }
-  // Sprint T-ORDER.4a-UI-FIX (30.05.2026) — badge marki obok nazwy grupy
-  // w prototypowym wyglądzie. Czudowa Marka = partnerska, Owoce morza = Ziomek Fish własna.
-  const BRAND_BADGE: Record<string, string> = {
-    czudowa_marka: 'marka partnerska',
-    owoce_morza: 'Ziomek Fish',
-  }
-
-  // Sprint T-ORDER.4a-UI — collapse state dla akordeonu (grupy + podgrupy).
-  // Klucze: 'g:<grupa>' dla grupy, 's:<grupa>:<podgrupa>' dla podgrupy.
-  // Domyślnie: wszystkie grupy rozwinięte + PIERWSZA podgrupa w każdej grupie
-  // rozwinięta, reszta podgrup zwinięte (wariant-A-final z prototypu).
-  const initialOpen = useMemo(() => {
-    const open = new Set<string>()
-    const isSearching = searchQuery.trim().length > 0
-    for (const grp of groupedHierarchy) {
-      open.add(`g:${grp.key}`)
-      if (isSearching) {
-        // Sprint T-ORDER.4a-SHELL — przy aktywnym search rozwijamy WSZYSTKIE
-        // pasujące podgrupy żeby użytkownik widział trafienia bez klikania.
-        for (const sub of grp.subs) {
-          open.add(`s:${grp.key}:${sub.key}`)
-        }
-      } else if (grp.subs.length > 0) {
-        open.add(`s:${grp.key}:${grp.subs[0]!.key}`)
-      }
-    }
-    return open
-  }, [groupedHierarchy, searchQuery])
-  const [openKeys, setOpenKeys] = useState<Set<string>>(initialOpen)
-  // Sync openKeys gdy hierarchia się zmieni (np. po pierwszym fetch albo po
-  // zmianie tier który ukryje/odsłoni SKU). Pattern: trzymamy "initialized"
-  // flag — pierwsza hydracja z initialOpen, po tym user-driven toggles
-  // mają pierwszeństwo i nie nadpisujemy ich. Re-hydracja TYLKO gdy
-  // openKeys stało się puste (np. SSR fallback).
+  // /last fetch on mount — żeby wiedzieć czy pokazać "Powtórz".
   useEffect(() => {
-    // Sprint T-ORDER.4a-SHELL — hydracja PRZY zmianie searchQuery (search → expand all,
-    // wyczyść search → przywróć default expand). Bez search → tylko initial mount.
-    if (searchQuery.trim().length > 0) {
-      setOpenKeys(initialOpen)
-    } else if (openKeys.size === 0 && initialOpen.size > 0) {
-      setOpenKeys(initialOpen)
+    let active = true
+    fetch(`/api/orders/${token}/last`, { method: 'GET' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!active) return
+        lastDataRef.current = d
+        if (d && d.ok && d.has_history) setLastHasHistory(true)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialOpen])
+  }, [token])
 
-  function toggleKey(key: string) {
-    setOpenKeys((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
+  // ─── Pochodne ───────────────────────────────────────────────────────────────
+  const mergedCart = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const pc of Object.values(carts)) {
+      for (const [pid, q] of Object.entries(pc)) {
+        if (q > 0) m[pid] = (m[pid] ?? 0) + q
+      }
+    }
+    return m
+  }, [carts])
+
+  const { tier, total, hurtNominal } = useMemo(
+    () => computeTierAndTotal(mergedCart, products, cennikTier, priceMode),
+    [mergedCart, products, cennikTier, priceMode],
+  )
+  const totalItems = useMemo(
+    () => Object.values(mergedCart).filter((q) => q > 0).length,
+    [mergedCart],
+  )
+
+  const podgrupy = useMemo(() => {
+    const map = new Map<string, Product[]>()
+    for (const p of products) {
+      if (p.grupa && p.grupa !== 'czudowa_marka') continue // tylko czudowa_marka (owoce morza = Przejście 2)
+      const key = p.podgrupa ?? '__inne__'
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(p)
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => (a.sort ?? 9999) - (b.sort ?? 9999) || a.name.localeCompare(b.name, 'pl'))
+    }
+    const keys = [...map.keys()].sort((a, b) => {
+      const ia = PODGRUPA_ORDER.indexOf(a)
+      const ib = PODGRUPA_ORDER.indexOf(b)
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b)
+    })
+    return keys.map((k) => ({ key: k, items: map.get(k)! }))
+  }, [products])
+
+  // ─── Cart ops ────────────────────────────────────────────────────────────────
+  function getQty(pointId: string, productId: string): number {
+    return carts[pointId]?.[productId] ?? 0
+  }
+  function setQty(pointId: string, productId: string, qty: number) {
+    setCarts((prev) => {
+      const pc = { ...(prev[pointId] ?? {}) }
+      if (qty <= 0) delete pc[productId]
+      else pc[productId] = Math.min(9999, Math.max(1, Math.floor(qty)))
+      return { ...prev, [pointId]: pc }
     })
   }
-
-  // Sprint T-ORDER.4a-SHELL — wczytaj cart z listy {product_id, qty}.
-  // Używane przez Powtórz zamówienie + Szablony. Pomija qty<=0.
-  function fillCartFromList(list: Array<{ product_id: string; qty: number }>) {
-    const next: Record<string, number> = {}
-    for (const item of list) {
-      if (item.qty <= 0) continue
-      // Validate że product istnieje (filter list już to robi server-side,
-      // ale defense-in-depth — jeśli admin usunął SKU między fetch i klik).
-      const p = products.find((pp) => pp.id === item.product_id)
-      if (!p) continue
-      if (p.in_stock === false) continue
-      next[item.product_id] = Math.min(9999, Math.max(1, Math.floor(item.qty)))
-    }
-    setCart(next)
+  function pointItemCount(pointId: string): number {
+    const pc = carts[pointId]
+    if (!pc) return 0
+    return Object.values(pc).filter((q) => q > 0).length
   }
 
-  // Sprint T-ORDER.4a-SHELL — Powtórz zamówienie: GET /api/orders/[token]/last
-  async function handleRepeatOrder() {
-    setActionError(null)
+  // ─── Punkty ──────────────────────────────────────────────────────────────────
+  function updatePoint(localId: string, patch: Partial<FormPoint>) {
+    setPoints((prev) => prev.map((p) => (p.localId === localId ? { ...p, ...patch, prefilled: false } : p)))
+  }
+  function addPoint() {
+    const np = emptyPoint()
+    setPoints((prev) => [...prev, np])
+    setCarts((c) => ({ ...c, [np.localId]: {} }))
+  }
+  function removePoint(localId: string) {
+    if (points.length <= 2) return
+    const remaining = points.filter((p) => p.localId !== localId)
+    setPoints(remaining)
+    setCarts((c) => {
+      const n = { ...c }
+      delete n[localId]
+      return n
+    })
+    if (activePointId === localId) setActivePointId(remaining[0]?.localId ?? '')
+  }
+  function setMode(mode: 'jeden' | 'kilka') {
+    if (mode === deliveryMode) return
+    if (mode === 'kilka') {
+      setDeliveryMode('kilka')
+      if (points.length < 2) {
+        const np = emptyPoint()
+        setPoints([...points, np])
+        setCarts({ ...carts, [np.localId]: {} })
+      }
+      setActivePointId(points[0]?.localId ?? '')
+    } else {
+      const first = points[0]
+      setDeliveryMode('jeden')
+      setWspolnaData(false)
+      setDocumentsMode('wspolna')
+      setPoints([first])
+      setCarts({ [first.localId]: carts[first.localId] ?? {} })
+      setActivePointId(first.localId)
+    }
+  }
+
+  // ─── Picker zapisanych punktów (profil) ───────────────────────────────────────
+  function toggleSaved(id: string) {
+    setSelectedSaved((prev) => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+  function useSelectedSaved() {
+    const chosen = savedPoints.filter((sp) => selectedSaved.has(sp.id))
+    if (chosen.length === 0) return
+    const np = chosen.map((sp) =>
+      emptyPoint({
+        label: sp.nazwa ?? '',
+        ulica: sp.ulica ?? '',
+        miasto: sp.miasto ?? '',
+        kod_pocztowy: sp.kod_pocztowy ?? '',
+        odbiorca_imie: sp.odbiorca_imie ?? '',
+        odbiorca_telefon: sp.odbiorca_telefon ?? '',
+        prefilled: true,
+      }),
+    )
+    setPoints(np)
+    setDeliveryMode(np.length >= 2 ? 'kilka' : 'jeden')
+    const c: Record<string, Record<string, number>> = {}
+    np.forEach((p) => (c[p.localId] = {}))
+    setCarts(c)
+    setActivePointId(np[0].localId)
+    setSelectedSaved(new Set())
+    setSource('new')
+    setActionNotice('Wczytano zapisane punkty z profilu — sprawdź i popraw.')
+  }
+
+  // ─── Akcje ekranu startowego ──────────────────────────────────────────────────
+  function startNew() {
+    const p = emptyPoint()
+    setDeliveryMode('jeden')
+    setDocumentsMode('wspolna')
+    setPoints([p])
+    setCarts({ [p.localId]: {} })
+    setActivePointId(p.localId)
+    setWspolnaData(false)
+    setContactPrefilled(Boolean(client && (client.phone || client.email)))
+    if (podgrupy[0]) setActivePodgrupa(podgrupy[0].key)
+    setSelectedSaved(new Set())
+    setSource('new')
     setActionNotice(null)
-    try {
-      const res = await fetch(`/api/orders/${token}/last`, { method: 'GET' })
-      const data = await res.json()
-      if (!res.ok || !data.ok) {
-        setActionError(data.error ?? 'Nie udało się pobrać poprzedniego zamówienia.')
-        return
-      }
-      if (!data.has_history) {
-        setActionError('Brak wcześniejszych zamówień.')
-        return
-      }
-      if (!data.items || data.items.length === 0) {
-        setActionError('Wszystkie pozycje z poprzedniego zamówienia są obecnie niedostępne.')
-        return
-      }
-      fillCartFromList(data.items)
-      const msg =
-        data.skipped > 0
-          ? `Wypełniono z zamówienia ${data.source_order_number} (część pozycji niedostępna, pominięto ${data.skipped}).`
-          : `Wypełniono z zamówienia ${data.source_order_number}.`
-      setActionNotice(msg)
-    } catch (e) {
-      setActionError('Błąd sieci przy pobieraniu zamówienia.')
-    }
+    setActionError(null)
+    setScreen('form')
+    setStep(1)
   }
 
-  // Sprint T-ORDER.4a-SHELL — Moje szablony: GET /api/orders/[token]/templates
+  function hydrateFromDelivery(
+    dps: TemplatePoint[],
+    mode: string | undefined,
+    docs: string | undefined,
+    legacyAddr: string | null,
+    legacyDate: string | null,
+    items: Array<{ product_id: string; qty: number; delivery_point_index?: number }>,
+  ) {
+    let np: FormPoint[]
+    if (dps.length > 0) {
+      np = dps.map((dp) =>
+        emptyPoint({
+          label: dp.label ?? '',
+          ulica: dp.ulica ?? '',
+          miasto: dp.miasto ?? '',
+          kod_pocztowy: dp.kod_pocztowy ?? '',
+          typ: dp.typ === 'odbior' ? 'odbior' : 'dostawa',
+          termin_typ: dp.termin_typ === 'data' ? 'data' : 'najblizszy',
+          preferred_date: dp.preferred_date ?? '',
+          odbiorca_imie: dp.odbiorca_imie ?? '',
+          odbiorca_telefon: dp.odbiorca_telefon ?? '',
+          prefilled: true,
+        }),
+      )
+    } else {
+      np = [
+        emptyPoint({
+          ulica: legacyAddr ?? '',
+          preferred_date: legacyDate ?? '',
+          termin_typ: legacyDate ? 'data' : 'najblizszy',
+          prefilled: true,
+        }),
+      ]
+    }
+    const finalMode = mode === 'kilka' && np.length >= 2 ? 'kilka' : 'jeden'
+    setDeliveryMode(finalMode)
+    setDocumentsMode(docs === 'osobne' ? 'osobne' : 'wspolna')
+    setPoints(np)
+    const c: Record<string, Record<string, number>> = {}
+    np.forEach((p) => (c[p.localId] = {}))
+    for (const it of items) {
+      if (!it || it.qty <= 0) continue
+      const prod = products.find((pp) => pp.id === it.product_id)
+      if (!prod || prod.in_stock === false) continue
+      const idx =
+        typeof it.delivery_point_index === 'number' && it.delivery_point_index < np.length
+          ? it.delivery_point_index
+          : 0
+      c[np[idx].localId][it.product_id] = Math.min(9999, Math.max(1, Math.floor(it.qty)))
+    }
+    setCarts(c)
+    setActivePointId(np[0].localId)
+    if (podgrupy[0]) setActivePodgrupa(podgrupy[0].key)
+    setContactPrefilled(Boolean(client && (client.phone || client.email)))
+  }
+
+  function doRepeat() {
+    const d = lastDataRef.current
+    if (!d || !d.ok || !d.has_history) {
+      setActionError('Brak wcześniejszych zamówień.')
+      return
+    }
+    if (!d.items || d.items.length === 0) {
+      setActionError('Wszystkie pozycje z poprzedniego zamówienia są obecnie niedostępne.')
+      return
+    }
+    hydrateFromDelivery(
+      Array.isArray(d.delivery_points) ? d.delivery_points : [],
+      d.delivery_mode,
+      d.documents_mode,
+      d.delivery_address ?? null,
+      d.preferred_delivery_date ?? null,
+      d.items,
+    )
+    setSource('repeat')
+    setWspolnaData(false)
+    setActionNotice(
+      d.skipped > 0
+        ? `Wczytano ostatnie zamówienie (pominięto ${d.skipped} niedostępnych pozycji). Sprawdź i popraw.`
+        : 'Wczytano ostatnie zamówienie. Sprawdź i popraw.',
+    )
+    setActionError(null)
+    setScreen('form')
+    setStep(1)
+  }
+
   async function loadTemplates() {
     setTemplatesLoading(true)
     setActionError(null)
@@ -433,11 +546,10 @@ export function OrderForm({
       const data = await res.json()
       if (!res.ok || !data.ok) {
         setActionError(data.error ?? 'Nie udało się załadować szablonów.')
-        setTemplatesLoading(false)
         return
       }
       setTemplates(data.templates ?? [])
-      setShowTemplatesPanel(true)
+      setShowTemplates(true)
     } catch (e) {
       setActionError('Błąd sieci przy ładowaniu szablonów.')
     } finally {
@@ -446,18 +558,110 @@ export function OrderForm({
   }
 
   function applyTemplate(t: Template) {
-    fillCartFromList(t.pozycje)
-    setShowTemplatesPanel(false)
-    setActionNotice(`Wczytano szablon: ${t.nazwa}`)
+    hydrateFromDelivery(
+      Array.isArray(t.delivery_points) ? t.delivery_points : [],
+      t.delivery_mode,
+      t.documents_mode,
+      null,
+      null,
+      t.pozycje ?? [],
+    )
+    setWspolnaData(Boolean(t.wspolna_data))
+    setWspolnyTerminTyp(t.wspolny_termin_typ === 'data' ? 'data' : 'najblizszy')
+    setWspolnyPreferredDate(t.wspolny_preferred_date ?? '')
+    setSource('template')
+    setShowTemplates(false)
+    setActionNotice(`Wczytano szablon: ${t.nazwa}. Sprawdź i popraw.`)
+    setActionError(null)
+    setScreen('form')
+    setStep(1)
   }
 
-  // Sprint T-ORDER.4a-SHELL — Zapisz aktualny cart jako szablon (POST).
+  // ─── Payload builders ──────────────────────────────────────────────────────────
+  function buildPointsPayload() {
+    return points.map((p) => {
+      const useWspolny = deliveryMode === 'kilka' && wspolnaData
+      const tt = useWspolny ? wspolnyTerminTyp : p.termin_typ
+      const pd = tt === 'data' ? (useWspolny ? wspolnyPreferredDate : p.preferred_date) || null : null
+      return {
+        label: p.label.trim() || null,
+        ulica: p.ulica.trim(),
+        miasto: p.miasto.trim(),
+        kod_pocztowy: p.kod_pocztowy.trim() || null,
+        typ: p.typ,
+        termin_typ: tt,
+        preferred_date: pd,
+        odbiorca_imie: p.odbiorca_imie.trim() || null,
+        odbiorca_telefon: p.odbiorca_telefon.trim() || null,
+      }
+    })
+  }
+  function buildItemsPayload() {
+    const items: Array<{ product_id: string; qty: number; delivery_point_index: number }> = []
+    points.forEach((p, idx) => {
+      const pc = carts[p.localId] ?? {}
+      for (const [pid, q] of Object.entries(pc)) {
+        if (q > 0) items.push({ product_id: pid, qty: q, delivery_point_index: idx })
+      }
+    })
+    return items
+  }
+
+  // ─── Walidacja ─────────────────────────────────────────────────────────────────
+  const contactValid =
+    contactPerson.trim().length >= 2 &&
+    contactPhone.trim().length >= 9 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())
+  const pointsAddrValid =
+    points.length >= 1 &&
+    points.every((p) => p.ulica.trim().length >= 2 && p.miasto.trim().length >= 2) &&
+    (deliveryMode === 'jeden' || points.length >= 2)
+  const terminValid =
+    deliveryMode === 'kilka' && wspolnaData
+      ? wspolnyTerminTyp !== 'data' || wspolnyPreferredDate.length > 0
+      : points.every((p) => p.termin_typ !== 'data' || p.preferred_date.length > 0)
+  const itemsValid = points.every((p) => pointItemCount(p.localId) > 0) && totalItems > 0
+  const canGoStep2 = pointsAddrValid && terminValid
+  const canSubmit = contactValid && pointsAddrValid && terminValid && itemsValid && !submitting
+
+  // ─── Submit ──────────────────────────────────────────────────────────────────
+  async function submitOrder() {
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      const res = await fetch(`/api/orders/${token}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contact_person: contactPerson.trim(),
+          contact_phone: contactPhone.trim(),
+          contact_email: contactEmail.trim(),
+          customer_notes: notes.trim() || null,
+          delivery_mode: deliveryMode,
+          documents_mode: deliveryMode === 'kilka' ? documentsMode : 'wspolna',
+          delivery_points: buildPointsPayload(),
+          marketing_consent: marketingConsent,
+          items: buildItemsPayload(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) {
+        setSubmitError(data.error ?? 'Wystąpił błąd przy zapisie zamówienia.')
+        setSubmitting(false)
+        return
+      }
+      setSubmitResult(data as SubmitOk)
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : 'Błąd sieci')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   async function handleSaveTemplate() {
-    const list = Object.entries(cart)
-      .filter(([, qty]) => qty > 0)
-      .map(([product_id, qty]) => ({ product_id, qty }))
-    if (list.length === 0) {
-      setActionError('Koszyk jest pusty — nie można zapisać szablonu.')
+    const items = buildItemsPayload()
+    if (items.length === 0) {
+      setActionError('Brak pozycji — nie można zapisać szablonu.')
       return
     }
     const nazwa = prompt('Podaj nazwę szablonu (min. 2 znaki):', '')
@@ -473,14 +677,25 @@ export function OrderForm({
       const res = await fetch(`/api/orders/${token}/templates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nazwa: trimmed, pozycje: list }),
+        body: JSON.stringify({
+          nazwa: trimmed,
+          pozycje: items,
+          delivery_mode: deliveryMode,
+          documents_mode: deliveryMode === 'kilka' ? documentsMode : 'wspolna',
+          delivery_points: buildPointsPayload(),
+          wspolna_data: deliveryMode === 'kilka' ? wspolnaData : false,
+          wspolny_termin_typ: deliveryMode === 'kilka' && wspolnaData ? wspolnyTerminTyp : null,
+          wspolny_preferred_date:
+            deliveryMode === 'kilka' && wspolnaData && wspolnyTerminTyp === 'data'
+              ? wspolnyPreferredDate || null
+              : null,
+        }),
       })
       const data = await res.json()
       if (!res.ok || !data.ok) {
         setActionError(data.error ?? 'Nie udało się zapisać szablonu.')
         return
       }
-      // Invalidate cache — kolejny klik "Moje szablony" pobierze świeże.
       setTemplates(null)
       setActionNotice(`Szablon "${trimmed}" zapisany.`)
     } catch (e) {
@@ -488,83 +703,31 @@ export function OrderForm({
     }
   }
 
-  function setQty(productId: string, qty: number) {
-    if (qty <= 0) {
-      setCart((prev) => {
-        const { [productId]: _omit, ...rest } = prev
-        return rest
-      })
-    } else {
-      setCart((prev) => ({ ...prev, [productId]: Math.min(9999, Math.max(1, Math.floor(qty))) }))
-    }
-  }
+  // ─── Style helpers ─────────────────────────────────────────────────────────────
+  const inputCls = (prefilled: boolean) =>
+    `w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-[#1F3A5F] ${
+      prefilled ? 'bg-emerald-50 border-emerald-300' : 'border-slate-300'
+    }`
+  const anyPrefilled = points.some((p) => p.prefilled) || contactPrefilled
+  const pointName = (p: FormPoint, idx: number) =>
+    p.label.trim() || p.miasto.trim() || `Punkt ${idx + 1}`
 
-  const step3Valid =
-    contactPerson.trim().length >= 2 &&
-    contactPhone.trim().length >= 9 &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim()) &&
-    deliveryAddress.trim().length >= 5
-
-  async function submitOrder() {
-    setSubmitting(true)
-    setSubmitError(null)
-    try {
-      const items = Object.entries(cart)
-        .filter(([, qty]) => qty > 0)
-        .map(([product_id, qty]) => ({ product_id, qty }))
-      const res = await fetch(`/api/orders/${token}/submit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contact_person: contactPerson.trim(),
-          contact_phone: contactPhone.trim(),
-          contact_email: contactEmail.trim(),
-          delivery_address: deliveryAddress.trim(),
-          preferred_delivery_date: preferredDate || null,
-          customer_notes: notes.trim() || null,
-          items,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data.ok) {
-        setSubmitError(data.error ?? 'Wystąpił błąd przy zapisie zamówienia.')
-        setSubmitting(false)
-        return
-      }
-      // Sprint T-ORDER.4a-SHELL — setStep(5) usunięte; ekran potwierdzenia
-      // renderowany gdy submitResult !== null (terminal state zastępuje tabs).
-      setSubmitResult(data as SubmitOk)
-    } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : 'Błąd sieci')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  // Sprint T-ORDER.4a-SHELL (30.05.2026) — stary stepLabels usunięty,
-  // navigacja przez showWelcome + activeTab + submitResult (terminal).
-
+  // ─── Render ────────────────────────────────────────────────────────────────────
   return (
-    <div className="mx-auto max-w-5xl bg-white shadow-sm">
-      {/* Sprint T-ORDER.4a-SHELL (30.05.2026) — szeroki nagłówek z tytułem zamówienia. */}
+    <div className="mx-auto max-w-3xl bg-white shadow-sm min-h-screen">
+      {/* Nagłówek */}
       <div className="bg-[#1F3A5F] text-white px-6 py-5">
-        <h1 className="text-[22px] font-bold leading-tight">
-          Zamówienie — {client?.title ?? 'klient'}
-        </h1>
+        <h1 className="text-[22px] font-bold leading-tight">Zamówienie — {client?.title ?? 'klient'}</h1>
         {initial.order.order_number && (
-          <div className="text-[12px] text-white/70 mt-1 font-mono">
-            {initial.order.order_number}
-          </div>
+          <div className="text-[12px] text-white/70 mt-1 font-mono">{initial.order.order_number}</div>
         )}
       </div>
 
-      {/* Action notice/error toast — nad zakładkami */}
+      {/* Toast */}
       {(actionNotice || actionError) && (
         <div
           className={`px-6 py-2.5 text-sm border-b ${
-            actionError
-              ? 'bg-rose-50 border-rose-200 text-rose-800'
-              : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+            actionError ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
           }`}
         >
           {actionError || actionNotice}
@@ -581,712 +744,8 @@ export function OrderForm({
         </div>
       )}
 
-      {/* ─── Welcome screen (overlay przed zakładkami) ──────────────────── */}
-      {showWelcome && !submitResult && (
-        <div className="p-5">
-          {client && (
-            <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-5">
-              <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
-                Oferta przygotowana dla
-              </div>
-              <div className="font-semibold text-slate-900 leading-tight">{client.title}</div>
-              <div className="text-xs text-slate-500 mt-1">NIP {client.nip}</div>
-            </div>
-          )}
-
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Witaj, {firstWord}!</h2>
-          <p className="text-sm text-slate-600 leading-relaxed mb-5">
-            Cieszymy się, że jesteś zainteresowany asortymentem Czudowa Marka. Złożenie zamówienia
-            zajmie ok. 5 minut.
-          </p>
-
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5">
-            <div className="text-xs font-semibold text-amber-900 mb-2">Co warto wiedzieć:</div>
-            <ul className="text-xs text-amber-900/80 space-y-1.5">
-              <li>• 17 SKU kiszonek, sałatek, surówek</li>
-              {isAutoWH && (
-                <li>
-                  • <strong>Cennik Wielki Hurt</strong> — Hurt do{' '}
-                  {fmt(WH_HURT_THRESHOLD)} PLN, powyżej Wielki Hurt (najniższe ceny)
-                </li>
-              )}
-              {isWielkiHurt && isMinimum && (
-                <li>
-                  • <strong>Cennik Wielki Hurt</strong> — locked, najniższy poziom
-                </li>
-              )}
-              {isAutoStandard && (
-                <li>• 3 progi cenowe (mały / średni / duży gracz)</li>
-              )}
-              {!isWielkiHurt && isMinimum && (
-                <li>
-                  • <strong>Cena duży opt</strong> — locked dla całego zamówienia
-                </li>
-              )}
-              <li>• Pierwsze zamówienie bez przedpłaty</li>
-              <li>• Dostawa 3-5 dni roboczych</li>
-            </ul>
-          </div>
-
-          <button
-            onClick={() => setShowWelcome(false)}
-            className="w-full bg-[#1F3A5F] hover:bg-[#264a76] text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors"
-          >
-            Rozpocznij zamówienie
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {/* ─── Po welcome + przed submit: zakładki ───────────────────────── */}
-      {!showWelcome && !submitResult && (
-        <>
-          {/* Tab bar (segmented control) */}
-          <div className="bg-white border-b border-slate-200 px-6 pt-4">
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveTab('produkty')}
-                className={`flex-1 px-4 py-3 rounded-t-lg font-semibold text-[14px] transition border-b-2 ${
-                  activeTab === 'produkty'
-                    ? 'bg-[#1F3A5F] text-white border-[#1F3A5F]'
-                    : 'bg-slate-100 text-slate-600 border-transparent hover:bg-slate-200'
-                }`}
-              >
-                1 · Produkty
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (cartNotEmpty) setActiveTab('dostawa')
-                }}
-                disabled={!cartNotEmpty}
-                className={`flex-1 px-4 py-3 rounded-t-lg font-semibold text-[14px] transition border-b-2 ${
-                  activeTab === 'dostawa'
-                    ? 'bg-[#1F3A5F] text-white border-[#1F3A5F]'
-                    : 'bg-slate-100 text-slate-600 border-transparent hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed'
-                }`}
-              >
-                2 · Dostawa i dokumenty
-              </button>
-            </div>
-          </div>
-
-          {/* Sprint T-ORDER.4a-SHELL — górny pasek (search + Powtórz + szablony)
-              tylko gdy aktywna zakładka Produkty. */}
-          {activeTab === 'produkty' && (
-            <div className="bg-slate-50 border-b border-slate-200 px-6 py-3 flex flex-wrap items-center gap-2">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Szukaj produktu lub SKU..."
-                className="flex-1 min-w-[180px] px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#1F3A5F] bg-white"
-              />
-              <button
-                type="button"
-                onClick={handleRepeatOrder}
-                className="px-3 py-2 rounded-lg bg-white border border-[#1F3A5F] text-[#1F3A5F] text-[13px] font-semibold hover:bg-[#1F3A5F] hover:text-white transition shrink-0"
-              >
-                ↻ Powtórz zamówienie
-              </button>
-              <button
-                type="button"
-                onClick={loadTemplates}
-                disabled={templatesLoading}
-                className="px-3 py-2 rounded-lg bg-white border border-[#1F3A5F] text-[#1F3A5F] text-[13px] font-semibold hover:bg-[#1F3A5F] hover:text-white transition shrink-0 disabled:opacity-50"
-              >
-                {templatesLoading ? '...' : '★ Moje szablony'}
-              </button>
-            </div>
-          )}
-
-          {/* Lista szablonów (rozwijana) */}
-          {activeTab === 'produkty' && showTemplatesPanel && templates && (
-            <div className="bg-white border-b border-slate-200 px-6 py-3 max-h-[260px] overflow-y-auto">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-[13px] font-semibold text-slate-700">
-                  Twoje szablony ({templates.length})
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowTemplatesPanel(false)}
-                  className="text-xs text-slate-500 hover:text-slate-700 underline"
-                >
-                  zamknij
-                </button>
-              </div>
-              {templates.length === 0 ? (
-                <div className="text-xs text-slate-500 italic py-2">
-                  Brak zapisanych szablonów. Dodaj produkty do koszyka i kliknij &quot;★ Zapisz jako szablon&quot;.
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {templates.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => applyTemplate(t)}
-                      className="w-full text-left px-3 py-2 rounded border border-slate-200 hover:border-[#1F3A5F] hover:bg-slate-50 transition"
-                    >
-                      <div className="text-[14px] font-semibold text-[#15202e]">{t.nazwa}</div>
-                      <div className="text-[11px] text-slate-500">
-                        {t.pozycje.length} {t.pozycje.length === 1 ? 'pozycja' : 'pozycji'}
-                        {' · '}
-                        {t.utworzyl === 'vadym' ? 'od Vadyma' : 'mój'}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ─── Zakładka 1: Produkty ───────────────────────────────────────── */}
-      {!showWelcome && !submitResult && activeTab === 'produkty' && (
-        <>
-          {/* Sticky tier banner — Sprint S-CENNIK-WH.2 matrix 2x2 */}
-          <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 py-3 shadow-sm">
-            <div className="flex items-baseline justify-between mb-2">
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-slate-500">
-                  {isMinimum
-                    ? 'Cennik (zablokowany)'
-                    : isAutoWH
-                      ? 'Cennik Wielki Hurt'
-                      : 'Próg cenowy'}
-                </div>
-                <div
-                  className={`text-sm font-bold ${
-                    isWielkiHurt
-                      ? 'text-violet-700'
-                      : tier === 'duzy'
-                        ? 'text-emerald-600'
-                        : tier === 'sredni'
-                          ? 'text-amber-600'
-                          : 'text-slate-700'
-                  }`}
-                >
-                  {TIER_LABEL[tier]}
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-[10px] uppercase tracking-wide text-slate-500">Suma netto</div>
-                <div className="text-base font-bold text-slate-900">{fmt(total)} zł</div>
-              </div>
-            </div>
-            {/* Branch by matrix cell */}
-            {isAutoStandard && (
-              <>
-                <TierProgressBar tier={tier as StandardTier} total={total} />
-                <TierHint tier={tier as StandardTier} total={total} />
-              </>
-            )}
-            {isAutoWH && (
-              <WHHurtProgressBar tier={tier} hurtNominal={hurtNominal ?? 0} />
-            )}
-            {isMinimum && isWielkiHurt && (
-              <div className="text-[10px] text-violet-700 mt-1">
-                Ceny zablokowane na poziomie <strong>Wielki Hurt</strong> — niezależnie od wielkości zamówienia.
-              </div>
-            )}
-            {isMinimum && !isWielkiHurt && (
-              <div className="text-[10px] text-emerald-700 mt-1">
-                Ceny zablokowane na poziomie <strong>Duży opt</strong> — niezależnie od wielkości zamówienia.
-              </div>
-            )}
-          </div>
-
-          {/* Sprint T-ORDER.4a-UI-FIX (30.05.2026) — wygląd 1:1 z zatwierdzonym prototypem.
-              GRUPA = pełna granatowa plansza #1F3A5F + badge marki (marka partnerska / Ziomek Fish).
-              PODGRUPA = jasny pasek #e9edf2 + UPPERCASE 13px font-700 #2d4364.
-              SKU = nazwa 16px font-600 #15202e + cena "X zł/szt" 15px font-700 #1F3A5F.
-              Przyciski qty = 38px square border 1.5px #1F3A5F rounded-8px hover:bg-granat.
-              Pusta grupa (brak SKU) pomijana — Owoce morza nie wyświetli się dopóki nie ma SKU. */}
-          <div className="p-4 space-y-3 max-h-[55vh] overflow-y-auto">
-            {groupedHierarchy
-              .filter((grp) => grp.subs.some((sub) => sub.items.length > 0))
-              .map((grp) => {
-                const grpKey = `g:${grp.key}`
-                const grpOpen = openKeys.has(grpKey)
-                const grpLabel = GRUPA_LABEL[grp.key] ?? grp.key
-                const grpBadge = BRAND_BADGE[grp.key] ?? null
-                const grpCount = grp.subs.reduce((s, sub) => s + sub.items.length, 0)
-                return (
-                  <div
-                    key={grp.key}
-                    className="rounded-lg overflow-hidden border border-[#dde3ea]"
-                  >
-                    {/* GRUPA header — pełna granatowa plansza #1F3A5F */}
-                    <button
-                      type="button"
-                      onClick={() => toggleKey(grpKey)}
-                      className="w-full bg-[#1F3A5F] text-white px-4 py-[15px] flex items-center justify-between gap-3 hover:bg-[#264a76] transition"
-                    >
-                      <span className="flex items-center gap-2.5 min-w-0">
-                        {grpOpen ? (
-                          <ChevronDown className="w-5 h-5 shrink-0" />
-                        ) : (
-                          <ChevronRight className="w-5 h-5 shrink-0" />
-                        )}
-                        <span
-                          className="text-[17px] font-extrabold text-white truncate"
-                          style={{ letterSpacing: '0.3px' }}
-                        >
-                          {grpLabel}
-                        </span>
-                        {grpBadge && (
-                          <span className="ml-2.5 shrink-0 text-[12px] bg-[#2d4d73] text-white px-[9px] py-[2px] rounded-[5px] font-medium">
-                            {grpBadge}
-                          </span>
-                        )}
-                      </span>
-                      <span className="text-[13px] text-white/85 font-medium shrink-0">
-                        {grpCount} produktów
-                      </span>
-                    </button>
-
-                    {grpOpen &&
-                      grp.subs
-                        .filter((sub) => sub.items.length > 0)
-                        .map((sub) => {
-                          const subKey = `s:${grp.key}:${sub.key}`
-                          const subOpen = openKeys.has(subKey)
-                          const subLabel = PODGRUPA_LABEL[sub.key] ?? sub.key
-                          return (
-                            <div key={sub.key}>
-                              {/* Sprint T-ORDER.4a-UI-CONTRAST (30.05.2026) — wyraźniejsze
-                                  oddzielenie podgrup od wierszy SKU.
-                                  Tło #ccd6e3 (ciemniejszy szaro-niebieski zamiast #e9edf2)
-                                  + lewy border-left 3px solid #1F3A5F (granatowy akcent).
-                                  Tekst #1F3A5F (ciemniejszy granat) font-weight 700,
-                                  letter-spacing 0.8px (zwiększone z 0.6). */}
-                              <button
-                                type="button"
-                                onClick={() => toggleKey(subKey)}
-                                className="w-full bg-[#ccd6e3] border-t border-[#a8b6c8] px-4 py-[11px] flex items-center justify-between gap-2 hover:bg-[#bfcbdb] transition"
-                                style={{ borderLeft: '3px solid #1F3A5F' }}
-                              >
-                                <span className="flex items-center gap-2 min-w-0">
-                                  {subOpen ? (
-                                    <ChevronDown className="w-4 h-4 shrink-0 text-[#1F3A5F]" />
-                                  ) : (
-                                    <ChevronRight className="w-4 h-4 shrink-0 text-[#1F3A5F]" />
-                                  )}
-                                  <span
-                                    className="text-[13px] font-bold uppercase text-[#1F3A5F] truncate"
-                                    style={{ letterSpacing: '0.8px' }}
-                                  >
-                                    {subLabel}
-                                  </span>
-                                </span>
-                                <span className="text-[12px] text-[#1F3A5F]/75 font-semibold shrink-0">
-                                  {sub.items.length}
-                                </span>
-                              </button>
-
-                              {subOpen && (
-                                <div>
-                                  {sub.items.map((p) => {
-                                    const isPomidor = /pomidor/i.test(p.name)
-                                    // Sprint S-CENNIK-WH.2 — tier→priceKey map (handles 'wielki_hurt_entry' → 'hurt_wh').
-                                    const price = p.prices[tierToPriceKey(tier)] ?? 0
-                                    // Sprint S-CENNIK-WH.1 — line-through pokazujemy vs maly (retail anchor).
-                                    const originalPrice = p.prices.maly
-                                    const qty = cart[p.id] ?? 0
-                                    // Sprint S-CENNIK-WH.2 — WH+auto: disable jeśli SKU не ma price_hurt_wh
-                                    const whAutoUnavailable =
-                                      isAutoWH && p.prices.hurt_wh == null
-                                    // Sprint T-ORDER.4a-UI — in_stock=false → wygaszone +
-                                    // disabled. Łączymy z whAutoUnavailable (legacy reason).
-                                    const unavailable =
-                                      !p.in_stock || whAutoUnavailable
-                                    const unit = p.unit ?? 'szt'
-                                    return (
-                                      <div
-                                        key={p.id}
-                                        className={`bg-white px-4 py-[14px] border-t border-[#e4e9ef] flex items-start gap-3 ${
-                                          unavailable ? 'opacity-50' : ''
-                                        }`}
-                                      >
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-start gap-2 mb-1 flex-wrap">
-                                            {/* Nazwa SKU 16px font-600 #15202e */}
-                                            <div className="text-[16px] font-semibold text-[#15202e] leading-snug">
-                                              {p.name}
-                                            </div>
-                                            {!p.in_stock && (
-                                              <span
-                                                className="shrink-0 text-[11px] bg-[#f3d6d6] text-[#9a3434] px-[7px] py-[2px] rounded font-bold"
-                                              >
-                                                niedostępny
-                                              </span>
-                                            )}
-                                            {isPomidor && p.in_stock && (
-                                              <span className="shrink-0 text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold uppercase">
-                                                Ostatnie
-                                              </span>
-                                            )}
-                                            {whAutoUnavailable && p.in_stock && (
-                                              <span className="shrink-0 text-[10px] bg-slate-300 text-slate-600 px-1.5 py-0.5 rounded font-bold uppercase">
-                                                Brak w Hurcie
-                                              </span>
-                                            )}
-                                          </div>
-                                          {p.gramatura && (
-                                            <div className="text-[13px] text-slate-500 mb-1">
-                                              {p.gramatura}
-                                            </div>
-                                          )}
-                                          {/* Cena 15px font-700 #1F3A5F — format "X zł/szt" gdy unit znany. */}
-                                          {unavailable ? (
-                                            <div className="text-[13px] text-slate-400 italic">
-                                              —
-                                            </div>
-                                          ) : isAutoWH ? (
-                                            <div className="flex items-baseline gap-2 flex-wrap">
-                                              <span
-                                                className={`text-[15px] font-bold ${tier === 'wielki_hurt' ? 'text-violet-700' : 'text-[#1F3A5F]'}`}
-                                              >
-                                                {tier === 'wielki_hurt'
-                                                  ? fmt(p.prices.wielki_hurt)
-                                                  : fmt(p.prices.hurt_wh ?? 0)}{' '}
-                                                zł/{unit}
-                                              </span>
-                                              <span className="text-[11px] text-slate-500">
-                                                {tier === 'wielki_hurt'
-                                                  ? `(Hurt: ${fmt(p.prices.hurt_wh ?? 0)} zł)`
-                                                  : `(Wielki Hurt: ${fmt(p.prices.wielki_hurt)} zł)`}
-                                              </span>
-                                            </div>
-                                          ) : (
-                                            <div className="flex items-baseline gap-2">
-                                              <span className="text-[15px] font-bold text-[#1F3A5F]">
-                                                {fmt(price)} zł/{unit}
-                                              </span>
-                                              {tier !== 'maly' && price < originalPrice && (
-                                                <span className="text-[11px] text-slate-400 line-through">
-                                                  {fmt(originalPrice)} zł
-                                                </span>
-                                              )}
-                                            </div>
-                                          )}
-                                        </div>
-                                        {/* Sprint T-ORDER.4a-UI-FIX — 38px square buttons, border 1.5px #1F3A5F. */}
-                                        <div className="flex items-center gap-1.5 shrink-0">
-                                          <button
-                                            type="button"
-                                            onClick={() => setQty(p.id, qty - 1)}
-                                            disabled={qty <= 0 || unavailable}
-                                            className="w-[38px] h-[38px] rounded-lg bg-white flex items-center justify-center text-[#1F3A5F] text-[20px] font-bold disabled:opacity-30 disabled:hover:bg-white hover:bg-[#1F3A5F] hover:text-white transition"
-                                            style={{
-                                              border: '1.5px solid #1F3A5F',
-                                            }}
-                                            aria-label="Zmniejsz"
-                                          >
-                                            <Minus className="w-4 h-4" strokeWidth={2.5} />
-                                          </button>
-                                          <input
-                                            type="number"
-                                            min={0}
-                                            max={9999}
-                                            value={qty}
-                                            disabled={unavailable}
-                                            onChange={(e) =>
-                                              setQty(p.id, Number(e.target.value) || 0)
-                                            }
-                                            className="w-[62px] h-[38px] text-center text-[16px] font-semibold rounded-lg outline-none focus:border-[#1F3A5F] disabled:opacity-30 disabled:bg-slate-50"
-                                            style={{
-                                              border: '1.5px solid #9fb0c4',
-                                            }}
-                                          />
-                                          <button
-                                            type="button"
-                                            onClick={() => setQty(p.id, qty + 1)}
-                                            disabled={unavailable}
-                                            className="w-[38px] h-[38px] rounded-lg bg-white flex items-center justify-center text-[#1F3A5F] text-[20px] font-bold disabled:opacity-30 disabled:hover:bg-white hover:bg-[#1F3A5F] hover:text-white transition"
-                                            style={{
-                                              border: '1.5px solid #1F3A5F',
-                                            }}
-                                            aria-label="Zwiększ"
-                                      >
-                                        <Plus className="w-4 h-4" />
-                                      </button>
-                                      <span className="text-[11px] text-slate-500 ml-0.5 self-center">
-                                        {unit}
-                                      </span>
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Sprint T-ORDER.4a-UI-FIX (30.05.2026) — dolny pasek koszyka:
-              sticky granat #1F3A5F + statystyki (pozycje + kg) + buttons
-              (Szablon placeholder T-ORDER.4b + Dalej). Wstecz jako mniejszy
-              link po lewej. */}
-          <div
-            className="sticky bottom-0 bg-[#1F3A5F] text-white px-4 py-4 flex items-center gap-3 flex-wrap"
-            style={{ boxShadow: '0 -4px 12px rgba(0,0,0,0.12)', borderRadius: '10px 10px 0 0' }}
-          >
-            <button
-              type="button"
-              onClick={() => setShowWelcome(true)}
-              className="text-[13px] text-white/80 hover:text-white flex items-center gap-1 shrink-0"
-              aria-label="Wstecz"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              Wstecz
-            </button>
-            <div className="flex-1 min-w-0 text-[16px] font-bold leading-tight">
-              <span className="text-white">
-                Koszyk: {itemsCount} {itemsCount === 1 ? 'pozycja' : itemsCount >= 2 && itemsCount <= 4 ? 'pozycje' : 'pozycji'}
-              </span>
-              {totalKg > 0 && (
-                <span className="text-white/85 font-medium">
-                  {' · '}
-                  {totalKg.toFixed(1)} kg
-                </span>
-              )}
-              <div className="text-[13px] font-medium text-white/85 mt-0.5">
-                Razem: {fmt(total)} zł
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleSaveTemplate}
-              disabled={!cartNotEmpty}
-              className="px-3 py-2 rounded-lg bg-[#eef3f9] text-[#1F3A5F] text-[13px] font-semibold flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white shrink-0"
-            >
-              ★ Zapisz jako szablon
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('dostawa')}
-              disabled={!cartNotEmpty}
-              className="px-4 py-2 rounded-lg bg-white text-[#1F3A5F] font-bold text-[14px] flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#eef3f9] shrink-0"
-            >
-              Dalej
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* ─── Zakładka 2: Dostawa i dokumenty (łączy stare step 3 + 4) ──── */}
-      {!showWelcome && !submitResult && activeTab === 'dostawa' && (
-        <div className="p-5 space-y-4">
-          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-slate-500">Firma</div>
-              <div className="text-sm font-semibold text-slate-900">{client?.title}</div>
-            </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-slate-500">NIP</div>
-              <div className="text-sm text-slate-700 font-mono">{client?.nip}</div>
-            </div>
-          </div>
-
-          <Field label="Osoba kontaktowa *" hint="Imię i nazwisko">
-            <input
-              type="text"
-              value={contactPerson}
-              onChange={(e) => setContactPerson(e.target.value)}
-              placeholder="np. Anna Kowalska"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-amber-500"
-            />
-          </Field>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Telefon *">
-              <input
-                type="tel"
-                value={contactPhone}
-                onChange={(e) => setContactPhone(e.target.value)}
-                placeholder="+48 ..."
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-amber-500"
-              />
-            </Field>
-            <Field label="E-mail *">
-              <input
-                type="email"
-                value={contactEmail}
-                onChange={(e) => setContactEmail(e.target.value)}
-                placeholder="firma@..."
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-amber-500"
-              />
-            </Field>
-          </div>
-
-          <Field label="Adres dostawy *" hint="Ulica, kod pocztowy, miasto">
-            <textarea
-              value={deliveryAddress}
-              onChange={(e) => setDeliveryAddress(e.target.value)}
-              rows={2}
-              placeholder="ul. ..., 00-000 Miasto"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-amber-500 resize-none"
-            />
-          </Field>
-
-          <Field label="Preferowana data dostawy" hint="Opcjonalnie">
-            <input
-              type="date"
-              value={preferredDate}
-              onChange={(e) => setPreferredDate(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-amber-500"
-            />
-          </Field>
-
-          <Field label="Uwagi" hint="Opcjonalnie">
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              placeholder="np. preferowane godziny dostawy, brama tylna..."
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-amber-500 resize-none"
-            />
-          </Field>
-
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={() => setActiveTab('produkty')}
-              className="px-4 py-2.5 rounded-lg border border-slate-300 text-slate-700 font-medium text-sm flex items-center gap-1 hover:bg-slate-50"
-            >
-              <ChevronLeft className="w-4 h-4" /> Wstecz do produktów
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Łączone: Podsumowanie + Zgoda + Submit (stary step 4) ──────── */}
-      {!showWelcome && !submitResult && activeTab === 'dostawa' && step3Valid && (
-        <div className="p-5 space-y-4">
-          {/* Firma + kontakt */}
-          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs">
-            <div className="font-semibold text-slate-900 mb-1">{client?.title}</div>
-            <div className="text-slate-500">NIP {client?.nip}</div>
-            <div className="mt-2 space-y-0.5">
-              <div className="text-slate-700">{contactPerson}</div>
-              <div className="text-slate-500">
-                {contactPhone} · {contactEmail}
-              </div>
-              <div className="text-slate-500">{deliveryAddress}</div>
-              {preferredDate && <div className="text-slate-500">Dostawa: {preferredDate}</div>}
-            </div>
-          </div>
-
-          {/* Items summary */}
-          <div className="border border-slate-200 rounded-lg divide-y divide-slate-100">
-            {Object.entries(cart)
-              .filter(([, qty]) => qty > 0)
-              .map(([id, qty]) => {
-                const p = products.find((pp) => pp.id === id)
-                if (!p) return null
-                // Sprint S-CENNIK-WH.2 — tier→priceKey map (handles 'wielki_hurt_entry' → 'hurt_wh')
-                const price = p.prices[tierToPriceKey(tier)] ?? 0
-                const subtotal = qty * price
-                return (
-                  <div key={id} className="px-3 py-2 flex items-baseline gap-3 text-xs">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-slate-900 leading-tight">{p.name}</div>
-                      <div className="text-slate-500">{p.gramatura}</div>
-                    </div>
-                    <div className="text-slate-700 whitespace-nowrap">
-                      {qty} × {fmt(price)}
-                    </div>
-                    <div className="font-semibold text-slate-900 whitespace-nowrap min-w-[60px] text-right">
-                      {fmt(subtotal)} zł
-                    </div>
-                  </div>
-                )
-              })}
-          </div>
-
-          {/* Totals */}
-          <div className="bg-[#1F2B4A] text-white rounded-lg p-4 space-y-1.5">
-            <div className="flex justify-between text-xs opacity-80">
-              <span>
-                {isMinimum ? 'Cennik (zablokowany)' : isWielkiHurt ? 'Cennik' : 'Próg końcowy'}
-              </span>
-              <span className="font-bold">{TIER_LABEL[tier]}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="opacity-80">Suma netto</span>
-              <span>{fmt(total)} zł</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="opacity-80">VAT 5%</span>
-              <span>{fmt(total * 0.05)} zł</span>
-            </div>
-            <div className="border-t border-white/20 pt-1.5 flex justify-between text-base font-bold">
-              <span>Razem brutto</span>
-              <span>{fmt(total * 1.05)} zł</span>
-            </div>
-          </div>
-
-          {/* Info */}
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-900">
-            <strong>Pierwsze zamówienie?</strong> Przyjmiemy bez przedpłaty. Po dostawie wystawimy
-            fakturę VAT z terminem 14 dni.
-          </div>
-
-          {/* Terms */}
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={termsAccepted}
-              onChange={(e) => setTermsAccepted(e.target.checked)}
-              className="mt-0.5 w-4 h-4 accent-amber-500"
-            />
-            <span className="text-xs text-slate-700">
-              Zapoznałem się z warunkami współpracy i akceptuję je.
-            </span>
-          </label>
-
-          {submitError && (
-            <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-xs text-rose-900">
-              {submitError}
-            </div>
-          )}
-
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={() => setActiveTab('produkty')}
-              disabled={submitting}
-              className="px-4 py-2.5 rounded-lg border border-slate-300 text-slate-700 font-medium text-sm flex items-center gap-1 hover:bg-slate-50 disabled:opacity-40"
-            >
-              <ChevronLeft className="w-4 h-4" /> Wstecz do produktów
-            </button>
-            <button
-              onClick={submitOrder}
-              disabled={!termsAccepted || submitting}
-              className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Wysyłanie…
-                </>
-              ) : (
-                'Złóż zamówienie'
-              )}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Ekran potwierdzenia (terminal: submitResult !== null) ────────── */}
-      {submitResult && (
+      {/* ═══ Ekran potwierdzenia (terminal) ═══ */}
+      {submitResult ? (
         <div className="p-8 text-center">
           <div className="w-16 h-16 mx-auto rounded-full bg-emerald-50 flex items-center justify-center mb-4">
             <CheckCircle2 className="w-8 h-8 text-emerald-500" />
@@ -1298,7 +757,6 @@ export function OrderForm({
           <div className="inline-block bg-slate-100 px-4 py-2 rounded-lg font-mono text-base font-bold text-slate-900 mb-5">
             {submitResult.order_number}
           </div>
-
           {contactEmail && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-left mb-4">
               <div className="text-sm text-emerald-900">
@@ -1307,7 +765,6 @@ export function OrderForm({
               </div>
             </div>
           )}
-
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-left mb-4">
             <div className="text-xs font-semibold text-slate-900 mb-2">Co dalej?</div>
             <ul className="text-xs text-slate-600 space-y-1.5">
@@ -1316,19 +773,905 @@ export function OrderForm({
               <li>3. Faktura VAT z terminem 14 dni</li>
             </ul>
           </div>
-
           <div className="bg-[#1F2B4A] text-white rounded-lg p-3">
             <div className="text-xs opacity-80">Razem brutto</div>
             <div className="text-2xl font-bold">{fmt(submitResult.total_brutto)} zł</div>
           </div>
         </div>
+      ) : screen === 'start' ? (
+        /* ═══ Ekran startowy A1 ═══ */
+        <div className="p-5">
+          {client && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-5">
+              <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Oferta przygotowana dla</div>
+              <div className="font-semibold text-slate-900 leading-tight">{client.title}</div>
+              <div className="text-xs text-slate-500 mt-1">NIP {client.nip}</div>
+            </div>
+          )}
+          <h2 className="text-2xl font-bold text-slate-900 mb-1">Witaj, {firstWord}!</h2>
+          <p className="text-sm text-slate-600 mb-5">Jak chcesz złożyć zamówienie?</p>
+
+          <div className="space-y-3">
+            {lastHasHistory && (
+              <button
+                type="button"
+                onClick={doRepeat}
+                className="w-full flex items-center gap-3 px-4 py-4 rounded-xl border-2 border-[#1F3A5F] text-left hover:bg-[#1F3A5F] hover:text-white transition group"
+              >
+                <RotateCcw className="w-6 h-6 shrink-0 text-[#1F3A5F] group-hover:text-white" />
+                <div>
+                  <div className="font-bold text-[15px]">Powtórz ostatnie zamówienie</div>
+                  <div className="text-xs opacity-70">Wczytaj produkty i dostawę z poprzedniego zamówienia</div>
+                </div>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={loadTemplates}
+              disabled={templatesLoading}
+              className="w-full flex items-center gap-3 px-4 py-4 rounded-xl border-2 border-[#1F3A5F] text-left hover:bg-[#1F3A5F] hover:text-white transition group disabled:opacity-50"
+            >
+              {templatesLoading ? (
+                <Loader2 className="w-6 h-6 shrink-0 animate-spin text-[#1F3A5F] group-hover:text-white" />
+              ) : (
+                <Star className="w-6 h-6 shrink-0 text-[#1F3A5F] group-hover:text-white" />
+              )}
+              <div>
+                <div className="font-bold text-[15px]">Użyj szablonu</div>
+                <div className="text-xs opacity-70">Gotowy zestaw produktów i punktów dostawy</div>
+              </div>
+            </button>
+
+            {showTemplates && templates && (
+              <div className="bg-white border border-slate-200 rounded-xl p-3 max-h-[280px] overflow-y-auto">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[13px] font-semibold text-slate-700">Twoje szablony ({templates.length})</div>
+                  <button
+                    type="button"
+                    onClick={() => setShowTemplates(false)}
+                    className="text-xs text-slate-500 hover:text-slate-700 underline"
+                  >
+                    zamknij
+                  </button>
+                </div>
+                {templates.length === 0 ? (
+                  <div className="text-xs text-slate-500 italic py-2">
+                    Brak zapisanych szablonów. Złóż zamówienie i zapisz je jako szablon w podsumowaniu.
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {templates.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => applyTemplate(t)}
+                        className="w-full text-left px-3 py-2 rounded border border-slate-200 hover:border-[#1F3A5F] hover:bg-slate-50 transition"
+                      >
+                        <div className="text-[14px] font-semibold text-[#15202e]">{t.nazwa}</div>
+                        <div className="text-[11px] text-slate-500">
+                          {(t.pozycje?.length ?? 0)} {(t.pozycje?.length ?? 0) === 1 ? 'pozycja' : 'pozycji'}
+                          {t.delivery_mode === 'kilka' && t.delivery_points
+                            ? ` · ${t.delivery_points.length} punktów`
+                            : ''}
+                          {' · '}
+                          {t.utworzyl === 'vadym' ? 'od Vadyma' : 'mój'}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={startNew}
+              className="w-full flex items-center gap-3 px-4 py-4 rounded-xl bg-[#1F3A5F] text-white text-left hover:bg-[#264a76] transition"
+            >
+              <FilePlus className="w-6 h-6 shrink-0" />
+              <div>
+                <div className="font-bold text-[15px]">Nowe zamówienie</div>
+                <div className="text-xs opacity-80">Wybierz produkty i punkty dostawy od początku</div>
+              </div>
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* ═══ Formularz: stepper + kroki ═══ */
+        <>
+          {/* Stepper */}
+          <div className="px-6 pt-4 pb-3 border-b border-slate-200">
+            <div className="flex items-center gap-2">
+              {[
+                { n: 1 as const, label: 'Dostawa' },
+                { n: 2 as const, label: 'Produkty' },
+                { n: 3 as const, label: 'Podsumowanie' },
+              ].map((s, i) => {
+                const reachable =
+                  s.n === 1 || (s.n === 2 && canGoStep2) || (s.n === 3 && canGoStep2 && itemsValid)
+                return (
+                  <div key={s.n} className="flex items-center gap-2 flex-1">
+                    <button
+                      type="button"
+                      disabled={!reachable && s.n > step}
+                      onClick={() => reachable && setStep(s.n)}
+                      className={`flex items-center gap-2 ${reachable ? '' : 'opacity-40 cursor-not-allowed'}`}
+                    >
+                      <span
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-bold ${
+                          step === s.n
+                            ? 'bg-[#1F3A5F] text-white'
+                            : step > s.n
+                              ? 'bg-emerald-500 text-white'
+                              : 'bg-slate-200 text-slate-600'
+                        }`}
+                      >
+                        {step > s.n ? '✓' : s.n}
+                      </span>
+                      <span
+                        className={`text-[13px] font-semibold ${step === s.n ? 'text-[#1F3A5F]' : 'text-slate-500'}`}
+                      >
+                        {s.label}
+                      </span>
+                    </button>
+                    {i < 2 && <div className="flex-1 h-px bg-slate-200" />}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* ─── KROK 1: DOSTAWA ─── */}
+          {step === 1 && (
+            <div className="p-5 space-y-4">
+              {source === 'new' && anyPrefilled && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-xs text-emerald-900">
+                  Dane z profilu — sprawdź i popraw przed wysłaniem.
+                </div>
+              )}
+
+              {/* Picker zapisanych punktów */}
+              {savedPoints.length > 0 && (
+                <div className="border border-slate-200 rounded-lg p-3">
+                  <div className="text-[13px] font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
+                    <MapPin className="w-4 h-4 text-[#1F3A5F]" /> Twoje zapisane punkty — zaznacz które użyć
+                  </div>
+                  <div className="space-y-1.5">
+                    {savedPoints.map((sp) => (
+                      <label
+                        key={sp.id}
+                        className="flex items-start gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedSaved.has(sp.id)}
+                          onChange={() => toggleSaved(sp.id)}
+                          className="mt-0.5 w-4 h-4 accent-[#1F3A5F]"
+                        />
+                        <span className="text-xs">
+                          <span className="font-semibold text-slate-800">{sp.nazwa || sp.miasto || 'Punkt'}</span>
+                          <span className="text-slate-500">
+                            {' — '}
+                            {[sp.ulica, [sp.kod_pocztowy, sp.miasto].filter(Boolean).join(' ')]
+                              .filter(Boolean)
+                              .join(', ')}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={useSelectedSaved}
+                    disabled={selectedSaved.size === 0}
+                    className="mt-2 px-3 py-1.5 rounded-lg bg-[#1F3A5F] text-white text-xs font-semibold disabled:opacity-40"
+                  >
+                    Użyj zaznaczonych ({selectedSaved.size})
+                  </button>
+                </div>
+              )}
+
+              {/* Radio jeden/kilka */}
+              <div>
+                <div className="text-[13px] font-semibold text-slate-700 mb-2">Ile punktów dostawy?</div>
+                <div className="flex gap-2">
+                  {(['jeden', 'kilka'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setMode(m)}
+                      className={`flex-1 px-4 py-2.5 rounded-lg border-2 text-sm font-semibold transition ${
+                        deliveryMode === m
+                          ? 'border-[#1F3A5F] bg-[#1F3A5F] text-white'
+                          : 'border-slate-300 text-slate-600 hover:border-[#1F3A5F]'
+                      }`}
+                    >
+                      {m === 'jeden' ? 'Jeden punkt' : 'Kilka punktów'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Wspólna data (kilka) */}
+              {deliveryMode === 'kilka' && (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={wspolnaData}
+                      onChange={(e) => setWspolnaData(e.target.checked)}
+                      className="w-4 h-4 accent-[#1F3A5F]"
+                    />
+                    <span className="text-[13px] font-semibold text-slate-700">Wspólna data dostawy dla wszystkich punktów</span>
+                  </label>
+                  {wspolnaData && (
+                    <div className="mt-2 pl-6 space-y-2">
+                      <div className="flex gap-2">
+                        {(['najblizszy', 'data'] as const).map((tt) => (
+                          <button
+                            key={tt}
+                            type="button"
+                            onClick={() => setWspolnyTerminTyp(tt)}
+                            className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${
+                              wspolnyTerminTyp === tt ? 'border-[#1F3A5F] bg-[#1F3A5F] text-white' : 'border-slate-300 text-slate-600'
+                            }`}
+                          >
+                            {tt === 'najblizszy' ? 'Najbliższy możliwy' : 'Konkretna data'}
+                          </button>
+                        ))}
+                      </div>
+                      {wspolnyTerminTyp === 'data' && (
+                        <div>
+                          <input
+                            type="date"
+                            value={wspolnyPreferredDate}
+                            onChange={(e) => setWspolnyPreferredDate(e.target.value)}
+                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#1F3A5F]"
+                          />
+                          <div className="text-[10px] text-slate-400 mt-1">
+                            Datę potwierdzimy mailowo — to preferencja, nie gwarancja.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Karty punktów */}
+              <div className="space-y-4">
+                {points.map((p, idx) => (
+                  <div
+                    key={p.localId}
+                    className={`rounded-lg overflow-hidden ${
+                      deliveryMode === 'kilka' ? 'border-2 border-[#1F3A5F] shadow-md' : 'border border-slate-200'
+                    }`}
+                  >
+                    {/* Nagłówek punktu — pasek navy (kilka) / slate (jeden), spójnie z krokiem 3 */}
+                    <div
+                      className={`flex items-center justify-between ${
+                        deliveryMode === 'kilka'
+                          ? 'bg-[#1F3A5F] px-4 py-2.5'
+                          : 'bg-slate-50 px-3 py-2 border-b border-slate-200'
+                      }`}
+                    >
+                      <div className={`text-[13px] font-bold ${deliveryMode === 'kilka' ? 'text-white' : 'text-[#1F3A5F]'}`}>
+                        {deliveryMode === 'kilka' ? `Punkt ${idx + 1}` : 'Adres dostawy'}
+                        {p.prefilled && (
+                          <span
+                            className={`ml-2 text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                              deliveryMode === 'kilka' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-700'
+                            }`}
+                          >
+                            z profilu
+                          </span>
+                        )}
+                      </div>
+                      {deliveryMode === 'kilka' && points.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => removePoint(p.localId)}
+                          className="text-white/80 hover:text-white"
+                          aria-label="Usuń punkt"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Pola punktu */}
+                    <div className="p-3 space-y-2 bg-white">
+
+                    {deliveryMode === 'kilka' && (
+                      <Field label="Nazwa punktu" hint="np. Magazyn główny, Sklep Centrum">
+                        <input
+                          type="text"
+                          value={p.label}
+                          onChange={(e) => updatePoint(p.localId, { label: e.target.value })}
+                          placeholder="Nazwa (opcjonalnie)"
+                          className={inputCls(p.prefilled)}
+                        />
+                      </Field>
+                    )}
+
+                    <Field label="Ulica i numer *">
+                      <input
+                        type="text"
+                        value={p.ulica}
+                        onChange={(e) => updatePoint(p.localId, { ulica: e.target.value })}
+                        placeholder="ul. ..."
+                        className={inputCls(p.prefilled)}
+                      />
+                    </Field>
+                    <div className="grid grid-cols-3 gap-2">
+                      <Field label="Kod pocztowy">
+                        <input
+                          type="text"
+                          value={p.kod_pocztowy}
+                          onChange={(e) => updatePoint(p.localId, { kod_pocztowy: e.target.value })}
+                          placeholder="00-000"
+                          className={inputCls(p.prefilled)}
+                        />
+                      </Field>
+                      <div className="col-span-2">
+                        <Field label="Miasto *">
+                          <input
+                            type="text"
+                            value={p.miasto}
+                            onChange={(e) => updatePoint(p.localId, { miasto: e.target.value })}
+                            placeholder="Miasto"
+                            className={inputCls(p.prefilled)}
+                          />
+                        </Field>
+                      </div>
+                    </div>
+
+                    <Field label="Typ punktu">
+                      <div className="flex gap-2">
+                        {(['dostawa', 'odbior'] as const).map((tp) => (
+                          <button
+                            key={tp}
+                            type="button"
+                            onClick={() => updatePoint(p.localId, { typ: tp })}
+                            className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${
+                              p.typ === tp ? 'border-[#1F3A5F] bg-[#1F3A5F] text-white' : 'border-slate-300 text-slate-600'
+                            }`}
+                          >
+                            {tp === 'dostawa' ? 'Dostawa' : 'Odbiór własny'}
+                          </button>
+                        ))}
+                      </div>
+                    </Field>
+
+                    {/* Termin per-punkt (ukryty gdy wspólna data) */}
+                    {!(deliveryMode === 'kilka' && wspolnaData) && (
+                      <Field label="Termin">
+                        <div className="flex gap-2 mb-2">
+                          {(['najblizszy', 'data'] as const).map((tt) => (
+                            <button
+                              key={tt}
+                              type="button"
+                              onClick={() => updatePoint(p.localId, { termin_typ: tt })}
+                              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${
+                                p.termin_typ === tt ? 'border-[#1F3A5F] bg-[#1F3A5F] text-white' : 'border-slate-300 text-slate-600'
+                              }`}
+                            >
+                              {tt === 'najblizszy' ? 'Najbliższy możliwy' : 'Konkretna data'}
+                            </button>
+                          ))}
+                        </div>
+                        {p.termin_typ === 'data' && (
+                          <>
+                            <input
+                              type="date"
+                              value={p.preferred_date}
+                              onChange={(e) => updatePoint(p.localId, { preferred_date: e.target.value })}
+                              className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#1F3A5F]"
+                            />
+                            <div className="text-[10px] text-slate-400 mt-1">
+                              Datę potwierdzimy mailowo — to preferencja, nie gwarancja.
+                            </div>
+                          </>
+                        )}
+                      </Field>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <Field label="Odbiorca — imię">
+                        <input
+                          type="text"
+                          value={p.odbiorca_imie}
+                          onChange={(e) => updatePoint(p.localId, { odbiorca_imie: e.target.value })}
+                          placeholder="Imię i nazwisko"
+                          className={inputCls(p.prefilled)}
+                        />
+                      </Field>
+                      <Field label="Odbiorca — telefon">
+                        <input
+                          type="tel"
+                          value={p.odbiorca_telefon}
+                          onChange={(e) => updatePoint(p.localId, { odbiorca_telefon: e.target.value })}
+                          placeholder="+48 ..."
+                          className={inputCls(p.prefilled)}
+                        />
+                      </Field>
+                    </div>
+                    </div>
+                  </div>
+                ))}
+
+                {deliveryMode === 'kilka' && (
+                  <button
+                    type="button"
+                    onClick={addPoint}
+                    className="w-full px-4 py-2.5 rounded-lg border-2 border-dashed border-[#1F3A5F] text-[#1F3A5F] text-sm font-semibold hover:bg-[#1F3A5F]/5"
+                  >
+                    + Dodaj kolejny punkt
+                  </button>
+                )}
+              </div>
+
+              {/* Nawigacja */}
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setScreen('start')}
+                  className="px-4 py-2.5 rounded-lg border border-slate-300 text-slate-700 font-medium text-sm flex items-center gap-1 hover:bg-slate-50"
+                >
+                  <ChevronLeft className="w-4 h-4" /> Wstecz
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  disabled={!canGoStep2}
+                  className="flex-1 bg-[#1F3A5F] hover:bg-[#264a76] text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Dalej — produkty <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+              {!canGoStep2 && (
+                <div className="text-[11px] text-slate-400 text-center">
+                  Uzupełnij ulicę i miasto w każdym punkcie{deliveryMode === 'kilka' ? ' (min. 2 punkty)' : ''}.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── KROK 2: PRODUKTY ─── */}
+          {step === 2 && (
+            <div className="flex flex-col">
+              {/* Zakładki punktów (kilka) */}
+              {deliveryMode === 'kilka' && (
+                <div className="px-4 pt-3 flex gap-2 overflow-x-auto border-b border-slate-200">
+                  {points.map((p, idx) => (
+                    <button
+                      key={p.localId}
+                      type="button"
+                      onClick={() => setActivePointId(p.localId)}
+                      className={`shrink-0 px-3 py-2 rounded-t-lg text-[13px] font-semibold border-b-2 ${
+                        activePointId === p.localId
+                          ? 'bg-[#1F3A5F] text-white border-[#1F3A5F]'
+                          : 'bg-slate-100 text-slate-600 border-transparent hover:bg-slate-200'
+                      }`}
+                    >
+                      {pointName(p, idx)}
+                      <span className="ml-1.5 opacity-80">({pointItemCount(p.localId)})</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {deliveryMode === 'kilka' && (
+                <div className="px-5 py-2 bg-slate-50 border-b border-slate-200 text-[13px] text-slate-600">
+                  Towary dla:{' '}
+                  <span className="font-semibold text-[#1F3A5F]">
+                    {pointName(points.find((p) => p.localId === activePointId) ?? points[0], Math.max(0, points.findIndex((p) => p.localId === activePointId)))}
+                  </span>
+                </div>
+              )}
+
+              {/* Zakładki podgrup */}
+              <div className="px-4 pt-3 flex gap-2 flex-wrap">
+                {podgrupy.map((pg) => {
+                  const apId = deliveryMode === 'kilka' ? activePointId : points[0].localId
+                  const cnt = pg.items.filter((it) => (carts[apId]?.[it.id] ?? 0) > 0).length
+                  return (
+                    <button
+                      key={pg.key}
+                      type="button"
+                      onClick={() => setActivePodgrupa(pg.key)}
+                      className={`px-3 py-2 rounded-lg text-[13px] font-bold transition ${
+                        activePodgrupa === pg.key
+                          ? 'bg-[#1F3A5F] text-white'
+                          : 'bg-[#ccd6e3] text-[#1F3A5F] hover:bg-[#bfcbdb]'
+                      }`}
+                      style={activePodgrupa === pg.key ? {} : { borderLeft: '3px solid #1F3A5F' }}
+                    >
+                      {PODGRUPA_LABEL[pg.key] ?? pg.key}
+                      {cnt > 0 && <span className="ml-1.5 opacity-90">· {cnt}</span>}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="px-5 pt-1 text-[11px] text-slate-400">marka partnerska — Czudowa Marka</div>
+
+              {/* Lista produktów aktywnej podgrupy */}
+              <div className="p-4 space-y-2 max-h-[52vh] overflow-y-auto">
+                {(() => {
+                  const apId = deliveryMode === 'kilka' ? activePointId : points[0].localId
+                  const pg = podgrupy.find((g) => g.key === activePodgrupa) ?? podgrupy[0]
+                  if (!pg) return <div className="text-sm text-slate-400">Brak produktów.</div>
+                  return pg.items.map((p) => {
+                    const isPomidor = /pomidor/i.test(p.name)
+                    const price = p.prices[tierToPriceKey(tier)] ?? 0
+                    const originalPrice = p.prices.maly
+                    const qty = getQty(apId, p.id)
+                    const whAutoUnavailable = isAutoWH && p.prices.hurt_wh == null
+                    const unavailable = !p.in_stock || whAutoUnavailable
+                    const unit = p.unit ?? 'szt'
+                    return (
+                      <div
+                        key={p.id}
+                        className={`bg-white px-3 py-3 border border-[#e4e9ef] rounded-lg flex items-start gap-3 ${
+                          unavailable ? 'opacity-50' : ''
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start gap-2 mb-1 flex-wrap">
+                            <div className="text-[15px] font-semibold text-[#15202e] leading-snug">{p.name}</div>
+                            {!p.in_stock && (
+                              <span className="shrink-0 text-[11px] bg-[#f3d6d6] text-[#9a3434] px-[7px] py-[2px] rounded font-bold">
+                                niedostępny
+                              </span>
+                            )}
+                            {isPomidor && p.in_stock && (
+                              <span className="shrink-0 text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold uppercase">
+                                Ostatnie
+                              </span>
+                            )}
+                          </div>
+                          {p.gramatura && <div className="text-[13px] text-slate-500 mb-1">{p.gramatura}</div>}
+                          {unavailable ? (
+                            <div className="text-[13px] text-slate-400 italic">—</div>
+                          ) : (
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-[15px] font-bold text-[#1F3A5F]">
+                                {fmt(price)} zł/{unit}
+                              </span>
+                              {tier !== 'maly' && price < originalPrice && (
+                                <span className="text-[11px] text-slate-400 line-through">{fmt(originalPrice)} zł</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setQty(apId, p.id, qty - 1)}
+                            disabled={qty <= 0 || unavailable}
+                            className="w-[38px] h-[38px] rounded-lg bg-white flex items-center justify-center text-[#1F3A5F] disabled:opacity-30 hover:bg-[#1F3A5F] hover:text-white transition"
+                            style={{ border: '1.5px solid #1F3A5F' }}
+                            aria-label="Zmniejsz"
+                          >
+                            <Minus className="w-4 h-4" strokeWidth={2.5} />
+                          </button>
+                          <input
+                            type="number"
+                            min={0}
+                            max={9999}
+                            value={qty === 0 ? '' : qty}
+                            disabled={unavailable}
+                            placeholder="0"
+                            onFocus={(e) => e.currentTarget.select()}
+                            onChange={(e) => {
+                              const v = e.target.value
+                              setQty(apId, p.id, v === '' ? 0 : Number(v) || 0)
+                            }}
+                            onBlur={(e) => {
+                              if (e.target.value === '') setQty(apId, p.id, 0)
+                            }}
+                            className="w-[58px] h-[38px] text-center text-[16px] font-semibold rounded-lg outline-none focus:border-[#1F3A5F] disabled:opacity-30 disabled:bg-slate-50"
+                            style={{ border: '1.5px solid #9fb0c4' }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setQty(apId, p.id, qty + 1)}
+                            disabled={unavailable}
+                            className="w-[38px] h-[38px] rounded-lg bg-white flex items-center justify-center text-[#1F3A5F] disabled:opacity-30 hover:bg-[#1F3A5F] hover:text-white transition"
+                            style={{ border: '1.5px solid #1F3A5F' }}
+                            aria-label="Zwiększ"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })
+                })()}
+              </div>
+
+              {/* Pasek dół */}
+              <div
+                className="sticky bottom-0 bg-[#1F3A5F] text-white px-4 py-3 flex items-center gap-3 flex-wrap"
+                style={{ boxShadow: '0 -4px 12px rgba(0,0,0,0.12)' }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="text-[13px] text-white/80 hover:text-white flex items-center gap-1 shrink-0"
+                >
+                  <ChevronLeft className="w-4 h-4" /> Dostawa
+                </button>
+                <div className="flex-1 min-w-0 text-[14px] font-bold leading-tight">
+                  Koszyk: {totalItems} {totalItems === 1 ? 'pozycja' : 'pozycji'}
+                  <span className="block text-[12px] font-medium text-white/80">Suma netto: {fmt(total)} zł</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStep(3)}
+                  disabled={!itemsValid}
+                  className="px-4 py-2 rounded-lg bg-white text-[#1F3A5F] font-bold text-[14px] flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#eef3f9] shrink-0"
+                >
+                  Dalej <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+              {!itemsValid && (
+                <div className="px-5 py-2 text-[11px] text-slate-400 text-center">
+                  {deliveryMode === 'kilka'
+                    ? 'Każdy punkt musi mieć przynajmniej jeden produkt.'
+                    : 'Dodaj przynajmniej jeden produkt.'}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── KROK 3: PODSUMOWANIE ─── */}
+          {step === 3 && (
+            <div className="p-5 space-y-4">
+              {/* Pozycje pogrupowane po punktach — osobne karty per punkt */}
+              <div className={deliveryMode === 'kilka' ? 'space-y-5' : 'space-y-4'}>
+              {points.map((p, idx) => {
+                const pc = carts[p.localId] ?? {}
+                const lines = Object.entries(pc).filter(([, q]) => q > 0)
+                const useWspolny = deliveryMode === 'kilka' && wspolnaData
+                const tt = useWspolny ? wspolnyTerminTyp : p.termin_typ
+                const pd = useWspolny ? wspolnyPreferredDate : p.preferred_date
+                const multi = deliveryMode === 'kilka'
+                return (
+                  <div
+                    key={p.localId}
+                    className={`rounded-lg overflow-hidden ${
+                      multi ? 'border-2 border-[#1F3A5F] shadow-md' : 'border border-slate-200'
+                    }`}
+                  >
+                    <div className={multi ? 'bg-[#1F3A5F] px-4 py-3' : 'bg-slate-50 px-3 py-2 border-b border-slate-200'}>
+                      <div className={`text-[13px] font-bold ${multi ? 'text-white' : 'text-[#1F3A5F]'}`}>
+                        {multi ? `Punkt ${idx + 1} — ${pointName(p, idx)}` : 'Dostawa'}
+                      </div>
+                      <div className={`text-[12px] ${multi ? 'text-white/90' : 'text-slate-600'}`}>
+                        {[p.ulica, [p.kod_pocztowy, p.miasto].filter(Boolean).join(' ')].filter(Boolean).join(', ')}
+                      </div>
+                      <div className={`text-[11px] mt-0.5 ${multi ? 'text-white/70' : 'text-slate-500'}`}>
+                        {p.typ === 'odbior' ? 'Odbiór własny' : 'Dostawa'}
+                        {' · '}
+                        {tt === 'data' && pd ? `Termin: ${pd}` : 'Termin: najbliższy możliwy'}
+                        {p.odbiorca_imie ? ` · Odbiorca: ${p.odbiorca_imie}` : ''}
+                      </div>
+                    </div>
+                    <div className="divide-y divide-slate-100 bg-white">
+                      {lines.length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-rose-500 italic">Brak pozycji w tym punkcie</div>
+                      ) : (
+                        lines.map(([pid, q]) => {
+                          const prod = products.find((pp) => pp.id === pid)
+                          if (!prod) return null
+                          const price = prod.prices[tierToPriceKey(tier)] ?? 0
+                          return (
+                            <div key={pid} className="px-3 py-2 flex items-baseline gap-3 text-xs">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-slate-900 leading-tight">{prod.name}</div>
+                                <div className="text-slate-500">{prod.gramatura}</div>
+                              </div>
+                              <div className="text-slate-700 whitespace-nowrap">
+                                {q} × {fmt(price)}
+                              </div>
+                              <div className="font-semibold text-slate-900 whitespace-nowrap min-w-[60px] text-right">
+                                {fmt(q * price)} zł
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+              </div>
+
+              {/* Totals */}
+              <div className="bg-[#1F2B4A] text-white rounded-lg p-4 space-y-1.5">
+                <div className="flex justify-between text-xs opacity-80">
+                  <span>{isMinimum ? 'Cennik (zablokowany)' : isWielkiHurt ? 'Cennik' : 'Poziom'}</span>
+                  <span className="font-bold">{TIER_LABEL[tier]}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="opacity-80">Suma netto</span>
+                  <span>{fmt(total)} zł</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="opacity-80">VAT 5%</span>
+                  <span>{fmt(total * 0.05)} zł</span>
+                </div>
+                <div className="border-t border-white/20 pt-1.5 flex justify-between text-base font-bold">
+                  <span>Razem brutto</span>
+                  <span>{fmt(total * 1.05)} zł</span>
+                </div>
+                <div className="text-[10px] text-white/60 pt-1">
+                  Ostateczne ceny potwierdza system po złożeniu zamówienia.
+                </div>
+              </div>
+
+              {/* Dokumenty (kilka) */}
+              {deliveryMode === 'kilka' && (
+                <div>
+                  <div className="text-[13px] font-semibold text-slate-700 mb-2">Dokumenty (proforma / VAT)</div>
+                  <div className="flex gap-2">
+                    {(['wspolna', 'osobne'] as const).map((dm) => (
+                      <button
+                        key={dm}
+                        type="button"
+                        onClick={() => setDocumentsMode(dm)}
+                        className={`flex-1 px-3 py-2 rounded-lg border-2 text-xs font-semibold ${
+                          documentsMode === dm ? 'border-[#1F3A5F] bg-[#1F3A5F] text-white' : 'border-slate-300 text-slate-600'
+                        }`}
+                      >
+                        {dm === 'wspolna' ? 'Wspólne na całość' : 'Osobne per punkt'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Kontakt */}
+              <div className="space-y-2">
+                <div className="text-[13px] font-semibold text-slate-700">Kontakt</div>
+                <Field label="Osoba kontaktowa *">
+                  <input
+                    type="text"
+                    value={contactPerson}
+                    onChange={(e) => {
+                      setContactPerson(e.target.value)
+                      setContactPrefilled(false)
+                    }}
+                    placeholder="Imię i nazwisko"
+                    className={inputCls(contactPrefilled)}
+                  />
+                </Field>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Telefon *">
+                    <input
+                      type="tel"
+                      value={contactPhone}
+                      onChange={(e) => {
+                        setContactPhone(e.target.value)
+                        setContactPrefilled(false)
+                      }}
+                      placeholder="+48 ..."
+                      className={inputCls(contactPrefilled)}
+                    />
+                  </Field>
+                  <Field label="E-mail *">
+                    <input
+                      type="email"
+                      value={contactEmail}
+                      onChange={(e) => {
+                        setContactEmail(e.target.value)
+                        setContactPrefilled(false)
+                      }}
+                      placeholder="firma@..."
+                      className={inputCls(contactPrefilled)}
+                    />
+                  </Field>
+                </div>
+                <Field label="Uwagi" hint="Opcjonalnie">
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={2}
+                    placeholder="np. preferowane godziny dostawy, brama tylna..."
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#1F3A5F] resize-none"
+                  />
+                </Field>
+              </div>
+
+              {/* Klauzula RODO (tekst, NIE checkbox) */}
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-[11px] text-slate-500 leading-relaxed">
+                Twoje dane (imię, telefon, adres dostawy odbiorcy) przetwarzamy w celu realizacji zamówienia —
+                podstawa: art. 6 ust. 1 lit. b RODO. Administrator: Ziomek Fish sp. z o.o., NIP 5223239864, ul.
+                Marywilska 26, Warszawa. Dane przechowujemy przez okres współpracy handlowej. Masz prawo dostępu,
+                sprostowania i usunięcia danych oraz wniesienia skargi do PUODO. Szczegóły:{' '}
+                <a href="/polityka-prywatnosci" className="underline text-[#1F3A5F]">
+                  Polityka prywatności
+                </a>
+                .
+              </div>
+
+              {/* Poprawki 1B — zgoda marketingowa: OSOBNA od klauzuli, dobrowolna, NIE blokuje */}
+              {initial.has_marketing_consent ? (
+                <div className="text-[11px] text-emerald-700 px-1">Zgoda marketingowa: udzielona ✓</div>
+              ) : (
+                <label className="flex items-start gap-2 cursor-pointer px-1">
+                  <input
+                    type="checkbox"
+                    checked={marketingConsent}
+                    onChange={(e) => setMarketingConsent(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-[#1F3A5F]"
+                  />
+                  <span className="text-[11px] text-slate-600 leading-relaxed">{MARKETING_CONSENT_TEXT}</span>
+                </label>
+              )}
+
+              {submitError && (
+                <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-xs text-rose-900">{submitError}</div>
+              )}
+
+              {/* Zapisz jako szablon */}
+              <button
+                type="button"
+                onClick={handleSaveTemplate}
+                className="w-full px-3 py-2 rounded-lg bg-[#eef3f9] text-[#1F3A5F] text-[13px] font-semibold flex items-center justify-center gap-1 hover:bg-[#dde7f3]"
+              >
+                <Star className="w-4 h-4" /> Zapisz to zamówienie jako szablon
+              </button>
+
+              {/* Nawigacja */}
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  disabled={submitting}
+                  className="px-4 py-2.5 rounded-lg border border-slate-300 text-slate-700 font-medium text-sm flex items-center gap-1 hover:bg-slate-50 disabled:opacity-40"
+                >
+                  <ChevronLeft className="w-4 h-4" /> Produkty
+                </button>
+                <button
+                  type="button"
+                  onClick={submitOrder}
+                  disabled={!canSubmit}
+                  className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Wysyłanie…
+                    </>
+                  ) : (
+                    'Złóż zamówienie'
+                  )}
+                </button>
+              </div>
+              {!canSubmit && !submitting && (
+                <div className="text-[11px] text-slate-400 text-center">
+                  {!contactValid
+                    ? 'Uzupełnij dane kontaktowe (imię, telefon, e-mail).'
+                    : !pointsAddrValid
+                      ? 'Uzupełnij adresy punktów dostawy.'
+                      : !itemsValid
+                        ? 'Każdy punkt musi mieć przynajmniej jeden produkt.'
+                        : !terminValid
+                          ? 'Wybierz datę dla punktów z konkretnym terminem.'
+                          : ''}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-
 function Field({
   label,
   hint,
@@ -1344,74 +1687,5 @@ function Field({
       {children}
       {hint && <div className="text-[10px] text-slate-400 mt-1">{hint}</div>}
     </div>
-  )
-}
-
-function TierProgressBar({ tier, total }: { tier: StandardTier; total: number }) {
-  // Progress within current tier window
-  const thresholds = [0, 2000, 4000]
-  const idx = tier === 'maly' ? 0 : tier === 'sredni' ? 1 : 2
-  const tierMin = thresholds[idx]
-  const tierMax = tier === 'duzy' ? Math.max(8000, total) : thresholds[idx + 1]
-  const pct = Math.min(100, Math.max(0, ((total - tierMin) / (tierMax - tierMin)) * 100))
-
-  return (
-    <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-      <div
-        className={`h-full rounded-full transition-all duration-300 ${
-          tier === 'duzy'
-            ? 'bg-emerald-500'
-            : tier === 'sredni'
-              ? 'bg-amber-500'
-              : 'bg-slate-400'
-        }`}
-        style={{ width: `${pct}%` }}
-      />
-    </div>
-  )
-}
-
-function TierHint({ tier, total }: { tier: StandardTier; total: number }) {
-  const nextThreshold = TIER_NEXT_THRESHOLD[tier]
-  if (nextThreshold === null) {
-    return <div className="text-[10px] text-emerald-700 mt-1.5">Najlepsza cena · Duży gracz</div>
-  }
-  const diff = nextThreshold - total
-  if (diff <= 0) return null
-  const nextLabel = tier === 'maly' ? 'Średni' : 'Duży gracz'
-  return (
-    <div className="text-[10px] text-slate-500 mt-1.5">
-      Brakuje <span className="font-semibold text-slate-700">{fmt(diff)} zł</span> do progu{' '}
-      <span className="font-semibold text-amber-600">{nextLabel}</span> (lepsze ceny)
-    </div>
-  )
-}
-
-// Sprint S-CENNIK-WH.2 — Hurt → Wielki Hurt progress (10k threshold, hurt nominal trigger)
-function WHHurtProgressBar({ tier, hurtNominal }: { tier: Tier; hurtNominal: number }) {
-  const isCrossed = tier === 'wielki_hurt'
-  const pct = Math.min(100, Math.max(0, (hurtNominal / WH_HURT_THRESHOLD) * 100))
-  const diff = WH_HURT_THRESHOLD - hurtNominal
-  return (
-    <>
-      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-300 ${isCrossed ? 'bg-violet-600' : 'bg-amber-500'}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <div className="text-[10px] mt-1.5">
-        {isCrossed ? (
-          <span className="text-violet-700">
-            Najlepsza cena · <strong>Wielki Hurt</strong>
-          </span>
-        ) : (
-          <span className="text-slate-500">
-            Brakuje <span className="font-semibold text-slate-700">{fmt(diff)} zł</span> (Hurt) do progu{' '}
-            <span className="font-semibold text-violet-700">Wielki Hurt</span> (lepsze ceny)
-          </span>
-        )}
-      </div>
-    </>
   )
 }

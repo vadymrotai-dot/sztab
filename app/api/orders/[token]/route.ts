@@ -82,9 +82,21 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
   // Load client info (pre-fill data)
   const { data: client } = await supabase
     .from('clients')
-    .select('id, title, nip, city, address, region, email, phone')
+    .select('id, title, nip, city, address, region, email, phone, marketing_consent')
     .eq('id', order.client_id)
     .maybeSingle()
+
+  // Przejście 1B — zapisane punkty dostawy klienta (profil) do pickera w formie.
+  // Publiczny loader (service-role) — forma nie ma client_id ani sesji, więc
+  // punkty muszą przyjść tutaj zamiast z admin-route /api/clients/[id]/...
+  const { data: savedPoints } = await supabase
+    .from('client_delivery_points')
+    .select(
+      'id, nazwa, ulica, kod_pocztowy, miasto, typ_punktu, odbiorca_imie, odbiorca_telefon',
+    )
+    .eq('client_id', order.client_id)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
 
   // Load 17 SKU available для orders
   // Sprint S-CENNIK-WH.1 — also fetch price_duzi_gracze для wielki_hurt tier.
@@ -163,6 +175,19 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         // Sprint S-CENNIK-WH.2 — Hurt entry-tier (NULL → 0 fallback, але UI sprawdza)
         hurt_wh: p.price_hurt_wh == null ? null : Number(p.price_hurt_wh),
       },
+    })),
+    // Poprawki 1B — czy klient ma już zgodę marketingową (UI ukrywa galochkę).
+    has_marketing_consent: client?.marketing_consent === true,
+    // Przejście 1B — zapisane punkty dostawy klienta (dla akcji "Nowe zamówienie").
+    saved_delivery_points: (savedPoints || []).map((sp) => ({
+      id: sp.id,
+      nazwa: sp.nazwa,
+      ulica: sp.ulica,
+      kod_pocztowy: sp.kod_pocztowy,
+      miasto: sp.miasto,
+      typ_punktu: sp.typ_punktu,
+      odbiorca_imie: sp.odbiorca_imie,
+      odbiorca_telefon: sp.odbiorca_telefon,
     })),
   })
 }

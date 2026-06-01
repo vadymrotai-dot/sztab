@@ -22,6 +22,17 @@ export const dynamic = 'force-dynamic'
 
 const UUID_RE = /^[0-9a-f-]{36}$/i
 
+// Przejście 1B — ręczne dodanie punktu do profilu (panel Vadyma).
+const PostSchema = z.object({
+  nazwa: z.string().trim().min(2, 'Nazwa wymagana (min. 2 znaki)').max(150),
+  ulica: z.string().trim().min(2, 'Ulica wymagana (min. 2 znaki)').max(200),
+  miasto: z.string().trim().min(2, 'Miasto wymagane (min. 2 znaki)').max(100),
+  kod_pocztowy: z.string().trim().max(10).optional().nullable(),
+  typ_punktu: z.enum(['sklep', 'magazyn']).optional().default('sklep'),
+  odbiorca_imie: z.string().trim().max(150).optional().nullable(),
+  odbiorca_telefon: z.string().trim().max(20).optional().nullable(),
+})
+
 type RouteContext = { params: Promise<{ id: string }> }
 
 // ─── helper: auth gate + resolve client (owner check) ───────────────
@@ -90,6 +101,64 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
   }
 
   return NextResponse.json({ ok: true, points: points ?? [] })
+}
+
+// ─── POST: ręczne dodanie punktu do profilu ─────────────────────────
+export async function POST(req: NextRequest, ctx: RouteContext) {
+  const { id } = await ctx.params
+  const resolved = await resolveClientContext(id)
+  if (resolved.error) {
+    return NextResponse.json(
+      { ok: false, error: resolved.error.message },
+      { status: resolved.error.code },
+    )
+  }
+  const { admin, clientId, ownerId } = resolved
+
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: 'Niepoprawny format danych' },
+      { status: 400 },
+    )
+  }
+  const parsed = PostSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json(
+      { ok: false, error: parsed.error.issues[0]?.message ?? 'Niepoprawne dane' },
+      { status: 422 },
+    )
+  }
+
+  const { data: inserted, error: insertErr } = await admin
+    .from('client_delivery_points')
+    .insert({
+      client_id: clientId,
+      owner_id: ownerId,
+      nazwa: parsed.data.nazwa,
+      ulica: parsed.data.ulica,
+      miasto: parsed.data.miasto,
+      kod_pocztowy: parsed.data.kod_pocztowy || null,
+      typ_punktu: parsed.data.typ_punktu,
+      odbiorca_imie: parsed.data.odbiorca_imie || null,
+      odbiorca_telefon: parsed.data.odbiorca_telefon || null,
+    })
+    .select(
+      'id, nazwa, ulica, kod_pocztowy, miasto, typ_punktu, odbiorca_imie, odbiorca_telefon',
+    )
+    .single()
+
+  if (insertErr || !inserted) {
+    console.error('[clients][delivery-points][POST] failed:', insertErr?.message)
+    return NextResponse.json(
+      { ok: false, error: 'Nie udało się zapisać punktu' },
+      { status: 500 },
+    )
+  }
+
+  return NextResponse.json({ ok: true, point: inserted })
 }
 
 // ─── DELETE: soft-delete (is_active=false) ──────────────────────────

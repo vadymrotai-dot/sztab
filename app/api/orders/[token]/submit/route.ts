@@ -25,6 +25,10 @@ export const dynamic = 'force-dynamic'
 
 const UUID_RE = /^[0-9a-f-]{36}$/i
 
+// Poprawki 1B — kanoniczny tekst zgody marketingowej (snapshot zapisywany w clients).
+const MARKETING_CONSENT_TEXT =
+  'Zgadzam się na otrzymywanie ofert handlowych i informacji marketingowych od Ziomek Fish sp. z o.o. drogą elektroniczną (e-mail). Zgodę mogę wycofać w każdej chwili.'
+
 // Sprint T-ORDER.4b-API (30.05.2026) — rozszerzenie o wielopunktowość.
 // delivery_address + preferred_delivery_date zostają OPTIONAL (back-compat dla
 // 1-punktowego payload). delivery_mode='jeden' (default) = stary tryb albo nowy
@@ -66,6 +70,8 @@ const SubmitSchema = z.object({
   delivery_mode: z.enum(['jeden', 'kilka']).optional().default('jeden'),
   documents_mode: z.enum(['wspolna', 'osobne']).optional().default('wspolna'),
   delivery_points: z.array(DeliveryPointSchema).optional(),
+  // Poprawki 1B — dobrowolna zgoda marketingowa (nie blokuje submitu).
+  marketing_consent: z.boolean().optional(),
   items: z
     .array(
       z.object({
@@ -210,7 +216,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   // punktów dostawy do profilu klienta (client_delivery_points).
   const { data: order, error: loadErr } = await supabase
     .from('orders')
-    .select('id, status, cennik_tier, price_mode, client_id, client:clients!inner(owner_id)')
+    .select('id, status, cennik_tier, price_mode, client_id, client:clients!inner(owner_id, marketing_consent)')
     .eq('access_token', token)
     .maybeSingle()
   if (loadErr) {
@@ -537,6 +543,26 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       { ok: false, error: 'Błąd zapisu pozycji zamówienia' },
       { status: 500 },
     )
+  }
+
+  // Poprawki 1B — zgoda marketingowa (dobrowolna). Zapis tylko gdy klient
+  // zaznaczył i jeszcze nie ma zgody — NIE nadpisujemy daty istniejącej zgody.
+  if (input.marketing_consent === true) {
+    const already =
+      (order as { client?: { marketing_consent?: boolean } }).client?.marketing_consent === true
+    if (!already && order.client_id) {
+      const { error: mcErr } = await supabase
+        .from('clients')
+        .update({
+          marketing_consent: true,
+          marketing_consent_at: now,
+          marketing_consent_text: MARKETING_CONSENT_TEXT,
+        })
+        .eq('id', order.client_id)
+      if (mcErr) {
+        console.error('[orders][token][POST] marketing_consent update failed:', mcErr.message)
+      }
+    }
   }
 
   // Sprint T-ORDER.1 (30.05.2026) — proforma NIE wysyłana automatycznie.
