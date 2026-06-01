@@ -206,9 +206,11 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   // Load order draft
   // Sprint S-CENNIK-WH.1 — also fetch cennik_tier (locked at offer-send).
   // Sprint S-CENNIK-WH.2 — also fetch price_mode (matrix 2x2).
+  // Przejście 1A — also fetch client_id + clients.owner_id dla auto-zapisu
+  // punktów dostawy do profilu klienta (client_delivery_points).
   const { data: order, error: loadErr } = await supabase
     .from('orders')
-    .select('id, status, cennik_tier, price_mode')
+    .select('id, status, cennik_tier, price_mode, client_id, client:clients!inner(owner_id)')
     .eq('access_token', token)
     .maybeSingle()
   if (loadErr) {
@@ -392,8 +394,89 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   // delivery_point_index → realne UUID przez pointIds[index].
   let pointIds: string[] = []
   if (input.delivery_points && input.delivery_points.length > 0) {
-    const pointsToInsert = input.delivery_points.map((dp) => ({
+    // Przejście 1A — auto-zapis każdego punktu do profilu klienta
+    // (client_delivery_points) + link client_delivery_point_id. Dedup po
+    // client_id + ulica + miasto (case-insensitive trim). Geo lat/lng NULL
+    // (Google Maps później). SOFT-FAIL: błąd zapisu profilu NIE blokuje
+    // złożenia zamówienia (link zostaje NULL). PRICING NIETKNIĘTY.
+    const clientId = (order as { client_id?: string }).client_id ?? null
+    const ownerId =
+      (order as { client?: { owner_id?: string } }).client?.owner_id ?? null
+
+    const norm = (s: string | null | undefined) => (s ?? '').trim().toLowerCase()
+    const dedupKey = (
+      ulica: string | null | undefined,
+      miasto: string | null | undefined,
+    ) => `${norm(ulica)}|${norm(miasto)}`
+
+    // Mapa istniejących aktywnych punktów klienta (dedup).
+    const savedByKey = new Map<string, string>()
+    if (clientId && ownerId) {
+      const { data: existing } = await supabase
+        .from('client_delivery_points')
+        .select('id, ulica, miasto')
+        .eq('client_id', clientId)
+        .eq('is_active', true)
+      for (const sp of (existing ?? []) as Array<{
+        id: string
+        ulica: string | null
+        miasto: string | null
+      }>) {
+        savedByKey.set(dedupKey(sp.ulica, sp.miasto), sp.id)
+      }
+    }
+
+    // Resolve client_delivery_point_id per punkt (existing albo nowy insert).
+    const clientPointIds: Array<string | null> = []
+    for (const dp of input.delivery_points) {
+      let cdpId: string | null = null
+      const hasAddr =
+        !!dp.ulica &&
+        dp.ulica.trim().length > 0 &&
+        !!dp.miasto &&
+        dp.miasto.trim().length > 0
+      if (clientId && ownerId && hasAddr) {
+        const key = dedupKey(dp.ulica, dp.miasto)
+        const found = savedByKey.get(key)
+        if (found) {
+          cdpId = found
+        } else {
+          const nazwa = (
+            dp.label && dp.label.trim().length > 0
+              ? dp.label.trim()
+              : `${dp.ulica!.trim()}, ${dp.miasto!.trim()}`
+          ).slice(0, 200)
+          const { data: newCdp, error: cdpErr } = await supabase
+            .from('client_delivery_points')
+            .insert({
+              client_id: clientId,
+              owner_id: ownerId,
+              nazwa,
+              ulica: dp.ulica,
+              kod_pocztowy: dp.kod_pocztowy || null,
+              miasto: dp.miasto,
+              odbiorca_imie: dp.odbiorca_imie || null,
+              odbiorca_telefon: dp.odbiorca_telefon || null,
+            })
+            .select('id')
+            .single()
+          if (cdpErr || !newCdp) {
+            console.error(
+              '[orders][token][POST] client_delivery_point upsert failed:',
+              cdpErr?.message,
+            )
+          } else {
+            cdpId = newCdp.id
+            savedByKey.set(key, newCdp.id) // dedup w obrębie tego payloadu
+          }
+        }
+      }
+      clientPointIds.push(cdpId)
+    }
+
+    const pointsToInsert = input.delivery_points.map((dp, idx) => ({
       order_id: order.id,
+      client_delivery_point_id: clientPointIds[idx],
       label: dp.label || null,
       ulica: dp.ulica,
       kod_pocztowy: dp.kod_pocztowy || null,

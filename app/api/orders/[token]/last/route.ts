@@ -63,9 +63,13 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
   }
 
   // 2. Find ostatnie SUBMITTED zamówienie tego client_id (NOT cancelled / draft).
+  // Przejście 1A — also fetch delivery_mode/documents_mode + legacy adres/data,
+  // żeby "Powtórz" odtwarzał całość dostawy, nie tylko produkty.
   const { data: lastOrder, error: lastErr } = await admin
     .from('orders')
-    .select('id, order_number, submitted_at')
+    .select(
+      'id, order_number, submitted_at, delivery_mode, documents_mode, delivery_address, preferred_delivery_date',
+    )
     .eq('client_id', currentOrder.client_id)
     .not('submitted_at', 'is', null)
     .neq('status', 'cancelled')
@@ -80,15 +84,27 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     )
   }
   if (!lastOrder) {
-    return NextResponse.json(
-      { ok: true, items: [], skipped: 0, source_order_number: null, has_history: false },
-    )
+    return NextResponse.json({
+      ok: true,
+      items: [],
+      skipped: 0,
+      source_order_number: null,
+      has_history: false,
+      delivery_mode: 'jeden',
+      documents_mode: 'wspolna',
+      delivery_address: null,
+      preferred_delivery_date: null,
+      delivery_points: [],
+    })
   }
 
   // 3. SELECT items + JOIN products dla filter in_stock + show_in_orders.
+  // Przejście 1A — dodano delivery_point_id dla mapowania pozycja → punkt.
   const { data: items, error: itemsErr } = await admin
     .from('order_items')
-    .select('product_id, qty, product:products!inner(id, in_stock, show_in_orders)')
+    .select(
+      'product_id, qty, delivery_point_id, product:products!inner(id, in_stock, show_in_orders)',
+    )
     .eq('order_id', lastOrder.id)
   if (itemsErr) {
     console.error('[orders][token][last] items query failed:', itemsErr.message)
@@ -98,14 +114,59 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     )
   }
 
+  // 3b. Przejście 1A — SELECT order_delivery_points (kształt jak payload submit).
+  // Kolejność stabilna (created_at) → indeks = delivery_point_index dla repeat.
+  const { data: rawPoints, error: pointsErr } = await admin
+    .from('order_delivery_points')
+    .select(
+      'id, label, ulica, kod_pocztowy, miasto, typ, termin_typ, preferred_date, odbiorca_imie, odbiorca_telefon',
+    )
+    .eq('order_id', lastOrder.id)
+    .order('created_at', { ascending: true })
+  if (pointsErr) {
+    console.error('[orders][token][last] delivery_points query failed:', pointsErr.message)
+    return NextResponse.json(
+      { ok: false, error: 'Błąd bazy danych' },
+      { status: 500 },
+    )
+  }
+  const points = (rawPoints ?? []) as Array<{
+    id: string
+    label: string | null
+    ulica: string | null
+    kod_pocztowy: string | null
+    miasto: string | null
+    typ: string | null
+    termin_typ: string | null
+    preferred_date: string | null
+    odbiorca_imie: string | null
+    odbiorca_telefon: string | null
+  }>
+  // Mapa point_id → index (dla pozycji), oraz payload-shape delivery_points.
+  const pointIndexById = new Map<string, number>()
+  points.forEach((p, idx) => pointIndexById.set(p.id, idx))
+  const deliveryPoints = points.map((p) => ({
+    label: p.label,
+    ulica: p.ulica,
+    kod_pocztowy: p.kod_pocztowy,
+    miasto: p.miasto,
+    typ: p.typ ?? 'dostawa',
+    termin_typ: p.termin_typ ?? 'najblizszy',
+    preferred_date: p.preferred_date,
+    odbiorca_imie: p.odbiorca_imie,
+    odbiorca_telefon: p.odbiorca_telefon,
+  }))
+
   // 4. Filter — pomija jeśli product not found, !in_stock lub !show_in_orders.
+  // Przejście 1A — zachowaj delivery_point_index dla odtworzenia przypisania.
   type ItemRow = {
     product_id: string
     qty: number
+    delivery_point_id: string | null
     product: { id: string; in_stock: boolean | null; show_in_orders: boolean | null } | null
   }
   const allItems = (items ?? []) as unknown as ItemRow[]
-  const valid: Array<{ product_id: string; qty: number }> = []
+  const valid: Array<{ product_id: string; qty: number; delivery_point_index: number | null }> = []
   let skipped = 0
   for (const it of allItems) {
     const p = it.product
@@ -117,7 +178,11 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       skipped++
       continue
     }
-    valid.push({ product_id: it.product_id, qty: it.qty })
+    const dpIdx =
+      it.delivery_point_id != null && pointIndexById.has(it.delivery_point_id)
+        ? pointIndexById.get(it.delivery_point_id)!
+        : null
+    valid.push({ product_id: it.product_id, qty: it.qty, delivery_point_index: dpIdx })
   }
 
   return NextResponse.json({
@@ -126,5 +191,11 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     skipped,
     source_order_number: lastOrder.order_number,
     has_history: true,
+    // Przejście 1A — pełna dostawa do odtworzenia przez "Powtórz".
+    delivery_mode: lastOrder.delivery_mode ?? 'jeden',
+    documents_mode: lastOrder.documents_mode ?? 'wspolna',
+    delivery_address: lastOrder.delivery_address ?? null,
+    preferred_delivery_date: lastOrder.preferred_delivery_date ?? null,
+    delivery_points: deliveryPoints,
   })
 }
