@@ -107,6 +107,13 @@ const TIER_LABEL: Record<Tier, string> = {
   wielki_hurt_entry: 'Hurt',
 }
 
+// Poprawka 3 — etykiety poziomów dla plansz gradacji (hurt).
+const HURT_LEVEL_LABEL: Record<StandardTier, string> = {
+  maly: 'Mały hurt',
+  sredni: 'Średni hurt',
+  duzy: 'Duży hurt',
+}
+
 const PODGRUPA_LABEL: Record<string, string> = {
   kiszonki: 'Kiszonki',
   surowki: 'Surówki',
@@ -141,6 +148,8 @@ function computeOrderTotals(
   cmTier: Tier | null
   seafoodTier: StandardTier | null
   seafoodSzt: number
+  cmTotal: number
+  seafoodTotal: number
   totalNet: number
   totalVat: number
   totalBrutto: number
@@ -237,7 +246,7 @@ function computeOrderTotals(
   const totalBrutto = Math.round((totalNet + totalVat) * 100) / 100
 
   const tier: Tier = cmTier ?? seafoodTier ?? 'maly'
-  return { tier, cmTier, seafoodTier, seafoodSzt, totalNet, totalVat, totalBrutto }
+  return { tier, cmTier, seafoodTier, seafoodSzt, cmTotal, seafoodTotal, totalNet, totalVat, totalBrutto }
 }
 
 // ─── Local form types ─────────────────────────────────────────────────────────
@@ -349,7 +358,6 @@ export function OrderForm({
   const [lastHasHistory, setLastHasHistory] = useState(false)
   const lastDataRef = useRef<any>(null)
 
-  const [selectedSaved, setSelectedSaved] = useState<Set<string>>(new Set())
 
   const [actionNotice, setActionNotice] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -385,14 +393,20 @@ export function OrderForm({
     return m
   }, [carts])
 
-  const { tier, cmTier, seafoodTier, seafoodSzt, totalNet, totalVat, totalBrutto } = useMemo(
-    () => computeOrderTotals(mergedCart, products, cennikTier, priceMode),
-    [mergedCart, products, cennikTier, priceMode],
-  )
-  // Przejście 2C — cena jednostkowa per-produkt wg jego gałęzi (CM albo owoce morza).
+  const { tier, cmTier, seafoodTier, seafoodSzt, cmTotal, seafoodTotal, totalNet, totalVat, totalBrutto } =
+    useMemo(
+      () => computeOrderTotals(mergedCart, products, cennikTier, priceMode),
+      [mergedCart, products, cennikTier, priceMode],
+    )
+  // Poprawka 2 — startowy display-tier gdy koszyk pusty (cmTier/seafoodTier null):
+  //   auto → 'maly' (najdroższy, mały obrót), minimum → 'duzy' (cena minimalna).
+  const startTier: StandardTier = isMinimum ? 'duzy' : 'maly'
+  const cmDisplayTier: Tier = cmTier ?? startTier
+  const seafoodDisplayTier: StandardTier = seafoodTier ?? startTier
+  // Cena jednostkowa per-produkt wg gałęzi, z fallbackiem startowym (pusty koszyk → maly/duzy).
   const productUnitPrice = (p: Product): number => {
-    if (p.grupa === 'owoce_morza') return seafoodTier ? p.prices[seafoodTier] ?? 0 : 0
-    return cmTier ? p.prices[tierToPriceKey(cmTier)] ?? 0 : 0
+    if (p.grupa === 'owoce_morza') return p.prices[seafoodDisplayTier] ?? 0
+    return p.prices[tierToPriceKey(cmDisplayTier)] ?? 0
   }
   const totalItems = useMemo(
     () => Object.values(mergedCart).filter((q) => q > 0).length,
@@ -479,37 +493,30 @@ export function OrderForm({
   }
 
   // ─── Picker zapisanych punktów (profil) ───────────────────────────────────────
-  function toggleSaved(id: string) {
-    setSelectedSaved((prev) => {
-      const n = new Set(prev)
-      if (n.has(id)) n.delete(id)
-      else n.add(id)
-      return n
-    })
-  }
-  function useSelectedSaved() {
-    const chosen = savedPoints.filter((sp) => selectedSaved.has(sp.id))
-    if (chosen.length === 0) return
-    const np = chosen.map((sp) =>
-      emptyPoint({
-        label: sp.nazwa ?? '',
-        ulica: sp.ulica ?? '',
-        miasto: sp.miasto ?? '',
-        kod_pocztowy: sp.kod_pocztowy ?? '',
-        odbiorca_imie: sp.odbiorca_imie ?? '',
-        odbiorca_telefon: sp.odbiorca_telefon ?? '',
-        prefilled: true,
-      }),
+  // Poprawka 1 — ONE-CLICK: klik karty zapisanego punktu od razu wypełnia
+  // bieżący/pierwszy punkt danymi z profilu (zamiast checkbox + przycisk).
+  function applySavedPoint(sp: SavedPoint) {
+    const targetId =
+      deliveryMode === 'kilka' && activePointId ? activePointId : points[0]?.localId
+    if (!targetId) return
+    setPoints((prev) =>
+      prev.map((p) =>
+        p.localId === targetId
+          ? {
+              ...p,
+              label: sp.nazwa ?? '',
+              ulica: sp.ulica ?? '',
+              miasto: sp.miasto ?? '',
+              kod_pocztowy: sp.kod_pocztowy ?? '',
+              odbiorca_imie: sp.odbiorca_imie ?? '',
+              odbiorca_telefon: sp.odbiorca_telefon ?? '',
+              prefilled: true,
+            }
+          : p,
+      ),
     )
-    setPoints(np)
-    setDeliveryMode(np.length >= 2 ? 'kilka' : 'jeden')
-    const c: Record<string, Record<string, number>> = {}
-    np.forEach((p) => (c[p.localId] = {}))
-    setCarts(c)
-    setActivePointId(np[0].localId)
-    setSelectedSaved(new Set())
     setSource('new')
-    setActionNotice('Wczytano zapisane punkty z profilu — sprawdź i popraw.')
+    setActionNotice(`Wczytano punkt "${sp.nazwa || sp.miasto || 'z profilu'}" — sprawdź i popraw.`)
   }
 
   // ─── Akcje ekranu startowego ──────────────────────────────────────────────────
@@ -523,7 +530,6 @@ export function OrderForm({
     setWspolnaData(false)
     setContactPrefilled(Boolean(client && (client.phone || client.email)))
     if (podgrupy[0]) setActivePodgrupa(podgrupy[0].key)
-    setSelectedSaved(new Set())
     setSource('new')
     setActionNotice(null)
     setActionError(null)
@@ -1010,24 +1016,21 @@ export function OrderForm({
                 </div>
               )}
 
-              {/* Picker zapisanych punktów */}
+              {/* Picker zapisanych punktów — Poprawka 1: ONE-CLICK (klik karty = zastosuj) */}
               {savedPoints.length > 0 && (
                 <div className="border border-slate-200 rounded-lg p-3">
                   <div className="text-[13px] font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
-                    <MapPin className="w-4 h-4 text-[#1F3A5F]" /> Twoje zapisane punkty — zaznacz które użyć
+                    <MapPin className="w-4 h-4 text-[#1F3A5F]" /> Twoje zapisane punkty — kliknij aby użyć
                   </div>
                   <div className="space-y-1.5">
                     {savedPoints.map((sp) => (
-                      <label
+                      <button
                         key={sp.id}
-                        className="flex items-start gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer"
+                        type="button"
+                        onClick={() => applySavedPoint(sp)}
+                        className="w-full text-left flex items-start gap-2 px-3 py-2 rounded-lg border border-slate-200 hover:border-[#1F3A5F] hover:bg-[#eef3f9] transition cursor-pointer"
                       >
-                        <input
-                          type="checkbox"
-                          checked={selectedSaved.has(sp.id)}
-                          onChange={() => toggleSaved(sp.id)}
-                          className="mt-0.5 w-4 h-4 accent-[#1F3A5F]"
-                        />
+                        <MapPin className="w-4 h-4 text-[#1F3A5F] mt-0.5 shrink-0" />
                         <span className="text-xs">
                           <span className="font-semibold text-slate-800">{sp.nazwa || sp.miasto || 'Punkt'}</span>
                           <span className="text-slate-500">
@@ -1037,17 +1040,12 @@ export function OrderForm({
                               .join(', ')}
                           </span>
                         </span>
-                      </label>
+                      </button>
                     ))}
                   </div>
-                  <button
-                    type="button"
-                    onClick={useSelectedSaved}
-                    disabled={selectedSaved.size === 0}
-                    className="mt-2 px-3 py-1.5 rounded-lg bg-[#1F3A5F] text-white text-xs font-semibold disabled:opacity-40"
-                  >
-                    Użyj zaznaczonych ({selectedSaved.size})
-                  </button>
+                  <div className="text-[10px] text-slate-400 mt-1.5">
+                    Klik wypełni adres dostawy danymi z profilu — możesz potem poprawić.
+                  </div>
                 </div>
               )}
 
@@ -1379,26 +1377,63 @@ export function OrderForm({
                   : 'marka partnerska — Czudowa Marka'}
               </div>
 
-              {/* Przejście 2C — plansza poziomu owoców morza wg sumy szt (całe zamówienie) */}
-              {seafoodSzt > 0 && (
-                <div
-                  className="mx-4 mt-2 rounded-lg bg-[#eef3f9] px-3 py-2"
-                  style={{ borderLeft: '3px solid #1F3A5F' }}
-                >
-                  <div className="text-[12px] font-bold text-[#1F3A5F]">
-                    Owoce morza: {seafoodSzt} szt → poziom{' '}
-                    {seafoodTier === 'duzy' ? 'Duży' : seafoodTier === 'sredni' ? 'Średni' : 'Mały'}
-                    {isMinimum && ' (cena minimalna)'}
-                  </div>
-                  {!isMinimum && seafoodTier !== 'duzy' && (
-                    <div className="text-[11px] text-slate-500 mt-0.5">
-                      {seafoodTier === 'maly'
-                        ? `Do poziomu Średni brakuje ${100 - seafoodSzt} szt (lepsza cena od 100 szt).`
-                        : `Do poziomu Duży brakuje ${301 - seafoodSzt} szt (najlepsza cena powyżej 300 szt).`}
+              {/* Poprawka 3 — DWIE plansze gradacji (od startu, wg aktywnej grupy zakładki) */}
+              {(() => {
+                const activeGrupa = podgrupy.find((g) => g.key === activePodgrupa)?.items[0]?.grupa
+                const activeIsSeafood = activeGrupa === 'owoce_morza'
+
+                const cennikInfo = isMinimum
+                  ? isWielkiHurt
+                    ? 'Twój cennik: Wielki Hurt · cena zablokowana. Masz najniższe ceny niezależnie od ilości.'
+                    : 'Twój cennik: Standardowy · cena minimalna. Masz najniższe ceny niezależnie od ilości.'
+                  : isAutoWH
+                    ? 'Twój cennik: Wielki Hurt (Auto). Ceny zależą od wartości zamówienia — dodawaj produkty, ceny aktualizują się automatycznie.'
+                    : 'Twój cennik: Standardowy · 3 progi (Auto). Ceny zależą od ilości w całym zamówieniu — dodawaj produkty, ceny aktualizują się automatycznie.'
+
+                let statusHead = ''
+                let statusSub: string | null = null
+                if (activeIsSeafood) {
+                  const lvl = seafoodDisplayTier
+                  statusHead = `Owoce morza: ${seafoodSzt} szt → poziom ${HURT_LEVEL_LABEL[lvl]}`
+                  if (isMinimum) statusSub = 'Cena minimalna — masz najlepsze ceny.'
+                  else if (lvl === 'duzy') statusSub = 'Masz najlepsze ceny (Duży hurt).'
+                  else {
+                    const need = lvl === 'maly' ? 100 - seafoodSzt : 301 - seafoodSzt
+                    const next = lvl === 'maly' ? 'Średni hurt' : 'Duży hurt'
+                    statusSub = `Jeszcze ${need} szt do progu ${next} — ceny spadną.`
+                  }
+                } else {
+                  const isStd =
+                    cmTier === 'maly' || cmTier === 'sredni' || cmTier === 'duzy' || cmTier === null
+                  const lvl: StandardTier =
+                    cmTier === 'sredni' ? 'sredni' : cmTier === 'duzy' ? 'duzy' : isMinimum ? 'duzy' : 'maly'
+                  const lvlLabel = isStd ? HURT_LEVEL_LABEL[lvl] : TIER_LABEL[cmTier as Tier]
+                  statusHead = `Wartość koszyka (Czudowa Marka): ${fmt(cmTotal)} zł → poziom ${lvlLabel}`
+                  if (isMinimum) statusSub = 'Cena minimalna — masz najlepsze ceny.'
+                  else if (!isAutoStandard) statusSub = 'Najlepsze ceny w Twoim cenniku.'
+                  else if (lvl === 'duzy') statusSub = 'Masz najlepsze ceny (Duży hurt).'
+                  else {
+                    const prog = lvl === 'maly' ? 2000 : 4000
+                    const next = lvl === 'maly' ? 'Średni hurt' : 'Duży hurt'
+                    statusSub = `Jeszcze ${fmt(prog - cmTotal)} zł do progu ${next} — ceny spadną.`
+                  }
+                }
+
+                return (
+                  <div className="mx-4 mt-2 space-y-2">
+                    <div
+                      className="rounded-lg bg-[#eef3f9] border border-[#1F3A5F]/20 px-3 py-2 text-[11px] text-[#1F3A5F]"
+                      style={{ borderLeft: '3px solid #1F3A5F' }}
+                    >
+                      {cennikInfo}
                     </div>
-                  )}
-                </div>
-              )}
+                    <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                      <div className="text-[12px] font-bold text-amber-900">{statusHead}</div>
+                      {statusSub && <div className="text-[11px] text-amber-800 mt-0.5">{statusSub}</div>}
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Lista produktów aktywnej podgrupy */}
               <div className="p-4 space-y-2 max-h-[52vh] overflow-y-auto">
