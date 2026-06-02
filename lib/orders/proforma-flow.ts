@@ -23,6 +23,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   createInvoice,
   orderItemsToPositions,
+  mergeItemsByProduct,
   getInvoicePdf,
 } from '@/lib/integrations/fakturownia'
 import { sendNotification } from '@/lib/notifications/sender'
@@ -38,7 +39,7 @@ export async function processProforma(orderId: string): Promise<void> {
       id, order_number, total_net, total_vat, total_brutto,
       contact_person, contact_phone, contact_email, delivery_address,
       client:clients!inner(id, title, nip, city, address, email, phone),
-      items:order_items(product_name_snapshot, gramatura_snapshot, qty, unit_price, line_total)
+      items:order_items(product_id, product_name_snapshot, gramatura_snapshot, qty, unit_price, line_total, product:products(vat_rate))
     `,
     )
     .eq('id', orderId)
@@ -50,7 +51,17 @@ export async function processProforma(orderId: string): Promise<void> {
   }
 
   const client = (order as any).client
-  const items = (order as any).items as any[]
+  // 3B-1 — spłaszcz vat_rate (z products) + złącz po product_id (dokument wspólny).
+  const rawItems = ((order as any).items as any[]).map((it) => ({
+    product_id: it.product_id,
+    product_name_snapshot: it.product_name_snapshot,
+    gramatura_snapshot: it.gramatura_snapshot,
+    qty: it.qty,
+    unit_price: it.unit_price,
+    line_total: it.line_total,
+    vat_rate: it.product?.vat_rate ?? null,
+  }))
+  const items = mergeItemsByProduct(rawItems)
   const emailAddr = (order as any).contact_email || client.email
 
   if (!emailAddr) {

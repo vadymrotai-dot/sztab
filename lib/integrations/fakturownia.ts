@@ -218,30 +218,68 @@ export async function getInvoice(
   return data as FakturowniaInvoice
 }
 
+// 3B-1 — typ pozycji wejściowej (z order_items + vat_rate z products).
+type OrderItemForDoc = {
+  product_id?: string | null
+  product_name_snapshot: string
+  gramatura_snapshot: string | null
+  qty: number
+  unit_price: number | string
+  line_total: number | string
+  // vat_rate ułamek (0.05 / 0.23). NULL → fallback 5% (Czudowa Marka).
+  vat_rate?: number | string | null
+}
+
 /**
- * Convert ZIO-order items до Fakturownia positions з proper VAT (5% для CzM).
- * Caller передає raw items з order_items table.
+ * Convert ZIO-order items → Fakturownia positions z VAT PER POZYCJA.
+ * 3B-1 — tax liczony z vat_rate produktu (0.23→23, 0.05→5), NIE hardcode 5%.
+ * Caller передає raw items z order_items + vat_rate (z products).
  */
 export function orderItemsToPositions(
-  items: Array<{
-    product_name_snapshot: string
-    gramatura_snapshot: string | null
-    qty: number
-    unit_price: number | string
-    line_total: number | string
-  }>,
+  items: OrderItemForDoc[],
 ): FakturowniaPosition[] {
   return items.map((item) => {
     const name = item.gramatura_snapshot
       ? `${item.product_name_snapshot} (${item.gramatura_snapshot})`
       : item.product_name_snapshot
 
+    // 3B-1 — VAT per pozycja: vat_rate ułamek → procent. NULL → 5% (CzM fallback).
+    const ratePct =
+      item.vat_rate == null ? 5 : Math.round(Number(item.vat_rate) * 100)
+
     return {
       name,
       quantity: item.qty,
       unit: 'szt',
       total_price_net: Number(item.line_total), // line_total = net price для qty
-      tax: 5, // Czudowa Marka VAT
+      tax: ratePct,
     }
   })
+}
+
+/**
+ * 3B-1 — łączenie pozycji po product_id dla dokumentu WSPÓLNEGO.
+ * Ten sam produkt z różnych punktów dostawy (multipoint) → JEDNA pozycja
+ * z sumą qty i line_total. vat_rate/name/gramatura/unit_price identyczne dla
+ * product_id (snapshot), więc bierzemy z pierwszego wystąpienia.
+ * Bez product_id (legacy) → fallback klucz nazwa|gramatura.
+ */
+export function mergeItemsByProduct<T extends OrderItemForDoc>(items: T[]): T[] {
+  const byKey = new Map<string, T>()
+  for (const it of items) {
+    const key =
+      it.product_id ??
+      `${it.product_name_snapshot}|${it.gramatura_snapshot ?? ''}`
+    const prev = byKey.get(key)
+    if (prev) {
+      byKey.set(key, {
+        ...prev,
+        qty: prev.qty + it.qty,
+        line_total: Number(prev.line_total) + Number(it.line_total),
+      })
+    } else {
+      byKey.set(key, { ...it, line_total: Number(it.line_total) })
+    }
+  }
+  return [...byKey.values()]
 }

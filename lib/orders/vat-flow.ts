@@ -36,6 +36,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   createInvoice,
   orderItemsToPositions,
+  mergeItemsByProduct,
   getInvoicePdf,
 } from '@/lib/integrations/fakturownia'
 import { sendNotification } from '@/lib/notifications/sender'
@@ -82,7 +83,7 @@ export async function processVatInvoice(
       proforma_fakturownia_id, proforma_fakturownia_number,
       vat_fakturownia_id,
       client:clients!inner(id, title, nip, city, address, email, phone),
-      items:order_items(product_name_snapshot, gramatura_snapshot, qty, unit_price, line_total)
+      items:order_items(product_id, product_name_snapshot, gramatura_snapshot, qty, unit_price, line_total, product:products(vat_rate))
     `,
     )
     .eq('id', orderId)
@@ -124,7 +125,17 @@ export async function processVatInvoice(
   }
 
   const client = o.client
-  const items = o.items as any[]
+  // 3B-1 — spłaszcz vat_rate (z products) + złącz po product_id (dokument wspólny).
+  const rawItems = (o.items as any[]).map((it) => ({
+    product_id: it.product_id,
+    product_name_snapshot: it.product_name_snapshot,
+    gramatura_snapshot: it.gramatura_snapshot,
+    qty: it.qty,
+    unit_price: it.unit_price,
+    line_total: it.line_total,
+    vat_rate: it.product?.vat_rate ?? null,
+  }))
+  const items = mergeItemsByProduct(rawItems)
   const emailAddr = o.contact_email || client.email
 
   if (!emailAddr) {
