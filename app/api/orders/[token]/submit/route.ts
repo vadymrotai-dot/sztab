@@ -39,9 +39,10 @@ const MARKETING_CONSENT_TEXT =
 const DeliveryPointSchema = z
   .object({
     label: z.string().max(100).optional().nullable(),
-    ulica: z.string().min(2, 'Ulica (min. 2 znaki)').max(200),
+    // Bug B (odbiór własny) — adres opcjonalny; wymagany tylko dla typ='dostawa' (refine niżej).
+    ulica: z.string().max(200).optional().nullable(),
     kod_pocztowy: z.string().max(10).optional().nullable(),
-    miasto: z.string().min(2, 'Miasto (min. 2 znaki)').max(100),
+    miasto: z.string().max(100).optional().nullable(),
     typ: z.enum(['dostawa', 'odbior']).default('dostawa'),
     termin_typ: z.enum(['najblizszy', 'data']).default('najblizszy'),
     preferred_date: z.string().optional().nullable(),
@@ -55,6 +56,17 @@ const DeliveryPointSchema = z
     {
       message: 'preferred_date wymagane dla termin_typ=data',
       path: ['preferred_date'],
+    },
+  )
+  // Bug B — adres (ulica+miasto min. 2 znaki) wymagany TYLKO dla dostawy.
+  // Odbiór własny (typ='odbior') — klient odbiera z magazynu, adres niepotrzebny.
+  .refine(
+    (p) =>
+      p.typ === 'odbior' ||
+      ((p.ulica?.trim().length ?? 0) >= 2 && (p.miasto?.trim().length ?? 0) >= 2),
+    {
+      message: 'Ulica i miasto wymagane dla dostawy',
+      path: ['ulica'],
     },
   )
 
@@ -557,9 +569,10 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       order_id: order.id,
       client_delivery_point_id: clientPointIds[idx],
       label: dp.label || null,
-      ulica: dp.ulica,
+      // Bug B — odbiór własny może mieć pusty adres → NULL (kolumny nullable, mig 078).
+      ulica: dp.ulica || null,
       kod_pocztowy: dp.kod_pocztowy || null,
-      miasto: dp.miasto,
+      miasto: dp.miasto || null,
       typ: dp.typ,
       termin_typ: dp.termin_typ,
       preferred_date:

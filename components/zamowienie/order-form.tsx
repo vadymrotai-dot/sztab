@@ -16,7 +16,6 @@ import {
   ChevronLeft,
   CheckCircle2,
   Loader2,
-  Trash2,
   MapPin,
   Star,
   RotateCcw,
@@ -262,6 +261,8 @@ type FormPoint = {
   odbiorca_imie: string
   odbiorca_telefon: string
   prefilled: boolean
+  // Poprawka 2 — id zapisanego punktu (profil) z którego wypełniono; czyszczone przy edycji adresu.
+  sourceSavedId?: string
 }
 
 type TemplatePoint = {
@@ -453,7 +454,15 @@ export function OrderForm({
 
   // ─── Punkty ──────────────────────────────────────────────────────────────────
   function updatePoint(localId: string, patch: Partial<FormPoint>) {
-    setPoints((prev) => prev.map((p) => (p.localId === localId ? { ...p, ...patch, prefilled: false } : p)))
+    setPoints((prev) =>
+      prev.map((p) => {
+        if (p.localId !== localId) return p
+        const next = { ...p, ...patch, prefilled: false }
+        // Poprawka 2 — edycja adresu odłącza punkt od zapisanego (znów dostępny w pickerze).
+        if ('ulica' in patch || 'miasto' in patch) next.sourceSavedId = undefined
+        return next
+      }),
+    )
   }
   function addPoint() {
     const np = emptyPoint()
@@ -470,6 +479,27 @@ export function OrderForm({
       return n
     })
     if (activePointId === localId) setActivePointId(remaining[0]?.localId ?? '')
+  }
+  // Poprawka — Wyczyść: czyści pola adresu TEGO punktu + odłącza zapisany punkt
+  // (sourceSavedId → undefined → wraca do pickera). Koszyk (carts po localId) ZOSTAJE.
+  function clearPoint(localId: string) {
+    setPoints((prev) =>
+      prev.map((p) =>
+        p.localId === localId
+          ? {
+              ...p,
+              label: '',
+              ulica: '',
+              miasto: '',
+              kod_pocztowy: '',
+              odbiorca_imie: '',
+              odbiorca_telefon: '',
+              prefilled: false,
+              sourceSavedId: undefined,
+            }
+          : p,
+      ),
+    )
   }
   function setMode(mode: 'jeden' | 'kilka') {
     if (mode === deliveryMode) return
@@ -493,28 +523,44 @@ export function OrderForm({
   }
 
   // ─── Picker zapisanych punktów (profil) ───────────────────────────────────────
-  // Poprawka 1 — ONE-CLICK: klik karty zapisanego punktu od razu wypełnia
-  // bieżący/pierwszy punkt danymi z profilu (zamiast checkbox + przycisk).
-  function applySavedPoint(sp: SavedPoint) {
-    const targetId =
-      deliveryMode === 'kilka' && activePointId ? activePointId : points[0]?.localId
-    if (!targetId) return
-    setPoints((prev) =>
-      prev.map((p) =>
-        p.localId === targetId
-          ? {
-              ...p,
-              label: sp.nazwa ?? '',
-              ulica: sp.ulica ?? '',
-              miasto: sp.miasto ?? '',
-              kod_pocztowy: sp.kod_pocztowy ?? '',
-              odbiorca_imie: sp.odbiorca_imie ?? '',
-              odbiorca_telefon: sp.odbiorca_telefon ?? '',
-              prefilled: true,
-            }
-          : p,
-      ),
-    )
+  // Poprawka 1 — klik karty wypełnia NASTĘPNY WOLNY punkt (jeden — ten jedyny;
+  // kilka — pierwszy pusty albo wybrany numer, a gdy wszystkie pełne → nowy punkt).
+  function applySavedPoint(sp: SavedPoint, explicitIdx?: number) {
+    // Poprawka 2 — nie pozwól użyć tego samego zapisanego punktu dwa razy (UI też go dim-uje).
+    if (points.some((p) => p.sourceSavedId === sp.id)) return
+    const fill = (p: FormPoint): FormPoint => ({
+      ...p,
+      label: sp.nazwa ?? '',
+      ulica: sp.ulica ?? '',
+      miasto: sp.miasto ?? '',
+      kod_pocztowy: sp.kod_pocztowy ?? '',
+      odbiorca_imie: sp.odbiorca_imie ?? '',
+      odbiorca_telefon: sp.odbiorca_telefon ?? '',
+      prefilled: true,
+      sourceSavedId: sp.id,
+    })
+    const isEmpty = (p: FormPoint) => p.ulica.trim() === '' && p.miasto.trim() === ''
+
+    let targetId: string | undefined
+    if (deliveryMode === 'jeden') {
+      targetId = points[0]?.localId
+    } else if (typeof explicitIdx === 'number' && points[explicitIdx]) {
+      targetId = points[explicitIdx].localId
+    } else {
+      targetId = points.find(isEmpty)?.localId
+    }
+
+    if (targetId) {
+      const tId = targetId
+      setPoints((prev) => prev.map((p) => (p.localId === tId ? fill(p) : p)))
+      if (deliveryMode === 'kilka') setActivePointId(tId)
+    } else {
+      // kilka + wszystkie punkty wypełnione → dodaj nowy i wypełnij go.
+      const np = fill(emptyPoint())
+      setPoints((prev) => [...prev, np])
+      setCarts((c) => ({ ...c, [np.localId]: {} }))
+      setActivePointId(np.localId)
+    }
     setSource('new')
     setActionNotice(`Wczytano punkt "${sp.nazwa || sp.miasto || 'z profilu'}" — sprawdź i popraw.`)
   }
@@ -699,7 +745,10 @@ export function OrderForm({
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())
   const pointsAddrValid =
     points.length >= 1 &&
-    points.every((p) => p.ulica.trim().length >= 2 && p.miasto.trim().length >= 2) &&
+    // Bug B — odbiór własny (typ='odbior') NIE wymaga adresu; dostawa wymaga ulica+miasto.
+    points.every(
+      (p) => p.typ === 'odbior' || (p.ulica.trim().length >= 2 && p.miasto.trim().length >= 2),
+    ) &&
     (deliveryMode === 'jeden' || points.length >= 2)
   const terminValid =
     deliveryMode === 'kilka' && wspolnaData
@@ -1023,28 +1072,76 @@ export function OrderForm({
                     <MapPin className="w-4 h-4 text-[#1F3A5F]" /> Twoje zapisane punkty — kliknij aby użyć
                   </div>
                   <div className="space-y-1.5">
-                    {savedPoints.map((sp) => (
-                      <button
-                        key={sp.id}
-                        type="button"
-                        onClick={() => applySavedPoint(sp)}
-                        className="w-full text-left flex items-start gap-2 px-3 py-2 rounded-lg border border-slate-200 hover:border-[#1F3A5F] hover:bg-[#eef3f9] transition cursor-pointer"
-                      >
-                        <MapPin className="w-4 h-4 text-[#1F3A5F] mt-0.5 shrink-0" />
-                        <span className="text-xs">
-                          <span className="font-semibold text-slate-800">{sp.nazwa || sp.miasto || 'Punkt'}</span>
-                          <span className="text-slate-500">
-                            {' — '}
-                            {[sp.ulica, [sp.kod_pocztowy, sp.miasto].filter(Boolean).join(' ')]
-                              .filter(Boolean)
-                              .join(', ')}
-                          </span>
-                        </span>
-                      </button>
-                    ))}
+                    {savedPoints.map((sp) => {
+                      const usedIdx = points.findIndex((p) => p.sourceSavedId === sp.id)
+                      const used = usedIdx >= 0
+                      return (
+                        <div
+                          key={sp.id}
+                          className={`rounded-lg border transition overflow-hidden ${
+                            used
+                              ? 'border-emerald-300 opacity-80'
+                              : 'border-slate-200 hover:border-[#1F3A5F]'
+                          }`}
+                          style={used ? { background: '#ECFDF5' } : undefined}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => applySavedPoint(sp)}
+                            disabled={used}
+                            className={`w-full text-left flex items-start gap-2 px-3 py-2 ${
+                              used ? 'cursor-default' : 'hover:bg-[#eef3f9] cursor-pointer'
+                            }`}
+                          >
+                            <MapPin className="w-4 h-4 text-[#1F3A5F] mt-0.5 shrink-0" />
+                            <span className="text-xs flex-1 min-w-0">
+                              <span className="font-semibold text-slate-800">{sp.nazwa || sp.miasto || 'Punkt'}</span>
+                              <span className="text-slate-500">
+                                {' — '}
+                                {[sp.ulica, [sp.kod_pocztowy, sp.miasto].filter(Boolean).join(' ')]
+                                  .filter(Boolean)
+                                  .join(', ')}
+                              </span>
+                              {used && (
+                                <span className="block text-[11px] font-semibold text-emerald-700 mt-0.5">
+                                  ✓ użyty w Punkcie {usedIdx + 1}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                          {deliveryMode === 'kilka' && (
+                            <div className="flex items-center gap-1.5 px-3 pb-2 flex-wrap">
+                              <span className="text-[10px] text-slate-400 mr-0.5">wstaw do:</span>
+                              {points.map((p, i) => {
+                                const isHere = p.sourceSavedId === sp.id
+                                return (
+                                  <button
+                                    key={i}
+                                    type="button"
+                                    onClick={() => applySavedPoint(sp, i)}
+                                    disabled={used}
+                                    className={`px-2 h-7 rounded border text-[11px] font-semibold transition ${
+                                      isHere
+                                        ? 'bg-[#1F3A5F] text-white border-[#1F3A5F]'
+                                        : used
+                                          ? 'border-slate-200 text-slate-300 cursor-not-allowed'
+                                          : 'border-[#1F3A5F] text-[#1F3A5F] hover:bg-[#1F3A5F] hover:text-white'
+                                    }`}
+                                  >
+                                    → Punkt {i + 1}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                   <div className="text-[10px] text-slate-400 mt-1.5">
-                    Klik wypełni adres dostawy danymi z profilu — możesz potem poprawić.
+                    {deliveryMode === 'kilka'
+                      ? 'Klik wypełni następny wolny punkt — lub wybierz numer punktu. Możesz potem poprawić.'
+                      : 'Klik wypełni adres dostawy danymi z profilu — możesz potem poprawić.'}
                   </div>
                 </div>
               )}
@@ -1145,16 +1242,7 @@ export function OrderForm({
                           </span>
                         )}
                       </div>
-                      {deliveryMode === 'kilka' && points.length > 2 && (
-                        <button
-                          type="button"
-                          onClick={() => removePoint(p.localId)}
-                          className="text-white/80 hover:text-white"
-                          aria-label="Usuń punkt"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+                      {/* Wyczyść / Usuń punkt — przyciski pod polami karty (footer) */}
                     </div>
 
                     {/* Pola punktu */}
@@ -1274,6 +1362,27 @@ export function OrderForm({
                         />
                       </Field>
                     </div>
+
+                      {/* Poprawka — przyciski Wyczyść / Usuń punkt */}
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => clearPoint(p.localId)}
+                          className="text-[11px] font-semibold px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 transition"
+                        >
+                          Wyczyść
+                        </button>
+                        {deliveryMode === 'kilka' && points.length > 2 && (
+                          <button
+                            type="button"
+                            onClick={() => removePoint(p.localId)}
+                            className="text-[11px] font-semibold px-3 py-1.5 rounded-lg border transition hover:bg-rose-50"
+                            style={{ borderColor: '#FCA5A5', color: '#DC2626' }}
+                          >
+                            Usuń punkt
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1390,17 +1499,22 @@ export function OrderForm({
                     ? 'Twój cennik: Wielki Hurt (Auto). Ceny zależą od wartości zamówienia — dodawaj produkty, ceny aktualizują się automatycznie.'
                     : 'Twój cennik: Standardowy · 3 progi (Auto). Ceny zależą od ilości w całym zamówieniu — dodawaj produkty, ceny aktualizują się automatycznie.'
 
-                let statusHead = ''
-                let statusSub: string | null = null
+                let headLine = ''
+                let subKind: 'need' | 'best' | 'minimum' = 'best'
+                let needAmount = ''
+                let needNext = ''
+                let bestText = '✓ Masz najlepsze ceny.'
                 if (activeIsSeafood) {
                   const lvl = seafoodDisplayTier
-                  statusHead = `Owoce morza: ${seafoodSzt} szt → poziom ${HURT_LEVEL_LABEL[lvl]}`
-                  if (isMinimum) statusSub = 'Cena minimalna — masz najlepsze ceny.'
-                  else if (lvl === 'duzy') statusSub = 'Masz najlepsze ceny (Duży hurt).'
-                  else {
-                    const need = lvl === 'maly' ? 100 - seafoodSzt : 301 - seafoodSzt
-                    const next = lvl === 'maly' ? 'Średni hurt' : 'Duży hurt'
-                    statusSub = `Jeszcze ${need} szt do progu ${next} — ceny spadną.`
+                  headLine = `Owoce morza: ${seafoodSzt} szt → poziom ${HURT_LEVEL_LABEL[lvl]}`
+                  if (isMinimum) subKind = 'minimum'
+                  else if (lvl === 'duzy') {
+                    subKind = 'best'
+                    bestText = '✓ Masz najlepsze ceny (Duży hurt).'
+                  } else {
+                    subKind = 'need'
+                    needAmount = `${lvl === 'maly' ? 100 - seafoodSzt : 301 - seafoodSzt} szt`
+                    needNext = lvl === 'maly' ? 'Średni hurt' : 'Duży hurt'
                   }
                 } else {
                   const isStd =
@@ -1408,28 +1522,48 @@ export function OrderForm({
                   const lvl: StandardTier =
                     cmTier === 'sredni' ? 'sredni' : cmTier === 'duzy' ? 'duzy' : isMinimum ? 'duzy' : 'maly'
                   const lvlLabel = isStd ? HURT_LEVEL_LABEL[lvl] : TIER_LABEL[cmTier as Tier]
-                  statusHead = `Wartość koszyka (Czudowa Marka): ${fmt(cmTotal)} zł → poziom ${lvlLabel}`
-                  if (isMinimum) statusSub = 'Cena minimalna — masz najlepsze ceny.'
-                  else if (!isAutoStandard) statusSub = 'Najlepsze ceny w Twoim cenniku.'
-                  else if (lvl === 'duzy') statusSub = 'Masz najlepsze ceny (Duży hurt).'
-                  else {
-                    const prog = lvl === 'maly' ? 2000 : 4000
-                    const next = lvl === 'maly' ? 'Średni hurt' : 'Duży hurt'
-                    statusSub = `Jeszcze ${fmt(prog - cmTotal)} zł do progu ${next} — ceny spadną.`
+                  headLine = `Wartość koszyka (Czudowa Marka): ${fmt(cmTotal)} zł → poziom ${lvlLabel}`
+                  if (isMinimum) subKind = 'minimum'
+                  else if (!isAutoStandard) {
+                    subKind = 'best'
+                    bestText = '✓ Najlepsze ceny w Twoim cenniku.'
+                  } else if (lvl === 'duzy') {
+                    subKind = 'best'
+                    bestText = '✓ Masz najlepsze ceny (Duży hurt).'
+                  } else {
+                    subKind = 'need'
+                    needAmount = `${fmt((lvl === 'maly' ? 2000 : 4000) - cmTotal)} zł`
+                    needNext = lvl === 'maly' ? 'Średni hurt' : 'Duży hurt'
                   }
                 }
 
                 return (
                   <div className="mx-4 mt-2 space-y-2">
                     <div
-                      className="rounded-lg bg-[#eef3f9] border border-[#1F3A5F]/20 px-3 py-2 text-[11px] text-[#1F3A5F]"
-                      style={{ borderLeft: '3px solid #1F3A5F' }}
+                      className="rounded-lg px-3 py-2 text-[11px] text-[#1F3A5F]"
+                      style={{ background: '#eef3f9', borderLeft: '3px solid #1F3A5F' }}
                     >
                       {cennikInfo}
                     </div>
-                    <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-                      <div className="text-[12px] font-bold text-amber-900">{statusHead}</div>
-                      {statusSub && <div className="text-[11px] text-amber-800 mt-0.5">{statusSub}</div>}
+                    <div
+                      className="rounded-lg px-3 py-2.5"
+                      style={{ background: '#FEF3C7', border: '1px solid #FCD34D' }}
+                    >
+                      <div className="text-[11px] font-semibold text-amber-900/80">{headLine}</div>
+                      {subKind === 'need' ? (
+                        <div className="mt-1 text-[13px] text-slate-700 leading-snug">
+                          Jeszcze{' '}
+                          <span className="text-[19px] font-extrabold text-[#1F3A5F] align-middle">{needAmount}</span>{' '}
+                          do progu <span className="font-bold text-[#1F3A5F]">{needNext}</span> —{' '}
+                          <span className="font-bold text-emerald-700">ceny spadną</span>.
+                        </div>
+                      ) : subKind === 'best' ? (
+                        <div className="mt-1 text-[13px] font-bold text-emerald-700">{bestText}</div>
+                      ) : (
+                        <div className="mt-1 text-[12px] font-semibold text-slate-600">
+                          Cena minimalna — masz najlepsze ceny.
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
@@ -1742,14 +1876,23 @@ export function OrderForm({
               {initial.has_marketing_consent ? (
                 <div className="text-[11px] text-emerald-700 px-1">Zgoda marketingowa: udzielona ✓</div>
               ) : (
-                <label className="flex items-start gap-2 cursor-pointer px-1">
+                <label
+                  className="flex items-start gap-3 cursor-pointer rounded-lg p-4 mt-2"
+                  style={{ background: '#FEF3C7', border: '2px solid #FCD34D' }}
+                >
                   <input
                     type="checkbox"
                     checked={marketingConsent}
                     onChange={(e) => setMarketingConsent(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 accent-[#1F3A5F]"
+                    className="mt-0.5 w-5 h-5 shrink-0"
+                    style={{ accentColor: '#1F3A5F' }}
                   />
-                  <span className="text-[11px] text-slate-600 leading-relaxed">{MARKETING_CONSENT_TEXT}</span>
+                  <span className="text-[12px] text-slate-800 leading-relaxed">
+                    {MARKETING_CONSENT_TEXT}
+                    <span className="block text-[10px] text-slate-500 mt-1">
+                      Dobrowolne — nie wpływa na złożenie zamówienia.
+                    </span>
+                  </span>
                 </label>
               )}
 
@@ -1780,11 +1923,11 @@ export function OrderForm({
                   type="button"
                   onClick={submitOrder}
                   disabled={!canSubmit}
-                  className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-4 rounded-xl shadow-md flex items-center justify-center gap-2 text-base disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {submitting ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Wysyłanie…
+                      <Loader2 className="w-5 h-5 animate-spin" /> Wysyłanie…
                     </>
                   ) : (
                     'Złóż zamówienie'
