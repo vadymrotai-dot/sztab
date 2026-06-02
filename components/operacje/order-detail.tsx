@@ -796,125 +796,6 @@ export function OrderDetail({
             )}
           </div>
 
-          {/* Delivery — Sprint 3A: multipoint (render per punkt, dane z order_delivery_points) */}
-          <div className="bg-white border border-slate-200 rounded-lg p-4">
-            <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2 flex items-center justify-between gap-2">
-              <span>
-                Dostawa
-                {order.delivery_mode === 'kilka' ? ` — ${deliveryPoints.length} punkty` : ''}
-              </span>
-              {order.documents_mode && (
-                <span className="text-[10px] normal-case font-normal text-slate-500">
-                  Dokumenty: {order.documents_mode === 'osobne' ? 'osobne per punkt' : 'wspólne'}
-                </span>
-              )}
-            </div>
-
-            {deliveryPoints.length > 0 ? (
-              <div className="space-y-3">
-                {deliveryPoints.map((pt, idx) => {
-                  const ptItems = order.items.filter((it) => it.delivery_point_id === pt.id)
-                  const subtotal = ptItems.reduce((sum, it) => sum + Number(it.line_total), 0)
-                  const adres = [pt.ulica, [pt.kod_pocztowy, pt.miasto].filter(Boolean).join(' ')]
-                    .filter(Boolean)
-                    .join(', ')
-                  return (
-                    <div key={pt.id} className="rounded-lg border border-[#1F3A5F]/30 overflow-hidden">
-                      <div className="bg-[#1F3A5F] text-white px-3 py-2">
-                        <div className="text-[13px] font-bold">
-                          {deliveryPoints.length > 1 ? `Punkt ${idx + 1}` : 'Dostawa'}
-                          {pt.label ? ` — ${pt.label}` : ''}
-                        </div>
-                        <div className="text-[11px] text-white/85">{adres || '—'}</div>
-                        <div className="text-[10px] text-white/70 mt-0.5">
-                          {pt.typ === 'odbior' ? 'Odbiór własny' : 'Dostawa'}
-                          {pt.termin_typ === 'data' && pt.preferred_date
-                            ? ` · ${fmtDateOnly(pt.preferred_date)}`
-                            : ' · najbliższy możliwy'}
-                          {pt.odbiorca_imie ? ` · Odbiorca: ${pt.odbiorca_imie}` : ''}
-                          {pt.odbiorca_telefon ? ` (${pt.odbiorca_telefon})` : ''}
-                        </div>
-                      </div>
-                      <div className="divide-y divide-slate-100">
-                        {ptItems.length === 0 ? (
-                          <div className="px-3 py-2 text-xs text-slate-400 italic">
-                            Brak pozycji przypisanych do tego punktu
-                          </div>
-                        ) : (
-                          ptItems.map((it) => (
-                            <div key={it.id} className="px-3 py-1.5 flex items-baseline gap-2 text-xs">
-                              <div className="flex-1 min-w-0">
-                                <span className="text-slate-900">{it.product_name_snapshot}</span>
-                                {it.gramatura_snapshot && (
-                                  <span className="text-slate-400"> · {it.gramatura_snapshot}</span>
-                                )}
-                              </div>
-                              <div className="text-slate-600 whitespace-nowrap">
-                                {it.qty} × {fmt(Number(it.unit_price))}
-                              </div>
-                              <div className="font-semibold text-slate-900 whitespace-nowrap min-w-[56px] text-right">
-                                {fmt(Number(it.line_total))}
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                      <div className="bg-slate-50 px-3 py-1.5 text-xs text-right">
-                        Suma punktu: <strong className="text-slate-900">{fmt(subtotal)}</strong>
-                      </div>
-                    </div>
-                  )
-                })}
-
-                {(() => {
-                  const ptIds = new Set(deliveryPoints.map((p) => p.id))
-                  const orphan = order.items.filter(
-                    (it) => !it.delivery_point_id || !ptIds.has(it.delivery_point_id),
-                  )
-                  if (orphan.length === 0) return null
-                  return (
-                    <div className="rounded-lg border border-amber-300 overflow-hidden">
-                      <div className="bg-amber-100 px-3 py-2 text-[12px] font-bold text-amber-900">
-                        Pozycje bez przypisania do punktu ({orphan.length})
-                      </div>
-                      <div className="divide-y divide-slate-100">
-                        {orphan.map((it) => (
-                          <div key={it.id} className="px-3 py-1.5 flex items-baseline gap-2 text-xs">
-                            <div className="flex-1 min-w-0">
-                              <span className="text-slate-900">{it.product_name_snapshot}</span>
-                            </div>
-                            <div className="text-slate-600 whitespace-nowrap">
-                              {it.qty} × {fmt(Number(it.unit_price))}
-                            </div>
-                            <div className="font-semibold text-slate-900 whitespace-nowrap min-w-[56px] text-right">
-                              {fmt(Number(it.line_total))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })()}
-              </div>
-            ) : (
-              <>
-                {order.delivery_address && (
-                  <div className="text-sm text-slate-900 whitespace-pre-wrap">
-                    {order.delivery_address}
-                  </div>
-                )}
-                {order.preferred_delivery_date && (
-                  <div className="text-xs text-slate-600 mt-2">
-                    Preferowana data:{' '}
-                    <strong className="text-slate-900">
-                      {fmtDateOnly(order.preferred_delivery_date)}
-                    </strong>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
           {/* Order meta */}
           <div className="bg-white border border-slate-200 rounded-lg p-4 text-xs text-slate-600 space-y-1">
             {order.tier_at_submit && (
@@ -986,6 +867,145 @@ export function OrderDetail({
           </div>
         </div>
       </div>
+
+      {/* Delivery (multipoint) — 3A-kosmetyka: PEŁNA SZEROKOŚĆ pod gridem (przeniesione z wąskiej kolumny) */}
+          {/* Delivery — Sprint 3A: multipoint (render per punkt, dane z order_delivery_points) */}
+          <div className="bg-white border border-slate-200 rounded-lg p-4 mt-6">
+            <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2 flex items-center justify-between gap-2">
+              <span>
+                Dostawa
+                {order.delivery_mode === 'kilka' ? ` — ${deliveryPoints.length} punkty` : ''}
+              </span>
+              {order.documents_mode && (
+                <span className="text-[10px] normal-case font-normal text-slate-500">
+                  Dokumenty: {order.documents_mode === 'osobne' ? 'osobne per punkt' : 'wspólne'}
+                </span>
+              )}
+            </div>
+
+            {deliveryPoints.length > 0 ? (
+              <div className="space-y-3">
+                {deliveryPoints.map((pt, idx) => {
+                  const ptItems = order.items.filter((it) => it.delivery_point_id === pt.id)
+                  const subtotal = ptItems.reduce((sum, it) => sum + Number(it.line_total), 0)
+                  const adres = [pt.ulica, [pt.kod_pocztowy, pt.miasto].filter(Boolean).join(' ')]
+                    .filter(Boolean)
+                    .join(', ')
+                  return (
+                    <div key={pt.id} className="rounded-lg border border-[#1F3A5F]/30 overflow-hidden">
+                      <div className="bg-[#1F3A5F] text-white px-3 py-2">
+                        <div className="text-[13px] font-bold">
+                          {deliveryPoints.length > 1 ? `Punkt ${idx + 1}` : 'Dostawa'}
+                          {pt.label ? ` — ${pt.label}` : ''}
+                        </div>
+                        <div className="text-[11px] text-white/85">{adres || '—'}</div>
+                        <div className="text-[10px] text-white/70 mt-0.5">
+                          {pt.typ === 'odbior' ? 'Odbiór własny' : 'Dostawa'}
+                          {pt.termin_typ === 'data' && pt.preferred_date
+                            ? ` · ${fmtDateOnly(pt.preferred_date)}`
+                            : ' · najbliższy możliwy'}
+                          {pt.odbiorca_imie ? ` · Odbiorca: ${pt.odbiorca_imie}` : ''}
+                          {pt.odbiorca_telefon ? ` (${pt.odbiorca_telefon})` : ''}
+                        </div>
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {ptItems.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-slate-400 italic">
+                            Brak pozycji przypisanych do tego punktu
+                          </div>
+                        ) : (
+                          ptItems.map((it) => (
+                            <div
+                              key={it.id}
+                              className="flex items-center gap-3 px-3 py-3 odd:bg-white even:bg-slate-50"
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-slate-900 leading-snug" style={{ fontSize: '15px' }}>
+                                  {it.product_name_snapshot}
+                                  {it.gramatura_snapshot && (
+                                    <span className="font-normal text-slate-500"> {it.gramatura_snapshot}</span>
+                                  )}
+                                </div>
+                                <div className="mt-0.5" style={{ fontSize: '11px', color: '#94A3B8' }}>
+                                  {fmt(Number(it.unit_price))}/szt · suma {fmt(Number(it.line_total))}
+                                </div>
+                              </div>
+                              <div className="shrink-0 flex items-baseline gap-1 text-[#1F3A5F]">
+                                <span className="tabular-nums" style={{ fontSize: '24px', fontWeight: 800, color: '#1F3A5F', lineHeight: 1 }}>
+                                  {it.qty}
+                                </span>
+                                <span style={{ fontSize: '12px', fontWeight: 700, color: '#1F3A5F' }}>szt</span>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="bg-slate-50 px-3 py-1.5 text-[11px] text-right text-slate-400">
+                        Suma punktu: <span className="text-slate-500 font-medium">{fmt(subtotal)}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {(() => {
+                  const ptIds = new Set(deliveryPoints.map((p) => p.id))
+                  const orphan = order.items.filter(
+                    (it) => !it.delivery_point_id || !ptIds.has(it.delivery_point_id),
+                  )
+                  if (orphan.length === 0) return null
+                  return (
+                    <div className="rounded-lg border border-amber-300 overflow-hidden">
+                      <div className="bg-amber-100 px-3 py-2 text-[12px] font-bold text-amber-900">
+                        Pozycje bez przypisania do punktu ({orphan.length})
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {orphan.map((it) => (
+                          <div
+                            key={it.id}
+                            className="flex items-center gap-3 px-3 py-3 odd:bg-white even:bg-slate-50"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-slate-900 leading-snug" style={{ fontSize: '15px' }}>
+                                {it.product_name_snapshot}
+                                {it.gramatura_snapshot && (
+                                  <span className="font-normal text-slate-500"> {it.gramatura_snapshot}</span>
+                                )}
+                              </div>
+                              <div className="mt-0.5" style={{ fontSize: '11px', color: '#94A3B8' }}>
+                                {fmt(Number(it.unit_price))}/szt · suma {fmt(Number(it.line_total))}
+                              </div>
+                            </div>
+                            <div className="shrink-0 flex items-baseline gap-1 text-[#1F3A5F]">
+                              <span className="tabular-nums" style={{ fontSize: '24px', fontWeight: 800, color: '#1F3A5F', lineHeight: 1 }}>
+                                {it.qty}
+                              </span>
+                              <span style={{ fontSize: '12px', fontWeight: 700, color: '#1F3A5F' }}>szt</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+            ) : (
+              <>
+                {order.delivery_address && (
+                  <div className="text-sm text-slate-900 whitespace-pre-wrap">
+                    {order.delivery_address}
+                  </div>
+                )}
+                {order.preferred_delivery_date && (
+                  <div className="text-xs text-slate-600 mt-2">
+                    Preferowana data:{' '}
+                    <strong className="text-slate-900">
+                      {fmtDateOnly(order.preferred_delivery_date)}
+                    </strong>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
 
       {showAddModal && (
         <AddItemModal
