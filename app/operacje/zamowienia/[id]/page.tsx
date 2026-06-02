@@ -35,19 +35,30 @@ export default async function OrderDetailPage({
       total_net, total_vat, total_brutto, vat_rate,
       contact_person, contact_phone, contact_email,
       delivery_address, preferred_delivery_date,
+      delivery_mode, documents_mode,
       customer_notes, internal_notes,
       created_at, link_opened_at, submitted_at, confirmed_at, updated_at,
       access_token,
       proforma_fakturownia_id, proforma_fakturownia_number, proforma_pdf_url, proforma_created_at,
       vat_fakturownia_id, vat_fakturownia_number, vat_pdf_url, vat_created_at,
       client:clients!inner(id, title, nip, city, address, region),
-      items:order_items(id, product_name_snapshot, gramatura_snapshot, qty, unit_price, line_total)
+      items:order_items(id, product_name_snapshot, gramatura_snapshot, qty, unit_price, line_total, delivery_point_id)
     `,
     )
     .eq('id', id)
     .maybeSingle()
 
   if (!order) notFound()
+
+  // Sprint 3A — punkty dostawy (multipoint) dla widoku admin (render per punkt).
+  // Dane KOMPLETNE w bazie (order_delivery_points + order_items.delivery_point_id) — tylko render.
+  const { data: deliveryPoints } = await admin
+    .from('order_delivery_points')
+    .select(
+      'id, label, ulica, kod_pocztowy, miasto, typ, termin_typ, preferred_date, odbiorca_imie, odbiorca_telefon',
+    )
+    .eq('order_id', id)
+    .order('created_at', { ascending: true })
 
   // S-ORDER.1.C.3 — fetch 17 SKU для add-item modal у edit mode
   // Sprint S-CENNIK-WH.1 — also price_duzi_gracze для wielki_hurt orders
@@ -63,6 +74,7 @@ export default async function OrderDetailPage({
     <OrderDetail
       order={order as any}
       availableProducts={(availableProducts as any) || []}
+      deliveryPoints={(deliveryPoints as any) || []}
     />
   )
 }
