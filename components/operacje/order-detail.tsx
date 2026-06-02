@@ -24,6 +24,8 @@ type PriceMode = 'auto' | 'minimum'
 
 type Item = {
   id: string
+  // Złączanie duplikatów w górnej tabeli (podgląd) po product_id.
+  product_id: string | null
   product_name_snapshot: string
   gramatura_snapshot: string | null
   qty: number
@@ -164,6 +166,28 @@ function fmtDate(iso: string | null): string {
 function fmtDateOnly(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' })
+}
+
+// Złącz identyczne produkty (po product_id) w jeden wiersz — TYLKO podgląd górnej
+// tabeli. Suma qty + line_total; nazwa/gramatura/cena identyczne dla product_id.
+// W trybie EDYCJI NIE łączymy (edycja działa per order_item.id).
+function mergeItemsForDisplay(items: Item[]): Item[] {
+  const byKey = new Map<string, Item>()
+  for (const it of items) {
+    const key =
+      it.product_id ?? `${it.product_name_snapshot}|${it.gramatura_snapshot ?? ''}`
+    const prev = byKey.get(key)
+    if (prev) {
+      byKey.set(key, {
+        ...prev,
+        qty: prev.qty + it.qty,
+        line_total: Number(prev.line_total) + Number(it.line_total),
+      })
+    } else {
+      byKey.set(key, { ...it, line_total: Number(it.line_total) })
+    }
+  }
+  return [...byKey.values()]
 }
 
 export function OrderDetail({
@@ -450,7 +474,7 @@ export function OrderDetail({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {order.items.map((item) => {
+                {(editMode ? order.items : mergeItemsForDisplay(order.items)).map((item) => {
                   const busy = itemBusy === item.id
                   return (
                     <tr key={item.id} className={busy ? 'opacity-50' : ''}>
@@ -532,7 +556,7 @@ export function OrderDetail({
                     colSpan={editMode ? 4 : 3}
                     className="px-4 py-2 text-right text-sm text-slate-600"
                   >
-                    VAT 5%
+                    VAT
                   </td>
                   <td className="px-4 py-2 text-right text-slate-700">
                     {fmt(Number(order.total_vat))}
