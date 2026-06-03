@@ -86,7 +86,7 @@ export function renderProformaEmail(data: ProformaEmailData) {
     <tr><td class="label">Kupujący:</td><td class="value">${escapeHtml(data.client_name)}</td></tr>
     <tr><td class="label">Faktura Proforma:</td><td class="value">${escapeHtml(data.proforma_number)}</td></tr>
     <tr><td class="label">Wartość netto:</td><td class="value">${fmtPln(data.total_net)}</td></tr>
-    <tr><td class="label">VAT 5%:</td><td class="value">${fmtPln(data.vat_amount)}</td></tr>
+    <tr><td class="label">VAT:</td><td class="value">${fmtPln(data.vat_amount)}</td></tr>
     <tr><td class="label total">Razem brutto:</td><td class="value total">${fmtPln(data.total_brutto)}</td></tr>
     <tr><td class="label">Termin płatności:</td><td class="value">${data.payment_to_days} dni (${escapeHtml(data.payment_to_date)})</td></tr>
   </table>
@@ -131,7 +131,7 @@ Faktura Proforma: ${data.proforma_number}
 Kupujący: ${data.client_name}
 
 Wartość netto: ${fmtPln(data.total_net)}
-VAT 5%: ${fmtPln(data.vat_amount)}
+VAT: ${fmtPln(data.vat_amount)}
 Razem brutto: ${fmtPln(data.total_brutto)}
 Termin płatności: ${data.payment_to_days} dni (${data.payment_to_date})
 

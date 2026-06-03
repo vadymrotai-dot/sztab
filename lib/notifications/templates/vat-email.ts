@@ -8,7 +8,7 @@
  * - Header з brand (Ziomek Fish + Czudowa Marka)
  * - Greeting + info що VAT wystawiona po wysyłce
  * - Order number + VAT number
- * - Total breakdown (net / VAT 5% / brutto)
+ * - Total breakdown (net / VAT / brutto)
  * - KSeF info (faktura wysłana do KSeF automatycznie per ustawa Feb 2026)
  * - PDF attached
  * - Contact info
@@ -85,7 +85,7 @@ export function renderVatEmail(data: VatEmailData) {
     <tr><td class="label">Nabywca:</td><td class="value">${escapeHtml(data.client_name)}</td></tr>
     <tr><td class="label">Zamówienie:</td><td class="value">${escapeHtml(data.order_number)}</td></tr>
     <tr><td class="label">Wartość netto:</td><td class="value">${fmtPln(data.total_net)}</td></tr>
-    <tr><td class="label">VAT 5%:</td><td class="value">${fmtPln(data.vat_amount)}</td></tr>
+    <tr><td class="label">VAT:</td><td class="value">${fmtPln(data.vat_amount)}</td></tr>
     <tr><td class="label total">Razem brutto:</td><td class="value total">${fmtPln(data.total_brutto)}</td></tr>
   </table>
 
@@ -126,7 +126,7 @@ Numer faktury VAT: ${data.vat_number}
 Nabywca: ${data.client_name}
 
 Wartość netto: ${fmtPln(data.total_net)}
-VAT 5%: ${fmtPln(data.vat_amount)}
+VAT: ${fmtPln(data.vat_amount)}
 Razem brutto: ${fmtPln(data.total_brutto)}
 
 Faktura VAT w załączniku PDF.
