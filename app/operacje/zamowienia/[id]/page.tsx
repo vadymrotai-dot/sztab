@@ -60,6 +60,16 @@ export default async function OrderDetailPage({
     .eq('order_id', id)
     .order('created_at', { ascending: true })
 
+  // 3B-2b — order_documents (per-point proformy dla osobne). Render gating opiera się
+  // na tych wierszach, NIE na orders.proforma_fakturownia_id (dla osobne zawsze NULL).
+  const { data: orderDocuments } = await admin
+    .from('order_documents')
+    .select(
+      'id, kind, scope, delivery_point_id, fakturownia_id, fakturownia_number, pdf_url, created_at',
+    )
+    .eq('order_id', id)
+    .order('created_at', { ascending: true })
+
   // S-ORDER.1.C.3 — fetch 17 SKU для add-item modal у edit mode
   // Sprint S-CENNIK-WH.1 — also price_duzi_gracze для wielki_hurt orders
   const { data: availableProducts } = await admin
@@ -75,6 +85,7 @@ export default async function OrderDetailPage({
       order={order as any}
       availableProducts={(availableProducts as any) || []}
       deliveryPoints={(deliveryPoints as any) || []}
+      orderDocuments={(orderDocuments as any) || []}
     />
   )
 }

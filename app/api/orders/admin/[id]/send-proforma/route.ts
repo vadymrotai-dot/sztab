@@ -55,7 +55,7 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
   const { data: order, error } = await admin
     .from('orders')
     .select(
-      'id, order_number, status, proforma_fakturownia_id, contact_email',
+      'id, order_number, status, proforma_fakturownia_id, contact_email, documents_mode',
     )
     .eq('id', id)
     .maybeSingle()
@@ -99,6 +99,34 @@ export async function POST(_req: NextRequest, ctx: RouteContext) {
       },
       { status: 400 },
     )
+  }
+
+  // ─── 3B-2b — IDEMPOTENCY OSOBNE: stan w order_documents (NIE w kolumnie) ───
+  // documents_mode='osobne' → proforma_fakturownia_id zawsze NULL (per-point docs
+  // żyją w order_documents). Gate wyżej (proforma_fakturownia_id) nie chroni osobne,
+  // więc tu liczymy proform-rows vs liczba punktów:
+  //   - wszystkie wystawione (count >= punkty) → 409 OD RAZU, BEZ after() (kasuje 30s hang)
+  //   - część (np. 1 z 2) → pozwól (processProforma osobne dośle brakujące via donePoints)
+  // Single-flow (wspolna) NIE wchodzi tu — używa gate proforma_fakturownia_id wyżej.
+  if (order.documents_mode === 'osobne') {
+    const { count: pointCount } = await admin
+      .from('order_delivery_points')
+      .select('id', { count: 'exact', head: true })
+      .eq('order_id', id)
+    const { count: proformaCount } = await admin
+      .from('order_documents')
+      .select('id', { count: 'exact', head: true })
+      .eq('order_id', id)
+      .eq('kind', 'proforma')
+    if ((pointCount ?? 0) > 0 && (proformaCount ?? 0) >= (pointCount ?? 0)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Proformy już wysłane (wszystkie punkty dostawy)',
+        },
+        { status: 409 },
+      )
+    }
   }
 
   // Background task: Fakturownia create + PDF + UPDATE orders.proforma_* + email.

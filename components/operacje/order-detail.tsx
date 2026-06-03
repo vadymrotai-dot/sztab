@@ -49,6 +49,18 @@ type DeliveryPoint = {
   odbiorca_telefon: string | null
 }
 
+// 3B-2b — per-point dokumenty (proforma osobne). Stan „wysłana" dla osobne
+// czytamy stąd, NIE z orders.proforma_fakturownia_id (ta jest NULL dla osobne).
+type OrderDocument = {
+  id: string
+  kind: string
+  scope: string | null
+  delivery_point_id: string | null
+  fakturownia_id: number | null
+  fakturownia_number: string | null
+  pdf_url: string | null
+}
+
 type AvailableProduct = {
   id: string
   name: string
@@ -194,10 +206,12 @@ export function OrderDetail({
   order,
   availableProducts,
   deliveryPoints,
+  orderDocuments,
 }: {
   order: Order
   availableProducts: AvailableProduct[]
   deliveryPoints: DeliveryPoint[]
+  orderDocuments: OrderDocument[]
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -216,6 +230,29 @@ export function OrderDetail({
   const [proformaLoading, setProformaLoading] = useState(false)
   const [proformaNotice, setProformaNotice] = useState<string | null>(null)
   const [proformaError, setProformaError] = useState<string | null>(null)
+
+  // 3B-2b — stan proform osobne liczony z order_documents (per punkt), nie z kolumny.
+  const isOsobne = order.documents_mode === 'osobne'
+  const proformaDocs = orderDocuments
+    .filter((d) => d.kind === 'proforma')
+    .sort((a, b) => {
+      // kolejność jak punkty (po delivery_point_id), fallback po numerze
+      const ia = deliveryPoints.findIndex((p) => p.id === a.delivery_point_id)
+      const ib = deliveryPoints.findIndex((p) => p.id === b.delivery_point_id)
+      return ia - ib
+    })
+  const osobneSentCount = proformaDocs.length
+  const osobnePointCount = deliveryPoints.length
+  const osobneAllSent =
+    isOsobne && osobnePointCount > 0 && osobneSentCount >= osobnePointCount
+  const osobnePartial =
+    isOsobne && osobneSentCount > 0 && osobneSentCount < osobnePointCount
+  const osobneMissing = Math.max(osobnePointCount - osobneSentCount, 0)
+  const pointLabelFor = (dpId: string | null): string => {
+    const idx = deliveryPoints.findIndex((p) => p.id === dpId)
+    if (idx < 0) return 'Punkt'
+    return deliveryPoints[idx].label || `Punkt ${idx + 1}`
+  }
 
   const canEdit = EDITABLE_STATUSES.includes(order.status)
   const tier = order.tier_at_submit || 'maly'
@@ -709,11 +746,107 @@ export function OrderDetail({
             )
           )}
 
-          {/* Sprint T-ORDER.1 (30.05.2026) — Proforma block.
-              Gdy proforma_fakturownia_id NULL i order nie cancelled → button
-              "Potwierdź i wyślij proformę". Gdy istnieje → summary z numerem +
-              PDF link (read-only). */}
-          {order.proforma_fakturownia_id ? (
+          {/* Sprint T-ORDER.1 / 3B-2b — Proforma block.
+              osobne: stan w order_documents (N proform per punkt) — lista + „wyślij brakujące".
+              wspolna: stan w orders.proforma_fakturownia_id (BEZ ZMIAN). */}
+          {isOsobne ? (
+            proformaDocs.length > 0 ? (
+              // osobne — część lub wszystkie proformy wystawione (lista per punkt)
+              <div className="bg-white border border-slate-200 rounded-lg p-4">
+                <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
+                  {osobneAllSent
+                    ? `✓ Faktury proforma wysłane (${osobneSentCount}/${osobnePointCount} punktów)`
+                    : `Faktury proforma — częściowo (${osobneSentCount}/${osobnePointCount} punktów)`}
+                </div>
+                <div className="space-y-2 mb-1">
+                  {proformaDocs.map((d) => (
+                    <div
+                      key={d.id}
+                      className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2 last:border-0 last:pb-0"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs text-slate-500 truncate">
+                          {pointLabelFor(d.delivery_point_id)}
+                        </div>
+                        <div className="font-mono text-sm font-semibold text-slate-900">
+                          {d.fakturownia_number}
+                        </div>
+                      </div>
+                      {d.pdf_url && (
+                        <a
+                          href={d.pdf_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 inline-block text-xs px-3 py-1.5 bg-slate-200 text-slate-900 rounded hover:bg-slate-300 font-semibold"
+                        >
+                          PDF →
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {osobnePartial &&
+                  order.status !== 'cancelled' &&
+                  order.contact_email && (
+                    <>
+                      <button
+                        onClick={sendProforma}
+                        disabled={proformaLoading}
+                        className="mt-2 w-full px-3 py-2 rounded-lg text-sm font-semibold transition bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        {proformaLoading
+                          ? 'Wysyłanie...'
+                          : `📧 Wyślij brakujące (${osobneMissing})`}
+                      </button>
+                      {proformaNotice && (
+                        <div className="mt-3 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5">
+                          {proformaNotice}
+                        </div>
+                      )}
+                      {proformaError && (
+                        <div className="mt-3 text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded px-2 py-1.5">
+                          {proformaError}
+                        </div>
+                      )}
+                    </>
+                  )}
+              </div>
+            ) : (
+              // osobne — jeszcze nic nie wystawione → przycisk wyślij (N proform)
+              order.status !== 'cancelled' &&
+              order.contact_email && (
+                <div className="bg-white border border-slate-200 rounded-lg p-4">
+                  <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-3">
+                    Faktury proforma (osobne per punkt)
+                  </div>
+                  <button
+                    onClick={sendProforma}
+                    disabled={proformaLoading}
+                    className="w-full px-3 py-2 rounded-lg text-sm font-semibold transition bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    {proformaLoading
+                      ? 'Wysyłanie...'
+                      : `📧 Potwierdź i wyślij proformy (${osobnePointCount} punktów)`}
+                  </button>
+                  <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                    Wystawia osobną proformę dla każdego punktu i wysyła email z PDF
+                    do{' '}
+                    <strong className="break-all">{order.contact_email}</strong>.
+                  </p>
+                  {proformaNotice && (
+                    <div className="mt-3 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5">
+                      {proformaNotice}
+                    </div>
+                  )}
+                  {proformaError && (
+                    <div className="mt-3 text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded px-2 py-1.5">
+                      {proformaError}
+                    </div>
+                  )}
+                </div>
+              )
+            )
+          ) : order.proforma_fakturownia_id ? (
             // Proforma już wysłana — summary
             <div className="bg-white border border-slate-200 rounded-lg p-4">
               <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">
