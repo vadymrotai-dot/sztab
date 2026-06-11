@@ -4,7 +4,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -47,7 +47,6 @@ function isValidNip(raw: string): boolean {
 }
 
 export function LookupForm() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const [nip, setNip] = useState('')
   const [loading, setLoading] = useState(false)
@@ -235,7 +234,9 @@ export function LookupForm() {
                   const f = searchParams.get('from')
                   const fid = searchParams.get('fromId')
                   const ctx = f === 'cohort' && fid ? `?from=cohort&fromId=${fid}` : ''
-                  router.push(`/clients/${result.client_id}${ctx}`)
+                  // Odporność na deployment skew (Fix 12.06) — twarda nawigacja
+                  // (pełny reload = świeży deployment, brak skew na RSC profilu).
+                  window.location.assign(`/clients/${result.client_id}${ctx}`)
                 }}
                 className="w-full"
               >

@@ -2048,6 +2048,17 @@ Per Protocol 11 (Strategy Updates). Три уточнення Vadymа сього
 - 25 pre-existing tsc errors → cleanup-sprint post S-CORE.5
 - middleware → proxy migration (Next.js 16 deprecation) → backlog
 - service-role Supabase client для bulk insert у ceidg_prospects → потрібен у S-CORE.2
+- **(11.06.2026, backlog) Phase B → after() background.** Rozważane przeniesienie
+  ciężkiego enrichmentu (menu-scrape, verifyWebsiteLive, CEIDG, Haiku) z trasy
+  full-analysis do `after()`, żeby response wracał szybciej. **NIE wdrożone** —
+  pomiar pod obciążeniem NIE potwierdził problemu: ~90 prób = 0 fail, w tym 24
+  podczas 3 RÓWNOLEGŁYCH full-analysis (wszystkie POST 200). Hipoteza „ciężki
+  Phase B jako trigger 503" OBALONA. Faktyczny root cause sporadycznych 503 dziś
+  = **deployment skew** (korelacja 1:1 z 6 deployami; stare karty → server
+  actions/RSC na nowy deployment). Fix wdrożony osobno: Skew Protection
+  (skewProtectionMaxAge=43200) + retry/twardy-reload w workspace-switcher i
+  LookupForm. after()-refactor zostaje jako opcjonalna optymalizacja latencji,
+  NIE jako fix 503.
 
 ### Tomorrow's seed (and tonight)
 

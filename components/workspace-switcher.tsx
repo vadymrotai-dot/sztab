@@ -119,9 +119,26 @@ export function WorkspaceSwitcher({ current, userEmail }: Props) {
       return
     }
     setOpen(false)
+    const href = WORKSPACE_META[target].href
     startTransition(async () => {
-      await setWorkspace(target)
-      router.push(WORKSPACE_META[target].href)
+      // Odporność na deployment skew (Fix 12.06) — server action może dać 503
+      // gdy karta jest ze starej wersji. Retry (backoff 800/2000ms), a po
+      // wyczerpaniu TWARDY reload na docelowy pulpit (pełne załadowanie =
+      // świeży deployment, koniec skew). Spinner via isPending.
+      const delays = [800, 2000]
+      for (let attempt = 0; attempt <= delays.length; attempt++) {
+        try {
+          await setWorkspace(target)
+          router.push(href)
+          return
+        } catch {
+          if (attempt < delays.length) {
+            await new Promise((r) => setTimeout(r, delays[attempt]))
+            continue
+          }
+          window.location.assign(href)
+        }
+      }
     })
   }
 
