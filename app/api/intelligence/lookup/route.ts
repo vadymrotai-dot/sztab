@@ -29,8 +29,10 @@ import { fetchPersonNetwork } from '@/lib/rejestrio/person-network'
 import { fetchCrbr } from '@/lib/rejestrio/crbr'
 import { fetchBranches } from '@/lib/gus/branches'
 import { extractFromWebsite } from '@/lib/enrichment/website'
+import { verifyWebsiteLive } from '@/lib/enrichment/website-verify'
 // Sprint TYDZIEN1.A.3 (27.05.2026) — regex-based contact extractor (no AI cost)
 import { extractWebsiteRegex } from '@/lib/enrichment/website-regex'
+import { normalizePhonePl, normalizeEmail } from '@/lib/enrichment/contact-extract'
 import { upsertField, upsertFields } from '@/lib/profile/merge'
 import { findExistingContact } from '@/lib/enrichment/contact-preflight'
 import { enrichContactsApify } from '@/lib/enrichment/apify'
@@ -719,7 +721,15 @@ async function runPhaseB({
           null
         const web = await searchCompanyOnline(tavilyKey, t.title, nip, krsDomainHint)
         const fields: Array<{ field_key: string; value: { value_text?: string; value_json?: unknown } }> = []
-        if (web.website_url) fields.push({ field_key: 'website', value: { value_text: web.website_url } })
+        // Anty-halucynacja WWW (11.06.2026) — zapisz website TYLKO gdy domena żyje.
+        if (web.website_url) {
+          const live = await verifyWebsiteLive(web.website_url)
+          if (live) {
+            fields.push({ field_key: 'website', value: { value_text: web.website_url } })
+          } else {
+            console.warn(`[web-search] website ${web.website_url} nie przeszedł walidacji DNS/HTTP — pomijam`)
+          }
+        }
         if (web.facebook_url) fields.push({ field_key: 'facebook_url', value: { value_text: web.facebook_url } })
         if (web.instagram_url) fields.push({ field_key: 'instagram_url', value: { value_text: web.instagram_url } })
         if (web.google_maps_urls.length > 0)
@@ -879,6 +889,69 @@ async function runPhaseB({
                 )
               : { added: [], updated: [], unchanged: [], ignored: [] }
           response.fields_filled += wsMerged.added.length + wsMerged.updated.length
+
+          // Fix D (11.06.2026) — kontakty z treści katalogu/strony do
+          // client_contact_methods (karta). source='catalog:<domena>',
+          // only-if-absent (dedup po znormalizowanym numerze/mailu), NIE rusza 'manual'.
+          try {
+            let catalogDomain = 'unknown'
+            try {
+              catalogDomain = new URL(normalizedUrl).hostname.replace(/^www\./, '')
+            } catch {}
+            const phoneVals = wsResult.phones
+              .map((p) => normalizePhonePl(p))
+              .filter((v): v is string => !!v)
+            const emailVals = cleanEmails
+              .map((e) => normalizeEmail(e))
+              .filter((v): v is string => !!v)
+            if (phoneVals.length > 0 || emailVals.length > 0) {
+              const { data: ownerRow } = await supabase
+                .from('clients')
+                .select('owner_id')
+                .eq('id', clientId)
+                .maybeSingle()
+              const ownerId = (ownerRow as { owner_id: string } | null)?.owner_id
+              if (ownerId) {
+                const { data: existingCm } = await supabase
+                  .from('client_contact_methods')
+                  .select('kind, value')
+                  .eq('client_id', clientId)
+                const seen = new Set(
+                  ((existingCm ?? []) as Array<{ kind: string; value: string }>).map(
+                    (r) => `${r.kind}:${String(r.value).replace(/\D/g, '') || r.value}`,
+                  ),
+                )
+                const toInsert: Array<{
+                  client_id: string
+                  owner_id: string
+                  kind: string
+                  value: string
+                  source: string
+                  is_primary: boolean
+                  label: string
+                }> = []
+                for (const v of phoneVals) {
+                  const k = `phone:${v}`
+                  if (!seen.has(k)) {
+                    seen.add(k)
+                    toInsert.push({ client_id: clientId, owner_id: ownerId, kind: 'phone', value: v, source: `catalog:${catalogDomain}`, is_primary: false, label: catalogDomain })
+                  }
+                }
+                for (const v of emailVals) {
+                  const k = `email:${v}`
+                  if (!seen.has(k)) {
+                    seen.add(k)
+                    toInsert.push({ client_id: clientId, owner_id: ownerId, kind: 'email', value: v, source: `catalog:${catalogDomain}`, is_primary: false, label: catalogDomain })
+                  }
+                }
+                if (toInsert.length > 0) {
+                  await supabase.from('client_contact_methods').insert(toInsert)
+                }
+              }
+            }
+          } catch (cmErr) {
+            console.warn('[website_scrape] catalog contacts insert failed:', cmErr)
+          }
           const wsStatus =
             wsResult.phones.length > 0 || cleanEmails.length > 0 ? 'success' : 'partial'
           response.sources_completed.push({
@@ -1081,7 +1154,8 @@ async function runPhaseB({
               source: 'apify_gmaps',
               phone: result.phone,
               email: result.email,
-              website: result.website,
+              // Anty-halucynacja WWW (11.06.2026) — waliduj domenę z GMaps.
+              website: (await verifyWebsiteLive(result.website)) ? result.website : null,
               gmaps_url: result.gmaps_url,
               gmaps_rating: result.gmaps_rating,
               gmaps_reviews_count: result.gmaps_reviews_count,
@@ -1752,7 +1826,12 @@ async function runPhaseB({
         })
         try {
           const result = await searchCompanyByBrand(primaryBrand, resolvedCity, brandSearchKey)
-          if (result.status === 'success' && result.website_url) {
+          // Anty-halucynacja WWW (11.06.2026) — waliduj domenę przed zapisem.
+          const brandLive =
+            result.status === 'success' && result.website_url
+              ? await verifyWebsiteLive(result.website_url)
+              : false
+          if (result.status === 'success' && result.website_url && brandLive) {
             await upsertFields(
               supabase,
               { type: 'client', id: clientId },

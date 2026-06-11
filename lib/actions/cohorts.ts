@@ -279,6 +279,27 @@ export async function updateCohortMemberStatus(
 
 // ─── updateCohortMemberNotes ─────────────────────────────────────
 
+/** Fix 11.06 (C) — twin-aware notatki: zapis do clients.notes gdy wiersz
+ *  kohorty ma bliźniaka-clienta (jedno źródło prawdy z profilem). */
+export async function updateClientNotes(
+  clientId: string,
+  notes: string | null,
+): Promise<{ ok: true }> {
+  if (!clientId) throw new Error('clientId required')
+  const trimmed = notes?.trim() ?? null
+  if (trimmed && trimmed.length > NOTES_MAX) {
+    throw new Error(`Notatka max ${NOTES_MAX} znaków (${trimmed.length})`)
+  }
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('clients')
+    .update({ notes: trimmed && trimmed.length > 0 ? trimmed : null })
+    .eq('id', clientId)
+  if (error) throw new Error(`Client notes update failed: ${error.message}`)
+  revalidatePath('/intelligence/cohorts')
+  return { ok: true }
+}
+
 /** Single-row notes mutation. Pre-existing 'notes' column (з 's') used
  *  per Krok 1.D1 Q1=A1 — NIE додаємо 'note' без 's'. */
 export async function updateCohortMemberNotes(

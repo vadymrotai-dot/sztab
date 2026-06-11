@@ -334,6 +334,7 @@ interface CompanyContext {
   financials: Array<{ rok: number; przychody_pln: number | null; zysk_netto_pln: number | null }>
   bzp_tenders: Array<{ subject: string; cpv: string[]; date: string | null }>
   website_url: string | null
+  website_verified: boolean
   facebook_url: string | null
   instagram_url: string | null
   google_maps_count: number
@@ -589,6 +590,10 @@ async function gatherContext(
     financials,
     bzp_tenders: bzpTenders,
     website_url: (fieldMap.get('website')?.value_text as string | null) ?? null,
+    // Anty-halucynacja WWW (11.06.2026) — website jest zapisywany TYLKO po
+    // walidacji DNS/HTTP (website-verify.ts), więc obecność = zweryfikowany.
+    // false → AI NIE wolno twierdzić, że firma posiada stronę.
+    website_verified: !!(fieldMap.get('website')?.value_text),
     facebook_url: (fieldMap.get('facebook_url')?.value_text as string | null) ?? null,
     instagram_url: (fieldMap.get('instagram_url')?.value_text as string | null) ?? null,
     google_maps_count: gmapsCount,
@@ -706,7 +711,9 @@ function buildUserPrompt(ctx: CompanyContext): string {
   }
 
   lines.push(`Online presence:`)
-  lines.push(`- Website: ${ctx.website_url ?? '—'}`)
+  lines.push(
+    `- Website: ${ctx.website_url ?? '—'}${ctx.website_url ? (ctx.website_verified ? ' (zweryfikowany — domena żyje)' : ' (NIEZWERYFIKOWANY — NIE twierdź, że firma posiada stronę)') : ' (brak — NIE twierdź, że firma posiada stronę)'}`,
+  )
   lines.push(`- Facebook: ${ctx.facebook_url ?? '—'}`)
   lines.push(`- Instagram: ${ctx.instagram_url ?? '—'}`)
   lines.push(`- Google Maps locations found: ${ctx.google_maps_count}`)

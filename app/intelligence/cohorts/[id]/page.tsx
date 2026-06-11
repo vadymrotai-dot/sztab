@@ -350,6 +350,11 @@ export default async function CohortDetailPage({
   // anon supabase (cookie session = Vadym) widzi swoje rows. Coverage varies
   // by cohort: KRS-based 100%, CEIDG-based 20-38%, niektóre 0%.
   let nipToClientId: Record<string, string> = {}
+  // Fix 11.06 (B+C) — twin-aware: NIP → { client id, notes, buyer_strength }.
+  let nipToClientData: Record<
+    string,
+    { id: string; notes: string | null; buyerStrength: number | null }
+  > = {}
   const prospectNips = prospectMembers
     .map((m) => prospectMap.get(m.subject_id)?.nip)
     .filter((n): n is string => typeof n === 'string' && n.length > 0)
@@ -357,27 +362,57 @@ export default async function CohortDetailPage({
     const uniqueNips = Array.from(new Set(prospectNips))
     const { data: clientsByNip } = await supabase
       .from('clients')
-      .select('id, nip')
+      .select('id, nip, notes, business_profile')
       .in('nip', uniqueNips)
     const map: Record<string, string> = {}
-    for (const row of (clientsByNip ?? []) as Array<{ id: string; nip: string }>) {
+    const dataMap: Record<
+      string,
+      { id: string; notes: string | null; buyerStrength: number | null }
+    > = {}
+    for (const row of (clientsByNip ?? []) as Array<{
+      id: string
+      nip: string
+      notes: string | null
+      business_profile: { buyer_strength_for_chm?: number | null } | null
+    }>) {
       // First-wins jeśli >1 clients row na ten sam NIP (rare). Vadym może
       // manualnie dedupe później; navigation deterministic w międzyczasie.
       if (row.nip && !map[row.nip]) map[row.nip] = row.id
+      if (row.nip && !dataMap[row.nip]) {
+        dataMap[row.nip] = {
+          id: row.id,
+          notes: row.notes ?? null,
+          buyerStrength:
+            typeof row.business_profile?.buyer_strength_for_chm === 'number'
+              ? row.business_profile.buyer_strength_for_chm
+              : null,
+        }
+      }
     }
     nipToClientId = map
+    nipToClientData = dataMap
   }
 
   // Compose final row shapes для client component
   const prospectRows: ProspectMemberRow[] = prospectMembers.map((m) => {
     const snap = prospectMap.get(m.subject_id)
+    // Fix 11.06 (B+C) — twin-aware po NIP.
+    const twin = snap?.nip ? nipToClientData[snap.nip] : undefined
+    const prospectBuyer =
+      typeof snap?.business_profile?.buyer_strength_for_chm === 'number'
+        ? snap.business_profile.buyer_strength_for_chm
+        : null
     return {
       cohort_id: m.cohort_id,
       subject_type: 'prospect',
       subject_id: m.subject_id,
       added_at: m.added_at,
       status: m.status,
-      notes: m.notes,
+      // C — notatka: clients.notes gdy twin, inaczej cohort_members.notes.
+      notes: twin ? twin.notes : m.notes,
+      notes_client_id: twin?.id ?? null,
+      // B — buyer_strength: twin-client nadpisuje, fallback prospect.
+      buyer_strength_display: twin?.buyerStrength ?? prospectBuyer,
       snapshot: snap ?? null,
       // Sprint S6D Day 4 — enrichment з contact_enrichment (apify_gmaps).
       enrichment: enrichmentMap.get(m.subject_id) ?? null,

@@ -66,6 +66,7 @@ import { ScoreDrilldownModal } from '@/components/cohort/score-drilldown-modal'
 import {
   updateCohortMemberStatus,
   updateCohortMemberNotes,
+  updateClientNotes,
   type CohortMemberStatus,
   type MemberKey,
 } from '@/lib/actions/cohorts'
@@ -151,6 +152,12 @@ export interface ProspectMemberRow {
    *  Null коли matching algo ne ran для цього prospекta (e.g. hard filter
    *  excluded: brak PKD, brak krs_legal_form). */
   match: ProspectMatchData | null
+  /** Fix 11.06 (B) — buyer_strength z najnowszej analizy AI (twin-aware po NIP).
+   *  Główny score listy, spójny z profilem. Null → fallback 'wstępny'. */
+  buyer_strength_display?: number | null
+  /** Fix 11.06 (C) — id bliźniaka-clienta gdy istnieje. Gdy ustawione,
+   *  notatka czyta/pisze clients.notes (jedno źródło z profilem). */
+  notes_client_id?: string | null
 }
 
 export interface ClientMemberRow {
@@ -406,14 +413,20 @@ export function CohortMembersClient({
     setSavingKey(key)
     startNotesTransition(async () => {
       try {
-        await updateCohortMemberNotes(
-          {
-            cohort_id: row.cohort_id,
-            subject_type: row.subject_type,
-            subject_id: row.subject_id,
-          },
-          trimmed.length > 0 ? trimmed : null,
-        )
+        // Fix 11.06 (C) — twin-aware: zapis do clients.notes gdy jest bliźniak.
+        const twinClientId = (row as { notes_client_id?: string | null }).notes_client_id
+        if (twinClientId) {
+          await updateClientNotes(twinClientId, trimmed.length > 0 ? trimmed : null)
+        } else {
+          await updateCohortMemberNotes(
+            {
+              cohort_id: row.cohort_id,
+              subject_type: row.subject_type,
+              subject_id: row.subject_id,
+            },
+            trimmed.length > 0 ? trimmed : null,
+          )
+        }
         toast.success(`Notatka zapisana: ${displayName}`)
         setEditingKey(null)
         setEditValue('')
@@ -629,7 +642,10 @@ export function CohortMembersClient({
       {
         id: 'score',
         accessorFn: (row) => {
-          // Score priority: matches.max_score → horeca_meta_score → gmaps_rating
+          // Fix 11.06 (B) — buyer_strength (analiza AI) priorytetem, spójnie z profilem.
+          const bs = row.buyer_strength_display
+          if (typeof bs === 'number') return bs
+          // Fallback (wstępny): matches.max_score → horeca_meta_score → gmaps_rating
           const ms = row.match?.max_score
           if (typeof ms === 'number' && ms > 0) return ms
           const meta = num(row.snapshot?.horeca_meta_score)
@@ -646,6 +662,19 @@ export function CohortMembersClient({
         cell: ({ row }) => {
           const p = row.original.snapshot
           if (!p) return null
+          // Fix 11.06 (B) — główny score = buyer_strength (AI), spójny z profilem.
+          const bs = row.original.buyer_strength_display
+          if (typeof bs === 'number') {
+            return (
+              <span
+                className="tabular-nums font-semibold text-[#1F3A5F]"
+                title="Buyer strength (analiza AI) — spójne z profilem klienta"
+              >
+                {bs}
+                <span className="ml-0.5 text-[11px] text-[#888]">/100</span>
+              </span>
+            )
+          }
           const enr = row.original.enrichment
           const meta = num(p.horeca_meta_score)
           const gmapsRating = enr?.gmaps_rating ? num(enr.gmaps_rating) : null
@@ -656,16 +685,23 @@ export function CohortMembersClient({
             !showMatchScore && !showOriginalScore && gmapsRating !== null
           if (showMatchScore) {
             return (
-              <MatchScoreBadge
-                score={matchScore!}
-                breakdown={row.original.match?.breakdown}
-                productCount={row.original.match?.count ?? 0}
-                onOpenDrilldown={() => setDrilldownProspect(row.original)}
-              />
+              <span className="inline-flex items-center gap-1 opacity-70">
+                <MatchScoreBadge
+                  score={matchScore!}
+                  breakdown={row.original.match?.breakdown}
+                  productCount={row.original.match?.count ?? 0}
+                  onOpenDrilldown={() => setDrilldownProspect(row.original)}
+                />
+                <span className="text-[10px] text-[#888]">wstępny</span>
+              </span>
             )
           }
           if (showOriginalScore) {
-            return <span className="tabular-nums">{meta.toFixed(1)}</span>
+            return (
+              <span className="tabular-nums text-[#888]">
+                {meta.toFixed(1)} <span className="text-[10px]">wstępny</span>
+              </span>
+            )
           }
           if (showGmapsScore) {
             return (
