@@ -407,6 +407,62 @@ export async function extractMenuFromWebsite(
     break
   }
 
+  // Fix 11.06 (STEP 1A) — generyczny menu-scrape dla custom stron (np. PHP
+  // oferta,NNN.html / index.php?page=&cat=NN). Gdy znane ścieżki nie trafiły:
+  // homepage → linki TEJ SAMEJ domeny pasujące do słów-kluczy menu (też
+  // index.php?...cat=) → max 6 podstron, akumuluj ~MAX_TOTAL_TEXT, fail-soft.
+  if (!matchedHtml) {
+    try {
+      const home = await fetchPage(base.origin)
+      if (home && home.contentType === 'html' && home.html) {
+        const LINK_RE = /href\s*=\s*["']([^"']+)["']/gi
+        const KEYWORD_RE = /oferta|menu|dania|zupy|zupa|sa[łl]atk|surow|kuchnia|gotujemy|karta|katalog|cat=/i
+        const baseHost = base.hostname.replace(/^www\./, '')
+        const seen = new Set<string>()
+        const candidates: string[] = []
+        let lm: RegExpExecArray | null
+        while ((lm = LINK_RE.exec(home.html)) !== null && candidates.length < 30) {
+          const rawHref = lm[1]!
+          if (!KEYWORD_RE.test(rawHref)) continue
+          let abs: string
+          try {
+            abs = new URL(rawHref, base.origin).toString()
+            if (new URL(abs).hostname.replace(/^www\./, '') !== baseHost) continue
+          } catch {
+            continue
+          }
+          if (seen.has(abs)) continue
+          seen.add(abs)
+          candidates.push(abs)
+        }
+        let acc = ''
+        const fetchedPaths: string[] = []
+        for (const url of candidates.slice(0, 6)) {
+          if (acc.length >= MAX_TOTAL_TEXT) break
+          const pr = await fetchPage(url)
+          if (!pr || pr.contentType !== 'html' || !pr.html.trim()) continue
+          const t = stripHtml(pr.html)
+          if (t.trim().length < 200) continue
+          acc += '\n\n' + t.slice(0, Math.max(0, MAX_TOTAL_TEXT - acc.length))
+          try {
+            const u = new URL(url)
+            fetchedPaths.push(u.pathname + (u.search || ''))
+          } catch {
+            fetchedPaths.push(url)
+          }
+        }
+        if (acc.trim().length > 400) {
+          matchedHtml = acc.slice(0, MAX_TOTAL_TEXT)
+          result.matched_path = fetchedPaths[0] ?? '/'
+          result.content_type = 'html'
+          for (const f of fetchedPaths) result.pages_fetched.push(f)
+        }
+      }
+    } catch (genErr) {
+      console.warn('[website-menu] generic scrape failed:', genErr)
+    }
+  }
+
   if (!matchedHtml) {
     result.source = upMenuDetected ? 'upmenu_blocked' : 'no_match'
     if (!result.error) {

@@ -124,6 +124,23 @@ Wysokie buyer_strength_for_chm (80-95) — jeśli firma:
 Niskie (10-40) — branża nie food, nieadekwatne PKD, online-only sklep z
 nieadekwatnym asortymentem.
 
+🍽️ MENU / OFERTA (Fix 11.06 — najsilniejszy driver gdy dostępny):
+- Sekcja "Menu / oferta" w danych = NAJSILNIEJSZY sygnał dopasowania. Gdy menu
+  zawiera dania-konsumentów CzM: bigos, barszcz (czerwony/ukraiński), żurek,
+  zupa ogórkowa, gołąbki, kapusta/surówki, pierogi z kapustą — ORAZ kategorie
+  bezpośrednie: kiszonki (kapusta, ogórki), buraki, gotowane warzywa, sałatki —
+  to BEZPOŚREDNI odbiorca CzM → buyer_strength 60-85 (im więcej trafień, tym wyżej).
+- ⛔ ZAKAZ werdyktu "No fit" ani score karzącego GDY "Menu / oferta: NIEZNANE".
+  Brak wiedzy o ofercie NIE jest dowodem braku dopasowania. Wtedy w
+  buyer_reasoning_pl napisz "fit nieznany (brak dostępnej oferty)" i oprzyj
+  score WYŁĄCZNIE na kotwicach bazowych — NIE obniżaj za niewiedzę.
+
+📐 KOTWICE SKALI (Vadym stroi tu progi — jedno miejsce):
+- Baza BEZ menu: czynny VAT + 10+ lat działalności + profil producent/catering/
+  gastronomia → 40-60 (solidna baza mimo braku menu).
+- Menu z silnym fitem CzM → podnieś do 60-85.
+- Mikro/nieaktywni bez czynnego VAT → nisko (reguła VAT niżej, MAX 20).
+
 ⚠️ KRYTYCZNIE (sygnał VAT, Sprint TYDZIEN1.A.1.4):
 Jeśli vat_status='Niezarejestrowany' I firma zarejestrowana >1 rok temu →
 buyer_strength_for_chm MAX 20. Powód: brak czynnego VAT = nie kupuje B2B
@@ -335,6 +352,7 @@ interface CompanyContext {
   bzp_tenders: Array<{ subject: string; cpv: string[]; date: string | null }>
   website_url: string | null
   website_verified: boolean
+  menu_dishes: string[]
   facebook_url: string | null
   instagram_url: string | null
   google_maps_count: number
@@ -525,6 +543,31 @@ async function gatherContext(
     : null
   if (apify) inputSources.add('Apify_GMaps')
 
+  // Fix 11.06 — menu/oferta z www_menu/Restaumatic/wedo do kontekstu AI.
+  // Wcześniej dishes NIE trafiały do promptu → AI oceniał fit "na ślepo".
+  const { data: menuCe } = await supabase
+    .from('contact_enrichment')
+    .select('raw_payload, source')
+    .eq('target_type', 'client')
+    .eq('target_id', clientId)
+    .in('source', ['www_menu', 'restaumatic_menu', 'wedo_pdf_menu'])
+    .order('enriched_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const menuDishes: string[] = (() => {
+    const dishes = (
+      menuCe as {
+        raw_payload?: { dishes?: Array<{ name?: string } | string> }
+      } | null
+    )?.raw_payload?.dishes
+    if (!Array.isArray(dishes)) return []
+    return dishes
+      .map((d) => (typeof d === 'string' ? d : (d?.name ?? '')))
+      .filter((s) => s && s.trim().length > 0)
+      .slice(0, 60)
+  })()
+  if (menuDishes.length > 0) inputSources.add('menu')
+
   // Tavily news
   const newsField = fieldMap.get('news_mentions')
   const news = newsField && Array.isArray(newsField.value_json)
@@ -594,6 +637,7 @@ async function gatherContext(
     // walidacji DNS/HTTP (website-verify.ts), więc obecność = zweryfikowany.
     // false → AI NIE wolno twierdzić, że firma posiada stronę.
     website_verified: !!(fieldMap.get('website')?.value_text),
+    menu_dishes: menuDishes,
     facebook_url: (fieldMap.get('facebook_url')?.value_text as string | null) ?? null,
     instagram_url: (fieldMap.get('instagram_url')?.value_text as string | null) ?? null,
     google_maps_count: gmapsCount,
@@ -684,6 +728,18 @@ function buildUserPrompt(ctx: CompanyContext): string {
     for (const f of ctx.financials) {
       lines.push(`- ${f.rok}: przychody ${f.przychody_pln ?? '?'} PLN, zysk netto ${f.zysk_netto_pln ?? '?'} PLN`)
     }
+    lines.push('')
+  }
+
+  // Fix 11.06 — Menu / oferta (najważniejszy driver buyer_strength gdy dostępny).
+  if (ctx.menu_dishes.length > 0) {
+    lines.push(`Menu / oferta (z własnej strony — ${ctx.menu_dishes.length} pozycji):`)
+    lines.push(`- ${ctx.menu_dishes.slice(0, 40).join(', ')}`)
+    lines.push('')
+  } else {
+    lines.push(
+      `Menu / oferta: NIEZNANE (nie udało się pobrać oferty). NIE wystawiaj werdyktu "No fit" z tego powodu.`,
+    )
     lines.push('')
   }
 
