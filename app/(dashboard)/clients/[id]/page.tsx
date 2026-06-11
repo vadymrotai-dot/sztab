@@ -4,7 +4,6 @@
 // Drops: sticky 5-action bar, horizontal anchor nav, debug "Profil canonical
 // 18 pól", raw JSON dumps, stale "Sprawozdania niedostępne HTTP 400".
 
-import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -36,7 +35,6 @@ import { SendOfferButton } from '@/components/clients/send-offer-button'
 import { ClientTypeBadge } from '@/components/clients/client-type-badge'
 import { MenuSection, type MenuDish, type MenuCoverage, type MenuDishesSource } from '@/components/clients/menu-section'
 import { PredictionsSectionAsync } from '@/components/clients/predictions-section-async'
-import { PredictionsLoadingSkeleton } from '@/components/clients/predictions-loading-skeleton'
 import type { ClientType } from '@/lib/ai/business-analysis'
 import { SectionActionLink } from '@/components/clients/section-action-link'
 import { KrsRefreshButton } from '@/components/clients/krs-refresh-button'
@@ -696,11 +694,11 @@ export default async function ClientDetailPage({
             Always renders для gastronomia — fallback empty state якщо
             aggregation returned null (e.g. anthropic_api_key missing).
             Server-side aggregation runs AI per dish (cached у dish_ingredient_mappings). */}
-        {/* Sprint TYDZIEN2 PERF (28.05.2026) — Suspense + async server component.
-            Page renderuje natychmiast z LoadingSkeleton fallback; PredictionsSectionAsync
-            streamuje siebie po zakończeniu AI calls (typowo 5-30s dla gastronomy).
-            Meta accordion lite ("Prognoza miesięczna") bo prawdziwy count znamy
-            dopiero po agregacji — pokazujemy go wewnątrz PredictionsSection. */}
+        {/* Fix 12.06 — BEZ Suspense. Render PredictionsSectionAsync czyta tylko
+            gotowy cache (menu_predictions) i jest natychmiastowy; streaming tu
+            zbędny. Usunięcie boundary eliminuje fallback-swap/re-suspend przy
+            hydracji (przycisk "Policz prognozę" pozostawał ukryty na zawsze,
+            onClick martwy). Liczenie jest jawne — POST /compute-prediction. */}
         {isGastronomia && (
           <AccordionSection
             id="predictions"
@@ -708,15 +706,13 @@ export default async function ClientDetailPage({
             meta="Analiza menu"
             defaultOpen={true}
           >
-            <Suspense fallback={<PredictionsLoadingSkeleton />}>
-              <PredictionsSectionAsync
-                clientId={id}
-                reviewsCount={
-                  (apifyEnrichment as { gmaps_reviews_count?: number | null } | null)
-                    ?.gmaps_reviews_count ?? 0
-                }
-              />
-            </Suspense>
+            <PredictionsSectionAsync
+              clientId={id}
+              reviewsCount={
+                (apifyEnrichment as { gmaps_reviews_count?: number | null } | null)
+                  ?.gmaps_reviews_count ?? 0
+              }
+            />
           </AccordionSection>
         )}
 
