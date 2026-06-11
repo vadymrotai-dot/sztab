@@ -339,6 +339,10 @@ export default async function ClientDetailPage({
     region: string | null
     krs_number: string | null
     krs_legal_form: string | null
+    gus_legal_form: string | null
+    krs_registration_date: string | null
+    registered_date: string | null
+    gus_status: string | null
     gus_regon: string | null
     pkd_codes: string[] | null
     employee_count_range: string | null
@@ -623,6 +627,11 @@ export default async function ClientDetailPage({
           <Badge variant="secondary" className={`text-white ${statusColor[c.status] ?? 'bg-gray-400'}`}>
             {c.status}
           </Badge>
+          {c.gus_status === 'deregistered' && (
+            <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">
+              Wykreślona z REGON
+            </span>
+          )}
           <ClientTypeBadge
             clientId={id}
             clientType={
@@ -712,7 +721,7 @@ export default async function ClientDetailPage({
 
         <AccordionSection title="Profil" meta={profileMeta} defaultOpen={true}>
           <ProfileSectionV2
-            forma_prawna={c.krs_legal_form}
+            forma_prawna={c.krs_legal_form ?? c.gus_legal_form ?? (c.krs_number ? null : 'JDG')}
             address={c.address}
             city={c.city}
             region={c.region}
@@ -720,7 +729,7 @@ export default async function ClientDetailPage({
             regon={c.gus_regon}
             krs_number={c.krs_number}
             kapital_zakladowy={c.kapital_zakladowy}
-            founded_at={c.founded_at}
+            founded_at={c.krs_registration_date ?? c.registered_date ?? c.founded_at}
             vat_status={c.vat_status}
             vat_registered_date={c.vat_registered_date}
             pkd_main={pkdMainCode}

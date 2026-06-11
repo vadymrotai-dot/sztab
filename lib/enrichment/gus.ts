@@ -246,6 +246,9 @@ export interface GusEnrichedData {
   /** Sprint TYDZIEN1.A.1 (27.05.2026) — sformatowany adres siedziby
    *  "{ulica} {numer}/{lokal}, {kod_pocz} {miejscowosc}" z null-skipping. */
   address: string | null
+  /** Fix JDG (11.06.2026) — forma prawna z GUS (fiz_/praw_ podstawowaFormaPrawna_Nazwa).
+   *  Dla JDG krs_legal_form jest NULL, więc to jedyne źródło formy. */
+  legal_form: string | null
   raw: unknown
   checked_at: string
 }
@@ -414,6 +417,12 @@ export async function enrichWithGUS(
   // Sprint TYDZIEN1.A.1 — extract address from reportFlat (praw_* OR fiz_* fallback)
   const { city, address } = composeGusAddress(reportFlat)
 
+  // Fix JDG (11.06.2026) — forma prawna (fiz_* dla JDG, praw_* dla osoby prawnej).
+  const legal_form =
+    reportFlat.fiz_podstawowaFormaPrawna_Nazwa ??
+    reportFlat.praw_podstawowaFormaPrawna_Nazwa ??
+    null
+
   return {
     found: true,
     regon: search.Regon,
@@ -425,6 +434,7 @@ export async function enrichWithGUS(
     pkd_main,
     city,
     address,
+    legal_form,
     raw: { search, report, pkd: pkdReport },
     checked_at: checkedAt,
   }

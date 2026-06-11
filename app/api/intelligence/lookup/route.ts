@@ -319,6 +319,7 @@ export async function POST(req: Request) {
           .update({
             gus_data: gus.raw,
             gus_legal_name: gus.legal_name,
+            gus_legal_form: gus.legal_form,
             gus_regon: gus.regon,
             gus_status: gus.status,
             registered_date: gus.registered_date,
@@ -1561,14 +1562,20 @@ async function runPhaseB({
     })
     try {
       const result = await runCeidgDetailsStep(supabase, params.ceidg_api_key, clientId, nip)
+      // Fix JDG (11.06.2026) — adres z CEIDG też liczy się do fields (metryka d).
+      const ceidgFields = result.aliases_count + (result.address_written ? 1 : 0)
+      response.fields_filled += result.address_written ? 1 : 0
       response.sources_completed.push({
         source: 'CEIDG_details',
-        status: result.aliases_count > 0 ? 'success' : 'partial',
-        fields_added: result.aliases_count,
+        status: ceidgFields > 0 ? 'success' : 'partial',
+        fields_added: ceidgFields,
         note:
-          result.aliases_count > 0
-            ? `${result.aliases_count} brand_aliases extracted z uprawnień`
-            : 'no commercial uprawnienia (e.g. JDG без alcohol/event koncesji)',
+          [
+            result.aliases_count > 0 ? `${result.aliases_count} brand_aliases` : null,
+            result.address_written ? 'adres z CEIDG' : null,
+          ]
+            .filter(Boolean)
+            .join(' + ') || 'brak nowych pól (brak koncesji / adres już ustawiony)',
       })
       await finishEnrichmentRun(supabase, ceidgRunId, {
         status: 'success',
@@ -2411,16 +2418,26 @@ async function runCeidgDetailsStep(
   ceidgApiKey: string,
   clientId: string,
   nip: string,
-): Promise<{ aliases_count: number; uprawnienia_count: number; uuid_was_cached: boolean }> {
+): Promise<{
+  aliases_count: number
+  uprawnienia_count: number
+  uuid_was_cached: boolean
+  address_written: boolean
+}> {
   const ceidgClient = new CeidgClient(ceidgApiKey)
 
   // ─── Step 1 — resolve UUID (cache lookup) ───
   const { data: clientRow } = await supabase
     .from('clients')
-    .select('ceidg_id')
+    .select('ceidg_id, address, city')
     .eq('id', clientId)
     .maybeSingle()
-  let ceidgId = (clientRow as { ceidg_id: string | null } | null)?.ceidg_id ?? null
+  const clientCur = clientRow as {
+    ceidg_id: string | null
+    address: string | null
+    city: string | null
+  } | null
+  let ceidgId = clientCur?.ceidg_id ?? null
   const uuidWasCached = !!ceidgId
 
   // Cache miss → CEIDG search by NIP, pick firmy[0].id, persist
@@ -2445,6 +2462,29 @@ async function runCeidgDetailsStep(
   const uprawnienia = details.uprawnienia ?? []
   const aliases = extractBrandAliasesFromKoncesje(uprawnienia)
 
+  // Fix JDG (11.06.2026) — adres JDG z CEIDG adresDzialalnosci (GUS report
+  // OsFizycznaDaneOgolne go NIE zwraca). Zapis TYLKO gdy clients.address/city
+  // aktualnie NULL — nie nadpisujemy ręcznych danych (skip-spread pattern).
+  let addressWritten = false
+  const adr = details.adresDzialalnosci
+  if (adr) {
+    const street = [adr.ulica, [adr.budynek, adr.lokal].filter(Boolean).join('/')]
+      .filter(Boolean)
+      .join(' ')
+      .trim()
+    const cityPart = [adr.kod, adr.miasto].filter(Boolean).join(' ').trim()
+    const composedAddress =
+      [street, cityPart].filter((s) => s.length > 0).join(', ') || null
+    const composedCity = adr.miasto?.trim() || null
+    const addrUpdate: { address?: string; city?: string } = {}
+    if (!clientCur?.address && composedAddress) addrUpdate.address = composedAddress
+    if (!clientCur?.city && composedCity) addrUpdate.city = composedCity
+    if (Object.keys(addrUpdate).length > 0) {
+      await supabase.from('clients').update(addrUpdate).eq('id', clientId)
+      addressWritten = true
+    }
+  }
+
   // ─── Step 3 — persist brand_aliases (тільки коли non-empty, щоб не overwrite
   // майбутні sources — Day 2 GMaps/website appender) ───
   if (aliases.length > 0) {
@@ -2458,6 +2498,7 @@ async function runCeidgDetailsStep(
     aliases_count: aliases.length,
     uprawnienia_count: uprawnienia.length,
     uuid_was_cached: uuidWasCached,
+    address_written: addressWritten,
   }
 }
 
