@@ -2,6 +2,9 @@
 // Sprint S2B Phase 2C — 4-col metric strip Score/Obroty/Pracownicy/Oddziały.
 
 interface Props {
+  /** Fix 12.06 — Dopasowanie Sztab = buyer_strength_for_chm (spójne z listami). */
+  buyerStrength: number | null
+  /** TOP dopasowanie produktowe (algo_score najlepszego matcha) — osobna metryka. */
   topMatchScore: number | null
   /** Latest year revenue from financial_statements.przychody_netto */
   latestRevenuePln: number | null
@@ -19,13 +22,14 @@ function formatPln(v: number | null): string {
 }
 
 export function MetricStrip({
+  buyerStrength,
   topMatchScore,
   latestRevenuePln,
   revenueYoyPct,
   employeesCount,
   branchOfficesCount,
 }: Props) {
-  const score = topMatchScore ?? 0
+  const score = buyerStrength ?? 0
   const scoreColor =
     score >= 70 ? 'bg-[#00A656]' : score >= 40 ? 'bg-[#F59E0B]' : 'bg-[#888]'
   return (
@@ -35,12 +39,18 @@ export function MetricStrip({
         <div className="text-[10px] uppercase tracking-wider text-[#888]">Dopasowanie Sztab</div>
         <div className="mt-1 flex items-baseline gap-1">
           <span className="text-[28px] font-medium leading-none">
-            {topMatchScore !== null ? topMatchScore : '—'}
+            {buyerStrength !== null ? buyerStrength : '—'}
           </span>
           <span className="text-[14px] text-[#888]">/ 100</span>
         </div>
         <div className="mt-2 h-1.5 overflow-hidden rounded bg-[#F0EDE5]">
           <div className={`h-full ${scoreColor}`} style={{ width: `${score}%` }} />
+        </div>
+        <div className="mt-2 text-[11px] text-[#888]">
+          TOP dopasowanie produktowe:{' '}
+          <span className="font-medium text-[#555]">
+            {topMatchScore !== null ? `${topMatchScore}/100` : '—'}
+          </span>
         </div>
       </div>
       {/* Obroty */}

@@ -656,6 +656,7 @@ export default async function ClientDetailPage({
         <EnrichmentProgressBanner clientId={id} />
 
         <MetricStrip
+          buyerStrength={bp?.buyer_strength_for_chm ?? null}
           topMatchScore={topMatchScore}
           latestRevenuePln={latestRevenuePln}
           revenueYoyPct={revenueYoyPct}

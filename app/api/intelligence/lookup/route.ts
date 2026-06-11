@@ -1497,6 +1497,95 @@ async function runPhaseB({
     })
   }
 
+  // ─── Fix 12.06 — menu/oferta dla NIE-gastronomia z zweryfikowanym website ───
+  // Producenci/hurt/catering (np. "Leniwa Gospodyni" — producent dań, modelowy
+  // odbiorca CzM) też dostają menu/ofertę. TYLKO generyczny www_menu
+  // (extractMenuFromWebsite — Restaumatic JSON-LD fast path + generyczny scrape
+  // z nav-linków). Wolt/PDF-wedo zostają w ścieżce gastronomia (wyżej, bez zmian).
+  if (!isGastronomia && clientGateRow && params.anthropic_api_key) {
+    let menuWebsiteUrl: string | null = null
+    const { data: g2 } = await supabase
+      .from('contact_enrichment')
+      .select('website')
+      .eq('target_type', 'client')
+      .eq('target_id', clientId)
+      .eq('source', 'apify_gmaps')
+      .maybeSingle()
+    menuWebsiteUrl = (g2 as { website?: string | null } | null)?.website ?? null
+    if (!menuWebsiteUrl) {
+      const { data: wf } = await supabase
+        .from('company_profile_fields')
+        .select('value_text')
+        .eq('client_id', clientId)
+        .eq('field_key', 'website')
+        .is('superseded_at', null)
+        .maybeSingle()
+      menuWebsiteUrl = (wf as { value_text?: string | null } | null)?.value_text ?? null
+    }
+    if (
+      menuWebsiteUrl &&
+      (await verifyWebsiteLive(menuWebsiteUrl)) &&
+      budgetCtx.checkBudget('www_menu')
+    ) {
+      const mRunId = await startEnrichmentRun(supabase, {
+        target_type: 'company',
+        target_id: clientId,
+        source: 'www_menu',
+      })
+      try {
+        const result = await extractMenuFromWebsite(
+          menuWebsiteUrl,
+          params.anthropic_api_key,
+          params.apify_api_token,
+        )
+        const dbSource =
+          result.source === 'restaumatic_jsonld'
+            ? 'restaumatic_menu'
+            : result.source === 'pdf_wedo'
+              ? 'wedo_pdf_menu'
+              : result.source === 'upmenu_blocked'
+                ? 'www_menu_blocked'
+                : 'www_menu'
+        await supabase.from('contact_enrichment').upsert(
+          {
+            target_type: 'client',
+            target_id: clientId,
+            source: dbSource,
+            website: menuWebsiteUrl,
+            raw_payload: {
+              matched_path: result.matched_path,
+              content_type: result.content_type,
+              extraction_source: result.source,
+              dishes: result.dishes,
+              pages_fetched: result.pages_fetched,
+            },
+            status: result.dishes.length > 0 ? 'success' : 'partial',
+            error_message: result.error ?? null,
+            cost_usd: result.cost_usd,
+            enriched_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + 30 * 86400000).toISOString(),
+          },
+          { onConflict: 'target_type,target_id,source' },
+        )
+        response.sources_completed.push({
+          source: dbSource,
+          status: result.dishes.length > 0 ? 'success' : 'partial',
+          note: `${result.dishes.length} dań via ${result.source} (non-gastro), $${result.cost_usd.toFixed(4)}`,
+        })
+        await finishEnrichmentRun(supabase, mRunId, {
+          status: result.dishes.length > 0 ? 'success' : 'partial',
+          raw_payload: result,
+          cost_usd: result.cost_usd,
+        })
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        response.errors.push(`www_menu(non-gastro): ${msg}`)
+        response.sources_completed.push({ source: 'www_menu', status: 'error', error: msg })
+        await finishEnrichmentRun(supabase, mRunId, { status: 'error', error_message: msg })
+      }
+    }
+  }
+
   // ─── STEP 5.6: KRS fullnames deanonymization ───
   // Trigger якщо: (a) client_type у hurtownia/sklep_detal/sieci_handlowe AND
   //               (b) існує хоча б 1 anonymized person у DB.
