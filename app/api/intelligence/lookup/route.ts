@@ -1756,6 +1756,19 @@ async function runPhaseB({
     }
   }
 
+  // ─── STEP 6.4b (Fix 12.06): menu/KRS PRZED AI ───
+  // Żeby PIERWSZA pełna analiza już widziała menu (dishes w kontekście).
+  // Gating isGastronomia/isHurtowniaLike używa PKD-heurystyki gdy
+  // business_profile.client_type jeszcze null (AI zapisuje go w 6.5).
+  try {
+    await runDeferredMenuAndKrs()
+  } catch (err) {
+    console.error('[PhaseB] menu/krs przed AI failed:', err)
+    response.errors.push(
+      `menu/krs: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
   // ─── STEP 6.5: AI business analysis (Claude Haiku) ───
   // Sprint L Phase 3 — analyze всі accumulated signals → business_profile
   // з buyer_strength_for_chm score. Drives Phase 4 score recalibration.
@@ -2028,21 +2041,8 @@ async function runPhaseB({
     }
   }
 
-  // ─── STEP 6.7: deferred menu + KRS-fullnames (Sprint S-MENU Day 2 fix) ───
-  // Gates `isGastronomia`/`isHurtowniaLike` read FRESH business_profile.client_type
-  // (just written by AI у STEP 6.5). Wraps existing 5.5/5.6 logic як closure
-  // defined ~line 731. JDG gastronomy clients (CEIDG-classified) тепер catch
-  // www_menu/Wolt/Restaumatic menu extraction. Hurtownia clients catch
-  // krs-fullnames deanonymization correctly. Try/catch protects STEP 6/7
-  // from any closure-throw.
-  try {
-    await runDeferredMenuAndKrs()
-  } catch (err) {
-    console.error('[PhaseB] runDeferredMenuAndKrs failed:', err)
-    response.errors.push(
-      `deferred menu/krs: ${err instanceof Error ? err.message : String(err)}`,
-    )
-  }
+  // ─── STEP 6.7: menu/KRS przeniesione PRZED STEP 6.5 (Fix 12.06 — patrz wyżej
+  //     "STEP 6.4b"). Dzięki temu pierwsza pełna analiza już widzi menu. ───
 
   // ─── STEP 6 final: re-compute matches (тепер з business_profile niche bonus) ───
   try {

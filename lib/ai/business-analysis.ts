@@ -557,16 +557,18 @@ async function gatherContext(
   const menuDishes: string[] = (() => {
     const dishes = (
       menuCe as {
-        raw_payload?: { dishes?: Array<{ name?: string } | string> }
+        raw_payload?: { dishes?: Array<{ name_pl?: string; name?: string } | string> }
       } | null
     )?.raw_payload?.dishes
     if (!Array.isArray(dishes)) return []
     return dishes
-      .map((d) => (typeof d === 'string' ? d : (d?.name ?? '')))
+      // Fix 12.06 — website-menu zapisuje pole 'name_pl' (nie 'name') →
+      // wcześniej map(d.name) dawał undefined → 0 dań w prompcie.
+      .map((d) => (typeof d === 'string' ? d : (d?.name_pl ?? d?.name ?? '')))
       .filter((s) => s && s.trim().length > 0)
       .slice(0, 60)
   })()
-  if (menuDishes.length > 0) inputSources.add('menu')
+  if (menuDishes.length > 0) inputSources.add('www_menu')
 
   // Tavily news
   const newsField = fieldMap.get('news_mentions')
