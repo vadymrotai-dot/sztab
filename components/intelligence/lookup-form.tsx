@@ -227,7 +227,18 @@ export function LookupForm() {
             )}
 
             {result.client_id && (
-              <Button onClick={() => router.push(`/clients/${result.client_id}`)} className="w-full">
+              <Button
+                onClick={() => {
+                  // Fix 11.06 — przekaż kontekst kohorty (from=cohort&fromId)
+                  // dalej do profilu, żeby prospekt bez bliźniaka też wracał
+                  // do kohorty (breadcrumb Cohorts → {nazwa} → profil).
+                  const f = searchParams.get('from')
+                  const fid = searchParams.get('fromId')
+                  const ctx = f === 'cohort' && fid ? `?from=cohort&fromId=${fid}` : ''
+                  router.push(`/clients/${result.client_id}${ctx}`)
+                }}
+                className="w-full"
+              >
                 Otwórz profil firmy →
               </Button>
             )}

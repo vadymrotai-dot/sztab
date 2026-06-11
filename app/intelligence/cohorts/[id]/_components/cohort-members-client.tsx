@@ -582,7 +582,7 @@ export function CohortMembersClient({
                   </Link>
                 ) : (
                   <Link
-                    href={`/intelligence/lookup?nip=${p.nip}`}
+                    href={`/intelligence/lookup?nip=${p.nip}&from=cohort&fromId=${cohortId}`}
                     className="font-medium hover:text-emerald-700 hover:underline"
                     title="Pierwszy lookup utworzy profil"
                     prefetch={false}
