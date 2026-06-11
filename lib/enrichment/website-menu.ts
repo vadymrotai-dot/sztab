@@ -482,7 +482,9 @@ export async function extractMenuFromWebsite(
     model: AI_MODELS.FAST,
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
-    maxTokens: 4000,
+    // Fix 12.06 — 4000 ucinał JSON dla długich menu (Leniwa 150+ dań) →
+    // niepełny JSON → parse fail → 0 dań → no_match. 8000 mieści ~175 pozycji.
+    maxTokens: 8000,
     temperature: 0.2,
   })
 
@@ -500,7 +502,28 @@ export async function extractMenuFromWebsite(
     10000
 
   try {
-    const parsed = extractJSON<AiOutput>(ai.text)
+    // Fix 12.06 — odzysk z OBCIĘTEGO JSON (menu dłuższe niż maxTokens):
+    // gdy extractJSON rzuci, wyłuskaj kompletne obiekty {"name_pl":...} i
+    // zbuduj listę z tego co się zmieściło (lepsze niż 0 dań → no_match).
+    let parsed: AiOutput
+    try {
+      parsed = extractJSON<AiOutput>(ai.text)
+    } catch (parseErr) {
+      const objs = ai.text.match(/\{[^{}]*"name_pl"[^{}]*\}/g) ?? []
+      const recovered: WebsiteMenuDish[] = []
+      for (const o of objs) {
+        try {
+          recovered.push(JSON.parse(o) as WebsiteMenuDish)
+        } catch {
+          /* pomiń niepełny */
+        }
+      }
+      if (recovered.length === 0) throw parseErr
+      console.warn(
+        `[website-menu] JSON obcięty — odzyskano ${recovered.length} dań z fragmentów`,
+      )
+      parsed = { dishes: recovered }
+    }
     const dishes = Array.isArray(parsed.dishes) ? parsed.dishes : []
     result.dishes = dishes
       .filter((d) => d && typeof d.name_pl === 'string' && d.name_pl.trim().length > 0)
