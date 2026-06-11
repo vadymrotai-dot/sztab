@@ -148,6 +148,150 @@ async function extractViaAi(
   }
 }
 
+// ─── Batch extraction (Fix 12.06 — render nie liczy; compute w paczkach) ───
+// Zamiast 127 sekwencyjnych Haiku (śmierć trasy) — paczki ~30 dań w 1 call.
+
+const BATCH_SYSTEM_PROMPT = `${SYSTEM_PROMPT}
+
+WEJŚCIE: lista pozycji menu. Dla KAŻDEJ pozycji zwróć jej składniki.
+OUTPUT JSON: { "dishes": [ { "name": "<dokładna nazwa wejściowa>", "ingredients": [ {"name","grams","confidence"} ] } ] }`
+
+async function extractBatchViaAi(
+  apiKey: string,
+  dishNames: string[],
+  cuisineType: string,
+): Promise<{ perDish: Map<string, DishIngredient[]>; cost_usd: number; error?: string }> {
+  const perDish = new Map<string, DishIngredient[]>()
+  if (!apiKey || dishNames.length === 0) {
+    return { perDish, cost_usd: 0, error: !apiKey ? 'ANTHROPIC_API_KEY missing' : undefined }
+  }
+  const list = dishNames.map((d, i) => `${i + 1}. ${d}`).join('\n')
+  const userPrompt = `Kuchnia: ${cuisineType}\n\nPozycje menu:\n${list}\n\nZADANIE: Zwróć JSON {dishes:[{name, ingredients:[...]}]} dla KAŻDEJ pozycji.`
+  const ai = await callAI({
+    apiKey,
+    provider: 'anthropic',
+    model: AI_MODELS.FAST,
+    systemPrompt: BATCH_SYSTEM_PROMPT,
+    userPrompt,
+    // ~30 dań × ~120 tokenów + bufor; salvage łapie obcięcie.
+    maxTokens: 8000,
+    temperature: 0.2,
+  })
+  const tokens = ai.tokensUsed ?? 6000
+  const cost_usd =
+    Math.round(((tokens * 0.5 * 1.0 + tokens * 0.5 * 5.0) / 1_000_000) * 10000) / 10000
+  if (ai.error || !ai.text) {
+    return { perDish, cost_usd: 0, error: `AI: ${ai.error ?? 'empty response'}` }
+  }
+  // Parse z salvage (jak website-menu) — odzysk z obciętego JSON.
+  let dishesArr: Array<{ name?: string; ingredients?: Array<{ name?: string; grams?: number; confidence?: number }> }> = []
+  try {
+    const parsed = extractJSON<{ dishes?: typeof dishesArr }>(ai.text)
+    dishesArr = Array.isArray(parsed.dishes) ? parsed.dishes : []
+  } catch {
+    const objs = ai.text.match(/\{[^{}]*"name"[^{}]*"ingredients"[\s\S]*?\]\s*\}/g) ?? []
+    for (const o of objs) {
+      try {
+        dishesArr.push(JSON.parse(o))
+      } catch {
+        /* pomiń niepełny */
+      }
+    }
+  }
+  for (const d of dishesArr) {
+    if (!d?.name) continue
+    const ings: DishIngredient[] = (Array.isArray(d.ingredients) ? d.ingredients : [])
+      .filter((i) => i && typeof i.name === 'string' && i.name.trim())
+      .map((i) => ({
+        name: i.name!.trim(),
+        name_normalized: normalizeIngredientName(i.name!),
+        grams: typeof i.grams === 'number' && Number.isFinite(i.grams) && i.grams > 0 ? i.grams : 0,
+        source: 'ai' as const,
+        confidence:
+          typeof i.confidence === 'number' && i.confidence >= 0 && i.confidence <= 1 ? i.confidence : 0.5,
+      }))
+      .filter((i) => i.grams > 0)
+    perDish.set(d.name.trim(), ings)
+  }
+  return { perDish, cost_usd }
+}
+
+/**
+ * Batchowy odpowiednik getDishIngredients — cache-check wszystkich, miss-y
+ * w paczkach ~30 dań/call, zapis przyrostowy po każdej paczce (idempotentny
+ * insert ON CONFLICT). Zwraca mapę dish_name_normalized → ingredients.
+ */
+export async function getDishIngredientsBatch(
+  supabase: SupabaseClient,
+  dishNamesPl: string[],
+  cuisineType: string,
+  anthropicKey: string,
+): Promise<{ map: Map<string, DishIngredient[]>; ai_calls: number; ai_cost_usd: number }> {
+  const cuisine = cuisineType.toLowerCase().trim() || 'inne'
+  const map = new Map<string, DishIngredient[]>()
+  // norm → original (dedup po normalizacji)
+  const normToOrig = new Map<string, string>()
+  for (const d of dishNamesPl) {
+    const n = normalizeDishName(d)
+    if (n && !normToOrig.has(n)) normToOrig.set(n, d)
+  }
+  const norms = [...normToOrig.keys()]
+
+  // 1. Batch cache lookup
+  const cachedSet = new Set<string>()
+  for (let i = 0; i < norms.length; i += 200) {
+    const slice = norms.slice(i, i + 200)
+    const { data: rows } = await supabase
+      .from('dish_ingredient_mappings')
+      .select('dish_name_normalized, ingredients')
+      .eq('cuisine_type', cuisine)
+      .in('dish_name_normalized', slice)
+    for (const r of (rows ?? []) as Array<{ dish_name_normalized: string; ingredients: DishIngredient[] }>) {
+      map.set(r.dish_name_normalized, Array.isArray(r.ingredients) ? r.ingredients : [])
+      cachedSet.add(r.dish_name_normalized)
+    }
+  }
+
+  // 2. Miss-y w paczkach po 30, zapis przyrostowy
+  const misses = norms.filter((n) => !cachedSet.has(n))
+  let ai_calls = 0
+  let ai_cost = 0
+  const BATCH = 30
+  for (let i = 0; i < misses.length; i += BATCH) {
+    const chunkNorms = misses.slice(i, i + BATCH)
+    const chunkOrig = chunkNorms.map((n) => normToOrig.get(n)!)
+    const { perDish, cost_usd } = await extractBatchViaAi(anthropicKey, chunkOrig, cuisine)
+    ai_calls += 1
+    ai_cost += cost_usd
+    const inserts: Array<Record<string, unknown>> = []
+    for (const n of chunkNorms) {
+      const orig = normToOrig.get(n)!
+      const ings = perDish.get(orig) ?? perDish.get(orig.trim()) ?? []
+      map.set(n, ings)
+      if (ings.length > 0) {
+        inserts.push({
+          dish_name_pl: orig,
+          dish_name_normalized: n,
+          cuisine_type: cuisine,
+          ingredients: ings,
+          created_by: 'ai_haiku',
+          ai_model: 'claude-haiku-4-5',
+          ai_prompt_version: AI_PROMPT_VERSION,
+          validation_status: 'unvalidated',
+        })
+      }
+    }
+    if (inserts.length > 0) {
+      try {
+        await supabase.from('dish_ingredient_mappings').insert(inserts)
+      } catch {
+        /* best-effort, idempotentny — duplikaty pomijane */
+      }
+    }
+  }
+  return { map, ai_calls, ai_cost_usd: Math.round(ai_cost * 10000) / 10000 }
+}
+
 // ─── Public entry ───
 /**
  * Get dish ingredient breakdown — DB cache hit first, AI Haiku fallback.

@@ -1,81 +1,119 @@
 // components/clients/predictions-section-async.tsx
-// Sprint TYDZIEN2 PERF (28.05.2026) — async server component dla predictions.
+// Fix 12.06 — RENDER NIGDY NIE LICZY.
 //
-// Wcześniej aggregateMonthlyIngredients() działało w page.tsx server render
-// → AI calls (Haiku per dish) blokowały page render → Vercel 503 timeout →
-// fallback hard reload 4.8s ("klick u kohorcie nie reaguje z 1 razu").
+// Wcześniej ten async server component wołał aggregateMonthlyIngredients()
+// w renderze → 127 sekwencyjnych Haiku per danie → przekroczenie maxDuration
+// → funkcja ginęła w streamie → "This page couldn't load" + wieczny spinner,
+// a cache nigdy się nie zapisywał (insert na końcu).
 //
-// Tu: async server component opakowany u Suspense w page.tsx. Page renderуje
-// HTML natychmiast z PredictionsLoadingSkeleton fallback; ten component
-// streamuje siebie po zakończeniu AI calls. React 19 streaming pattern.
-//
-// Props minimal — clientId + apify reviews count. Wszystko inne robi sam
-// (SELECT params, anthropic key, aggregateMonthlyIngredients call).
+// Teraz: czytamy WYŁĄCZNIE gotowy cache z menu_predictions (najnowszy wiersz)
+// i renderujemy. Brak cache → karta z przyciskiem "Policz prognozę"
+// (PredictionsComputeCard → POST /api/clients/[id]/compute-prediction, batch).
+// Strona ładuje się zawsze szybko, niezależnie od rozmiaru menu.
 
 import { createClient } from '@/lib/supabase/server'
-import { aggregateMonthlyIngredients } from '@/lib/predictions/aggregate-ingredients'
+import { normalizeIngredientName } from '@/lib/predictions/dish-ingredients'
 
-import { PredictionsSection } from './predictions-section'
+import { PredictionsSection, type AggregatedIngredient } from './predictions-section'
+import { PredictionsComputeCard } from './predictions-compute-card'
+
+const LOW_MULTIPLIER = 0.7
+const HIGH_MULTIPLIER = 1.5
 
 interface Props {
   clientId: string
   reviewsCount: number
 }
 
+interface MenuPredictionRow {
+  id: string
+  source_data: {
+    dishes_count?: number
+    dishes_source?: string
+    coverage_tier?: string
+    client_subtype?: string | null
+    months_since_open?: number
+    reviews_count?: number
+  } | null
+  formula_params: Record<string, unknown> | null
+  prediction: {
+    customers_low?: number
+    customers_mid?: number
+    customers_high?: number
+    visits_mid?: number
+    ingredients_kg?: Record<string, number>
+    confidence?: number
+  } | null
+  created_at: string
+}
+
 export async function PredictionsSectionAsync({ clientId, reviewsCount }: Props) {
   const supabase = await createClient()
 
-  let aggregatedPrediction: Awaited<
-    ReturnType<typeof aggregateMonthlyIngredients>
-  >['prediction'] = null
+  // RENDER = tylko odczyt najnowszego cache. ZERO compute.
+  const { data: row } = await supabase
+    .from('menu_predictions')
+    .select('id, source_data, formula_params, prediction, created_at')
+    .eq('client_id', clientId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
-  try {
-    const { data: paramsRow } = await supabase
-      .from('params')
-      .select('anthropic_api_key')
-      .limit(1)
-      .maybeSingle()
-    const anthropicKey =
-      (paramsRow as { anthropic_api_key?: string } | null)?.anthropic_api_key ?? ''
-    if (anthropicKey) {
-      const { prediction } = await aggregateMonthlyIngredients(
-        supabase,
-        clientId,
-        anthropicKey,
-      )
-      aggregatedPrediction = prediction
-    }
-  } catch (err) {
-    // Non-fatal — render fallback UI below.
-    console.error('[predictions] aggregation failed:', err)
+  const cached = (row ?? null) as MenuPredictionRow | null
+  const ingredientsKg = cached?.prediction?.ingredients_kg ?? null
+
+  // Brak gotowej prognozy → przycisk "Policz prognozę" (compute w tle, batch).
+  if (!cached || !ingredientsKg || Object.keys(ingredientsKg).length === 0) {
+    return <PredictionsComputeCard clientId={clientId} hasCache={!!cached} />
   }
 
-  if (!aggregatedPrediction) {
-    return (
-      <div className="rounded border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-        <p className="font-medium">Prognoza niedostępna</p>
-        <p className="mt-1 text-xs">
-          Możliwe przyczyny: brak <code>anthropic_api_key</code> w params,
-          brak business_profile.client_type=&apos;gastronomia&apos; w DB
-          (sprawdź badge), lub agregacja zwróciła błąd (sprawdź logs serwera).
-        </p>
-        <p className="mt-2 text-xs text-amber-800">
-          Uruchom &quot;Pełna re-analiza&quot; aby odświeżyć źródła danych.
-        </p>
-      </div>
-    )
+  // Rekonstrukcja z cache (kg_mid zapisany; low/high z mnożników silnika).
+  const ingredients: AggregatedIngredient[] = Object.entries(ingredientsKg)
+    .map(([name, kgMid]) => ({
+      name,
+      name_normalized: normalizeIngredientName(name),
+      kg_mid: kgMid,
+      kg_low: Math.round(kgMid * LOW_MULTIPLIER * 10) / 10,
+      kg_high: Math.round(kgMid * HIGH_MULTIPLIER * 10) / 10,
+      source_dish_count: 1,
+      avg_confidence: cached.prediction?.confidence ?? 0.5,
+    }))
+    .sort((a, b) => b.kg_mid - a.kg_mid)
+
+  const sd = cached.source_data ?? {}
+  const pr = cached.prediction ?? {}
+  const fp = (cached.formula_params ?? {}) as {
+    conversion_mid?: number
+    subtype_frequency?: number
+    location_multiplier?: number
   }
 
   return (
-    <PredictionsSection
-      predictionId={aggregatedPrediction.prediction_id ?? null}
-      coverage={aggregatedPrediction.coverage_tier}
-      predictionConfidence={aggregatedPrediction.prediction_confidence}
-      dishesCount={aggregatedPrediction.dishes_count}
-      dishesSource={aggregatedPrediction.dishes_source}
-      volume={aggregatedPrediction.volume}
-      ingredients={aggregatedPrediction.ingredients}
-      reviewsCount={reviewsCount}
-    />
+    <div className="space-y-2">
+      <PredictionsSection
+        predictionId={cached.id}
+        coverage={(sd.coverage_tier as 'full_menu' | 'popular_only' | 'subtype_only') ?? 'subtype_only'}
+        predictionConfidence={pr.confidence ?? 0.5}
+        dishesCount={sd.dishes_count ?? 0}
+        dishesSource={(sd.dishes_source as never) ?? 'subtype_default'}
+        volume={{
+          customers_low: pr.customers_low ?? 0,
+          customers_mid: pr.customers_mid ?? 0,
+          customers_high: pr.customers_high ?? 0,
+          visits_mid: pr.visits_mid ?? 0,
+          monthly_reviews: sd.reviews_count ?? 0,
+          subtype_used: sd.client_subtype ?? 'inne',
+          months_used: sd.months_since_open ?? 0,
+          formula_params: {
+            conversion_mid: fp.conversion_mid ?? 0,
+            subtype_frequency: fp.subtype_frequency ?? 0,
+            location_multiplier: fp.location_multiplier ?? 1,
+          },
+        }}
+        ingredients={ingredients}
+        reviewsCount={reviewsCount}
+      />
+      <PredictionsComputeCard clientId={clientId} hasCache compact />
+    </div>
   )
 }

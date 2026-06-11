@@ -23,7 +23,7 @@ import {
   type VolumePrediction,
   type RestaurantSubtype,
 } from './restaurant-volume'
-import { getDishIngredients, normalizeIngredientName } from './dish-ingredients'
+import { getDishIngredientsBatch, normalizeDishName, normalizeIngredientName } from './dish-ingredients'
 import { SUBTYPE_INGREDIENT_DEFAULTS } from './subtype-defaults'
 
 const LOW_MULTIPLIER = 0.7
@@ -264,16 +264,23 @@ export async function aggregateMonthlyIngredients(
       })
     }
   } else {
-    // full_menu OR popular_only — extract ingredients from real dishes
+    // full_menu OR popular_only — extract ingredients from real dishes.
+    // Fix 12.06 — BATCH (paczki ~30 dań/call) zamiast 127 sekwencyjnych Haiku
+    // (które zabijały trasę). Zapis przyrostowy do dish_ingredient_mappings
+    // w środku batcha → przerwanie nie traci postępu.
     const popularity_share = 1 / Math.max(1, chosenDishes.length)  // uniform
+    const monthly_servings = volume.visits_mid * popularity_share
+    const batch = await getDishIngredientsBatch(
+      supabase,
+      chosenDishes.map((d) => d.name_pl),
+      cuisine,
+      anthropicKey,
+    )
+    ai_calls = batch.ai_calls
+    ai_total_cost = batch.ai_cost_usd
     for (const dish of chosenDishes) {
-      const lookup = await getDishIngredients(supabase, dish.name_pl, cuisine, anthropicKey)
-      if (lookup.ai_cost_usd > 0) {
-        ai_calls += 1
-        ai_total_cost += lookup.ai_cost_usd
-      }
-      const monthly_servings = volume.visits_mid * popularity_share
-      for (const ing of lookup.ingredients) {
+      const ings = batch.map.get(normalizeDishName(dish.name_pl)) ?? []
+      for (const ing of ings) {
         const grams_per_serving = ing.grams
         const grams_mid = monthly_servings * grams_per_serving
         const key = ing.name_normalized
