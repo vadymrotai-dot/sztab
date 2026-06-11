@@ -44,7 +44,7 @@ interface MenuPredictionRow {
     ingredients_kg?: Record<string, number>
     confidence?: number
   } | null
-  created_at: string
+  predicted_at: string
 }
 
 export async function PredictionsSectionAsync({ clientId, reviewsCount }: Props) {
@@ -53,9 +53,9 @@ export async function PredictionsSectionAsync({ clientId, reviewsCount }: Props)
   // RENDER = tylko odczyt najnowszego cache. ZERO compute.
   const { data: row } = await supabase
     .from('menu_predictions')
-    .select('id, source_data, formula_params, prediction, created_at')
+    .select('id, source_data, formula_params, prediction, predicted_at')
     .eq('client_id', clientId)
-    .order('created_at', { ascending: false })
+    .order('predicted_at', { ascending: false })
     .limit(1)
     .maybeSingle()
 
