@@ -69,6 +69,12 @@ import {
   type CohortMemberStatus,
   type MemberKey,
 } from '@/lib/actions/cohorts'
+// Fix 16.06 (Wariant A→tekst) — twin: notatki klienta = client_notes (źródło karty).
+import {
+  addClientNote,
+  updateClientNote,
+  deleteClientNote,
+} from '@/app/actions/client-notes'
 
 import { CohortBulkBar } from './cohort-bulk-bar'
 
@@ -157,9 +163,9 @@ export interface ProspectMemberRow {
   /** Fix 11.06 (C) — id bliźniaka-clienta gdy istnieje. Gdy ustawione, wiersz
    *  jest twin → notatki klienta żyją w client_notes (karta), nie w liście. */
   notes_client_id?: string | null
-  /** Fix 16.06 (Wariant A) — czy istnieje ≥1 notatka w prawdziwym źródle:
-   *  twin → client_notes (tabela), no-twin → cohort_members.notes. Steruje ✓/—. */
-  notes_present?: boolean
+  /** Fix 16.06 (Wariant A→tekst) — id OSTATNIEJ notatki w client_notes (twin).
+   *  Ustawione → edycja zapisuje updateClientNote(id); null → addClientNote. */
+  notes_last_id?: string | null
 }
 
 export interface ClientMemberRow {
@@ -188,6 +194,8 @@ interface Props {
 // ─── Helpers ─────────────────────────────────────────────────────
 
 const NOTES_MAX = 200
+// Fix 16.06 — twin notatki idą do client_notes (DB CHECK length 1..5000).
+const CLIENT_NOTE_MAX = 5000
 
 const ALL_STATUSES: CohortMemberStatus[] = [
   'pending',
@@ -407,25 +415,43 @@ export function CohortMembersClient({
       return
     }
 
-    if (trimmed.length > NOTES_MAX) {
-      toast.error(`Notatka max ${NOTES_MAX} znaków`)
+    // Fix 16.06 (Wariant A→tekst) — twin pisze do client_notes (źródło karty),
+    // no-twin do cohort_members.notes. Limit zależny od źródła.
+    const tw = row as { notes_client_id?: string | null; notes_last_id?: string | null }
+    const isTwin = !!tw.notes_client_id
+    const maxLen = isTwin ? CLIENT_NOTE_MAX : NOTES_MAX
+    if (trimmed.length > maxLen) {
+      toast.error(`Notatka max ${maxLen} znaków`)
       return
     }
 
     setSavingKey(key)
     startNotesTransition(async () => {
       try {
-        // Wariant A — inline edycja tylko dla no-twin (cohort_members.notes).
-        // Twin-rzędy nie wchodzą tu (NotesCell blokuje edycję — notatki klienta
-        // prowadzone na karcie / client_notes). Martwy zapis do clients.notes usunięty.
-        await updateCohortMemberNotes(
-          {
-            cohort_id: row.cohort_id,
-            subject_type: row.subject_type,
-            subject_id: row.subject_id,
-          },
-          trimmed.length > 0 ? trimmed : null,
-        )
+        if (isTwin) {
+          // twin → client_notes: edytuj ostatnią (po id), dodaj nową, albo
+          // usuń ostatnią gdy wyczyszczono. owner_id proszony serwerowo z sesji.
+          let res: { ok: boolean; error?: string }
+          if (trimmed.length === 0) {
+            res = tw.notes_last_id
+              ? await deleteClientNote(tw.notes_last_id)
+              : { ok: true }
+          } else if (tw.notes_last_id) {
+            res = await updateClientNote(tw.notes_last_id, trimmed)
+          } else {
+            res = await addClientNote(tw.notes_client_id as string, trimmed)
+          }
+          if (!res.ok) throw new Error(res.error || 'Błąd zapisu notatki klienta')
+        } else {
+          await updateCohortMemberNotes(
+            {
+              cohort_id: row.cohort_id,
+              subject_type: row.subject_type,
+              subject_id: row.subject_id,
+            },
+            trimmed.length > 0 ? trimmed : null,
+          )
+        }
         toast.success(`Notatka zapisana: ${displayName}`)
         setEditingKey(null)
         setEditValue('')
@@ -1193,33 +1219,11 @@ function NotesCell({
   onCancel: () => void
   onSave: () => void
 }) {
-  // Fix 16.06 (Wariant A) — twin: notatki klienta żyją w client_notes (karta).
-  // W liście pokazujemy tylko ✓/— (presence) + link na kartę; inline edycja
-  // wyłączona (żeby nie pisać do martwej clients.notes ani do cohort_members).
+  // Fix 16.06 (Wariant A→tekst) — twin pokazuje TEKST ostatniej notatki klienta
+  // (client_notes) i pozwala edytować inline (Save → client_notes actions).
+  // No-twin bez zmian (cohort_members.notes). Limit znaków zależny od źródła.
   const twinClientId = (row as { notes_client_id?: string | null }).notes_client_id
-  if (twinClientId) {
-    const present = (row as { notes_present?: boolean }).notes_present === true
-    return (
-      <Link
-        href={`/clients/${twinClientId}`}
-        className="inline-flex items-center gap-1 text-xs hover:underline"
-        title={
-          present
-            ? 'Notatka w profilu klienta — otwórz kartę'
-            : 'Brak notatki — dodaj na karcie klienta'
-        }
-      >
-        {present ? (
-          <>
-            <CheckIcon className="size-3.5 text-emerald-700" />
-            <span className="text-emerald-700">notatka</span>
-          </>
-        ) : (
-          <span className="text-muted-foreground">— karta</span>
-        )}
-      </Link>
-    )
-  }
+  const noteMax = twinClientId ? CLIENT_NOTE_MAX : NOTES_MAX
 
   if (isEditing) {
     return (
@@ -1236,11 +1240,13 @@ function NotesCell({
               onSave()
             }
           }}
-          maxLength={NOTES_MAX}
+          maxLength={noteMax}
           autoFocus
           disabled={isSaving}
           className="h-7 text-xs"
-          placeholder="Notatka (max 200 znaków)…"
+          placeholder={
+            twinClientId ? 'Notatka klienta…' : 'Notatka (max 200 znaków)…'
+          }
         />
 
         <button

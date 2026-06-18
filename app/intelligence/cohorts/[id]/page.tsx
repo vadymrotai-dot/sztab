@@ -393,22 +393,29 @@ export default async function CohortDetailPage({
     nipToClientData = dataMap
   }
 
-  // Fix 16.06 (Wariant A) — presence notatek dla twin z tabeli client_notes
-  // (NIE clients.notes — ta kolumna jest martwa; karta klienta liczy notatki
-  // z client_notes, migracja 076). Batch: 1 zapytanie, set client_id z ≥1
-  // notatką. RLS auth.uid()=owner_id; loader pod sesją Vadyma (jak karta) →
-  // widzi notatki.
-  const clientIdsWithNotes = new Set<string>()
+  // Fix 16.06 (Wariant A→tekst) — OSTATNIA notatka dla twin z tabeli
+  // client_notes (NIE clients.notes — martwa; karta liczy z client_notes,
+  // migracja 076). 1 zapytanie batch ORDER created_at DESC (jak karta), w JS
+  // bierzemy pierwszy = najnowszy per client_id → { body, id }. RLS
+  // auth.uid()=owner_id; loader pod sesją Vadyma (jak karta) → widzi notatki.
+  const latestNoteByClient = new Map<string, { id: string; body: string }>()
   const twinClientIds = Array.from(
     new Set(Object.values(nipToClientData).map((d) => d.id)),
   )
   if (twinClientIds.length > 0) {
     const { data: notesRows } = await supabase
       .from('client_notes')
-      .select('client_id')
+      .select('id, client_id, body, created_at')
       .in('client_id', twinClientIds)
-    for (const r of (notesRows ?? []) as Array<{ client_id: string }>) {
-      clientIdsWithNotes.add(r.client_id)
+      .order('created_at', { ascending: false })
+    for (const r of (notesRows ?? []) as Array<{
+      id: string
+      client_id: string
+      body: string
+    }>) {
+      if (!latestNoteByClient.has(r.client_id)) {
+        latestNoteByClient.set(r.client_id, { id: r.id, body: r.body })
+      }
     }
   }
 
@@ -427,13 +434,11 @@ export default async function CohortDetailPage({
       subject_id: m.subject_id,
       added_at: m.added_at,
       status: m.status,
-      // Wariant A — presence notatki: twin z client_notes (tabela, źródło karty),
-      // no-twin z cohort_members.notes. Dla twin notes=null (martwa clients.notes
-      // nieużywana, tekst w liście niepotrzebny — tylko ✓/—).
-      notes: twin ? null : m.notes,
-      notes_present: twin
-        ? clientIdsWithNotes.has(twin.id)
-        : !!(m.notes && m.notes.trim().length > 0),
+      // Wariant A→tekst — notatka: twin = ostatnia z client_notes (tabela,
+      // źródło karty), no-twin = cohort_members.notes. notes_last_id → edycja
+      // tej konkretnej notatki klienta ze listy (updateClientNote po id).
+      notes: twin ? (latestNoteByClient.get(twin.id)?.body ?? null) : m.notes,
+      notes_last_id: twin ? (latestNoteByClient.get(twin.id)?.id ?? null) : null,
       notes_client_id: twin?.id ?? null,
       // B — buyer_strength: twin-client nadpisuje, fallback prospect.
       buyer_strength_display: twin?.buyerStrength ?? prospectBuyer,
