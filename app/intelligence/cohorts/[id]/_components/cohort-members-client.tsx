@@ -66,7 +66,6 @@ import { ScoreDrilldownModal } from '@/components/cohort/score-drilldown-modal'
 import {
   updateCohortMemberStatus,
   updateCohortMemberNotes,
-  updateClientNotes,
   type CohortMemberStatus,
   type MemberKey,
 } from '@/lib/actions/cohorts'
@@ -155,9 +154,12 @@ export interface ProspectMemberRow {
   /** Fix 11.06 (B) — buyer_strength z najnowszej analizy AI (twin-aware po NIP).
    *  Główny score listy, spójny z profilem. Null → fallback 'wstępny'. */
   buyer_strength_display?: number | null
-  /** Fix 11.06 (C) — id bliźniaka-clienta gdy istnieje. Gdy ustawione,
-   *  notatka czyta/pisze clients.notes (jedno źródło z profilem). */
+  /** Fix 11.06 (C) — id bliźniaka-clienta gdy istnieje. Gdy ustawione, wiersz
+   *  jest twin → notatki klienta żyją w client_notes (karta), nie w liście. */
   notes_client_id?: string | null
+  /** Fix 16.06 (Wariant A) — czy istnieje ≥1 notatka w prawdziwym źródle:
+   *  twin → client_notes (tabela), no-twin → cohort_members.notes. Steruje ✓/—. */
+  notes_present?: boolean
 }
 
 export interface ClientMemberRow {
@@ -413,20 +415,17 @@ export function CohortMembersClient({
     setSavingKey(key)
     startNotesTransition(async () => {
       try {
-        // Fix 11.06 (C) — twin-aware: zapis do clients.notes gdy jest bliźniak.
-        const twinClientId = (row as { notes_client_id?: string | null }).notes_client_id
-        if (twinClientId) {
-          await updateClientNotes(twinClientId, trimmed.length > 0 ? trimmed : null)
-        } else {
-          await updateCohortMemberNotes(
-            {
-              cohort_id: row.cohort_id,
-              subject_type: row.subject_type,
-              subject_id: row.subject_id,
-            },
-            trimmed.length > 0 ? trimmed : null,
-          )
-        }
+        // Wariant A — inline edycja tylko dla no-twin (cohort_members.notes).
+        // Twin-rzędy nie wchodzą tu (NotesCell blokuje edycję — notatki klienta
+        // prowadzone na karcie / client_notes). Martwy zapis do clients.notes usunięty.
+        await updateCohortMemberNotes(
+          {
+            cohort_id: row.cohort_id,
+            subject_type: row.subject_type,
+            subject_id: row.subject_id,
+          },
+          trimmed.length > 0 ? trimmed : null,
+        )
         toast.success(`Notatka zapisana: ${displayName}`)
         setEditingKey(null)
         setEditValue('')
@@ -1194,6 +1193,34 @@ function NotesCell({
   onCancel: () => void
   onSave: () => void
 }) {
+  // Fix 16.06 (Wariant A) — twin: notatki klienta żyją w client_notes (karta).
+  // W liście pokazujemy tylko ✓/— (presence) + link na kartę; inline edycja
+  // wyłączona (żeby nie pisać do martwej clients.notes ani do cohort_members).
+  const twinClientId = (row as { notes_client_id?: string | null }).notes_client_id
+  if (twinClientId) {
+    const present = (row as { notes_present?: boolean }).notes_present === true
+    return (
+      <Link
+        href={`/clients/${twinClientId}`}
+        className="inline-flex items-center gap-1 text-xs hover:underline"
+        title={
+          present
+            ? 'Notatka w profilu klienta — otwórz kartę'
+            : 'Brak notatki — dodaj na karcie klienta'
+        }
+      >
+        {present ? (
+          <>
+            <CheckIcon className="size-3.5 text-emerald-700" />
+            <span className="text-emerald-700">notatka</span>
+          </>
+        ) : (
+          <span className="text-muted-foreground">— karta</span>
+        )}
+      </Link>
+    )
+  }
+
   if (isEditing) {
     return (
       <div className="flex items-center gap-1">

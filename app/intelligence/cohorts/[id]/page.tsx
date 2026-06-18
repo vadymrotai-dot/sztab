@@ -393,6 +393,25 @@ export default async function CohortDetailPage({
     nipToClientData = dataMap
   }
 
+  // Fix 16.06 (Wariant A) — presence notatek dla twin z tabeli client_notes
+  // (NIE clients.notes — ta kolumna jest martwa; karta klienta liczy notatki
+  // z client_notes, migracja 076). Batch: 1 zapytanie, set client_id z ≥1
+  // notatką. RLS auth.uid()=owner_id; loader pod sesją Vadyma (jak karta) →
+  // widzi notatki.
+  const clientIdsWithNotes = new Set<string>()
+  const twinClientIds = Array.from(
+    new Set(Object.values(nipToClientData).map((d) => d.id)),
+  )
+  if (twinClientIds.length > 0) {
+    const { data: notesRows } = await supabase
+      .from('client_notes')
+      .select('client_id')
+      .in('client_id', twinClientIds)
+    for (const r of (notesRows ?? []) as Array<{ client_id: string }>) {
+      clientIdsWithNotes.add(r.client_id)
+    }
+  }
+
   // Compose final row shapes для client component
   const prospectRows: ProspectMemberRow[] = prospectMembers.map((m) => {
     const snap = prospectMap.get(m.subject_id)
@@ -408,8 +427,13 @@ export default async function CohortDetailPage({
       subject_id: m.subject_id,
       added_at: m.added_at,
       status: m.status,
-      // C — notatka: clients.notes gdy twin, inaczej cohort_members.notes.
-      notes: twin ? twin.notes : m.notes,
+      // Wariant A — presence notatki: twin z client_notes (tabela, źródło karty),
+      // no-twin z cohort_members.notes. Dla twin notes=null (martwa clients.notes
+      // nieużywana, tekst w liście niepotrzebny — tylko ✓/—).
+      notes: twin ? null : m.notes,
+      notes_present: twin
+        ? clientIdsWithNotes.has(twin.id)
+        : !!(m.notes && m.notes.trim().length > 0),
       notes_client_id: twin?.id ?? null,
       // B — buyer_strength: twin-client nadpisuje, fallback prospect.
       buyer_strength_display: twin?.buyerStrength ?? prospectBuyer,
