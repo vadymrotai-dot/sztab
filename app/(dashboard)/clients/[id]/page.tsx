@@ -876,7 +876,7 @@ export default async function ClientDetailPage({
               headers z "+ Dodaj" buttons aby user mógł додати pierwszy method.
               V2 cascade-fallback retired — теперь nawet client без ccm seed
               ma full interactivity. */}
-          <ContactSectionV3 clientId={id} methods={contactMethods} />
+          <ContactSectionV3 clientId={id} methods={contactMethods} websiteValue={websiteValue ?? null} />
         </AccordionSection>
 
         {/* Sprint TYDZIEN2.T2.5 (29.05.2026) — multi-row notatki klienta.

@@ -33,6 +33,7 @@ import {
 } from '@/app/actions/contact-methods'
 
 import { ContactMethodForm, type ContactMethodKind } from './contact-method-form'
+import { normalizeUrl } from '@/lib/utils/url'
 
 export interface ContactMethod {
   id: string
@@ -47,6 +48,11 @@ export interface ContactMethod {
 interface Props {
   clientId: string
   methods: ContactMethod[]
+  /** Fix 18.06 (Błąd 2 wariant A) — adres WWW z górnego bloku profilu
+   *  (clients.website_krs ?? pole 'website' ?? clients.website). Display-only:
+   *  gdy brak metody kind='website' w client_contact_methods, pokazujemy go
+   *  read-only w sekcji WWW (bez edycji/usuwania — źródło to nie ta tabela). */
+  websiteValue?: string | null
 }
 
 // Display order — emails first, phones next, web, then socials, other last.
@@ -137,7 +143,7 @@ function renderValue(kind: string, value: string): React.ReactNode {
     )
   }
   if (isUrlKind(kind)) {
-    const href = value.startsWith('http') ? value : `https://${value}`
+    const href = normalizeUrl(value)
     return (
       <a
         href={href}
@@ -213,7 +219,7 @@ function MethodRow({ m, busy, isEditing, onToggleStar, onEdit, onDelete }: Metho
   )
 }
 
-export function ContactSectionV3({ clientId, methods }: Props) {
+export function ContactSectionV3({ clientId, methods, websiteValue }: Props) {
   const [addingKind, setAddingKind] = useState<ContactMethodKind | null>(null)
   // Sprint T2.4.C2 — editingId for inline edit form. Mutual exclusion z
   // addingKind: открытие edit closes add and vice versa (only one form
@@ -334,9 +340,32 @@ export function ContactSectionV3({ clientId, methods }: Props) {
                   </div>
                 )
               })}
-              {rows.length === 0 && !isAdding && (
-                <div className="text-xs italic text-[#AAA]">— brak —</div>
+              {kind === 'website' && rows.length === 0 && !isAdding && websiteValue && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="shrink-0">{kindIcon('website')}</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    <a
+                      href={normalizeUrl(websiteValue)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="truncate hover:underline"
+                    >
+                      {websiteValue}
+                    </a>
+                  </span>
+                  <span
+                    className="shrink-0 text-[10px] uppercase tracking-wider text-[#AAA]"
+                    title="Źródło: profil (clients.website_krs) — nie edytowalne tutaj"
+                  >
+                    profil
+                  </span>
+                </div>
               )}
+              {rows.length === 0 &&
+                !isAdding &&
+                !(kind === 'website' && websiteValue) && (
+                  <div className="text-xs italic text-[#AAA]">— brak —</div>
+                )}
               {isAdding && (
                 <ContactMethodForm
                   clientId={clientId}

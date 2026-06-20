@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { GlobeIcon, PencilIcon, ExternalLinkIcon, Loader2Icon } from 'lucide-react'
 import { toast } from 'sonner'
+import { normalizeUrl } from '@/lib/utils/url'
 
 interface Props {
   clientId: string
@@ -149,7 +150,7 @@ export function WebsiteOverrideCard({ clientId, currentWebsite, currentSource }:
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <a
                   className="font-medium hover:underline truncate max-w-[400px]"
-                  href={currentWebsite}
+                  href={normalizeUrl(currentWebsite)}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
