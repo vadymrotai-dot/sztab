@@ -402,11 +402,15 @@ export default async function CohortDetailPage({
   const twinClientIds = Array.from(
     new Set(Object.values(nipToClientData).map((d) => d.id)),
   )
-  if (twinClientIds.length > 0) {
+  // Fix 18.06 — batch obejmuje też bezpośrednich członków-klientów kohorty
+  // (subject_id = client id wprost, bez rozwiązywania po NIP), aby lista Klienci
+  // pokazywała ostatnią notatkę z client_notes (symetrycznie do prospektów-twin).
+  const noteClientIds = Array.from(new Set([...twinClientIds, ...clientIds]))
+  if (noteClientIds.length > 0) {
     const { data: notesRows } = await supabase
       .from('client_notes')
       .select('id, client_id, body, created_at')
-      .in('client_id', twinClientIds)
+      .in('client_id', noteClientIds)
       .order('created_at', { ascending: false })
     for (const r of (notesRows ?? []) as Array<{
       id: string
@@ -470,13 +474,19 @@ export default async function CohortDetailPage({
 
   const clientRows: ClientMemberRow[] = clientMembers.map((m) => {
     const snap = clientMap.get(m.subject_id)
+    // Fix 18.06 — notatka klienta z client_notes (subject_id = client id wprost).
+    // notes_client_id/notes_last_id włączają w NotesCell ścieżkę client_notes
+    // (tekst + inline-edit), spójnie z kartą klienta i listą prospektów-twin.
+    const note = latestNoteByClient.get(m.subject_id)
     return {
       cohort_id: m.cohort_id,
       subject_type: 'client',
       subject_id: m.subject_id,
       added_at: m.added_at,
       status: m.status,
-      notes: m.notes,
+      notes: note?.body ?? null,
+      notes_client_id: m.subject_id,
+      notes_last_id: note?.id ?? null,
       snapshot: snap ?? null,
     }
   })

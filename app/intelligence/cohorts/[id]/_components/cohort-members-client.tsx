@@ -175,6 +175,11 @@ export interface ClientMemberRow {
   added_at: string
   status: CohortMemberStatus
   notes: string | null
+  /** Fix 18.06 — członek-klient: notatki w client_notes (subject_id = client id).
+   *  notes_client_id ustawione → NotesCell pokazuje tekst + inline-edit do
+   *  client_notes (jak prospekt-twin). notes_last_id = id ostatniej notatki. */
+  notes_client_id?: string | null
+  notes_last_id?: string | null
   snapshot: ClientSnapshot | null
 }
 
