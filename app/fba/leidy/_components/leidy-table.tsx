@@ -52,6 +52,41 @@ const STATUS_COLORS: Record<string, string> = {
   REJECTED: 'bg-red-100 text-red-800',
 }
 
+const PKD_LABELS: Record<string, string> = {
+  '6201Z': '💻 Programista',
+  '6201A': '💻 Programista',
+  '6201B': '💻 Programista',
+  '6202Z': '🖥️ Konsultant IT',
+  '6220B': '🖥️ Konsultant IT',
+  '6209Z': '⚙️ IT inne',
+  '6311Z': '🗄️ Hosting/DevOps',
+  '6312Z': '🌐 Web/Portal',
+  '7410Z': '🎨 Designer',
+  '7411Z': '🎨 Grafik',
+  '7412Z': '📐 Design wizualny',
+  '7420Z': '📷 Fotograf',
+  '7311Z': '📣 Marketing/SMM',
+  '7320Z': '📊 Badania rynku',
+  '7430Z': '🌍 Tłumacz',
+  '9003Z': '✍️ Copywriter',
+  '9011Z': '✍️ Twórca treści',
+  '5911Z': '🎬 Video/Film',
+  '5912Z': '✂️ Montaż video',
+  '5610A': '🍽️ Restauracja',
+  '5610B': '🚚 Gastronomia ruchoma',
+  '5621Z': '🍱 Catering',
+  '5629Z': '🍴 Gastronomia',
+  '5630Z': '☕ Napoje/Bar',
+  '4711Z': '🛒 Sklep spożywczy',
+  '4725Z': '🍷 Napoje hurt',
+  '1071Z': '🥖 Pieczywo',
+  '1083Z': '☕ Kawa/Herbata',
+  '4781Z': '🏪 Handel',
+  '9329B': '🎯 Rozrywka',
+  '7022Z': '💼 Konsulting biznesowy',
+  '8559B': '🎓 Coaching/Szkolenia',
+}
+
 const OBYW_FLAG: Record<string, string> = {
   PL: '🇵🇱',
   UA: '🇺🇦',
@@ -100,8 +135,21 @@ function LeidPanel({ row, open, onClose, onStatusChange, onSendToFba }: LeidPane
               <span>{row.miejscowosc ?? '—'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">PKD</span>
-              <span className="font-mono text-xs">{row.source_pkd ?? row.pkd_main ?? '—'}</span>
+              <span className="text-muted-foreground">Branża</span>
+              <div className="text-right">
+                <div className="text-sm">
+                  {(() => {
+                    const code = row.source_pkd ?? row.pkd_main ?? null
+                    return code ? (PKD_LABELS[code] ?? code) : '—'
+                  })()}
+                </div>
+                {(() => {
+                  const code = row.source_pkd ?? row.pkd_main ?? null
+                  return code && !PKD_LABELS[code]
+                    ? <div className="font-mono text-xs text-muted-foreground">{code}</div>
+                    : null
+                })()}
+              </div>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Od</span>
@@ -253,12 +301,19 @@ export function LeidyTable({ rows, rowCount }: LeidyTableProps) {
     },
     {
       accessorKey: 'source_pkd',
-      header: 'PKD',
-      cell: ({ row }) => (
-        <span className="font-mono text-xs text-muted-foreground">
-          {row.original.source_pkd ?? row.original.pkd_main ?? '—'}
-        </span>
-      ),
+      header: 'Branża',
+      cell: ({ row }) => {
+        const code = row.original.source_pkd ?? row.original.pkd_main ?? null
+        const label = code ? (PKD_LABELS[code] ?? code) : '—'
+        return (
+          <div>
+            <div className="text-sm">{label}</div>
+            {code && !PKD_LABELS[code] && (
+              <div className="font-mono text-xs text-muted-foreground">{code}</div>
+            )}
+          </div>
+        )
+      },
     },
     {
       accessorKey: 'data_rozpoczecia',
