@@ -85,6 +85,15 @@ const PKD_LABELS: Record<string, string> = {
   '9329B': '🎯 Rozrywka',
   '7022Z': '💼 Konsulting biznesowy',
   '8559B': '🎓 Coaching/Szkolenia',
+  '1085Z': '🍲 Produkcja dań gotowych',
+  '2222Z': '📦 Produkcja opakowań',
+  '4332Z': '🔨 Roboty stolarskie',
+  '4520Z': '🚗 Naprawa pojazdów',
+  '4642Z': '👗 Hurt odzież',
+  '4724Z': '🥐 Hurt pieczywo',
+  '4799Z': '🛍️ Sprzedaż pozasklepowa',
+  '6831Z': '🏠 Pośrednik nieruchomości',
+  '8211Z': '📋 Usługi biurowe',
 }
 
 const OBYW_FLAG: Record<string, string> = {
