@@ -51,10 +51,11 @@ const STATE_FILE = path.resolve(process.cwd(), '.ceidg-progress.json')
 const STATE_TMP = STATE_FILE + '.tmp'
 
 const FILTERS: CeidgFilters = {
-  pkd: '5610A',
+  pkd: '6201Z',
   wojewodztwo: 'mazowieckie',
   status: 'AKTYWNY',
 }
+const ZUS_DATE_CUTOFF = '2023-01-01'
 const LIMIT = 25
 
 // ────────────────────────────────────────────────────────────
@@ -407,10 +408,20 @@ async function main() {
         const detail = await ceidg.getFirmDetails(firm.id)
         state.api_calls_count += 1
         if (detail) {
-          records.push(detailToInsert(detail))
+          const insert = detailToInsert(detail)
+          if (insert.data_rozpoczecia && insert.data_rozpoczecia >= ZUS_DATE_CUTOFF) {
+            state.skipped_count++
+            continue
+          }
+          records.push(insert)
         } else {
           detailMissCount += 1
-          records.push(listToInsert(firm))
+          const insert = listToInsert(firm)
+          if (insert.data_rozpoczecia && insert.data_rozpoczecia >= ZUS_DATE_CUTOFF) {
+            state.skipped_count++
+            continue
+          }
+          records.push(insert)
         }
       }
 
