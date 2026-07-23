@@ -50,12 +50,22 @@ const SUPABASE_URL = 'https://pxovjyxsktxdbovmybxz.supabase.co'
 const STATE_FILE = path.resolve(process.cwd(), '.ceidg-progress.json')
 const STATE_TMP = STATE_FILE + '.tmp'
 
+const PKD_WAVE_1 = [
+  '6201Z', // programisci (PKD 2007)
+  '6202Z', // IT konsultanci (PKD 2007)
+  '6220B', // IT konsultanci (PKD 2025)
+  '7410Z', // design (PKD 2007)
+  '7411Z', // design graficzny (PKD 2025)
+  '7412Z', // design komunikacja wizualna (PKD 2025)
+  '7420Z', // fotografowie
+  '7311Z', // marketing/SMM
+]
+const CURRENT_PKD = process.env.CEIDG_PKD ?? PKD_WAVE_1[0]
 const FILTERS: CeidgFilters = {
-  pkd: '6201Z',
+  pkd: CURRENT_PKD,
   wojewodztwo: 'mazowieckie',
   status: 'AKTYWNY',
 }
-const ZUS_DATE_CUTOFF = '2023-01-01'
 const LIMIT = 25
 
 // ────────────────────────────────────────────────────────────
@@ -149,6 +159,25 @@ function buildFullAddress(adr: CeidgListItem['adresDzialalnosci']): string | nul
   return parts.length > 0 ? parts.join(', ') : null
 }
 
+// -- FBA helpers --
+function calcZusSegment(dataRozpoczecia: string | null): string {
+  if (!dataRozpoczecia) return 'UNKNOWN'
+  if (dataRozpoczecia < '2023-01-01') return 'PELNY'
+  if (dataRozpoczecia < '2025-01-01') return 'MALY'
+  return 'ULGA'
+}
+function calcObywatelstwo(raw: unknown): string | null {
+  try {
+    const d = raw as Record<string, unknown>
+    const obyw = d?.wlasciciel as Record<string, unknown>
+    const val = obyw?.obywatelstwa
+    if (Array.isArray(val) && val.length > 0) return String(val[0]).toUpperCase()
+    if (typeof val === 'string') return val.toUpperCase()
+    return null
+  } catch {
+    return null
+  }
+}
 function detailToInsert(d: CeidgFirmaDetails): ProspectInsert {
   const ownerName = `${d.wlasciciel.imie ?? ''} ${d.wlasciciel.nazwisko ?? ''}`.trim()
   return {
@@ -409,18 +438,16 @@ async function main() {
         state.api_calls_count += 1
         if (detail) {
           const insert = detailToInsert(detail)
-          if (insert.data_rozpoczecia && insert.data_rozpoczecia >= ZUS_DATE_CUTOFF) {
-            state.skipped_count++
-            continue
-          }
+          insert.source_pkd = CURRENT_PKD
+          insert.zus_segment = calcZusSegment(insert.data_rozpoczecia ?? null)
+          insert.obywatelstwo = calcObywatelstwo(detail)
           records.push(insert)
         } else {
           detailMissCount += 1
           const insert = listToInsert(firm)
-          if (insert.data_rozpoczecia && insert.data_rozpoczecia >= ZUS_DATE_CUTOFF) {
-            state.skipped_count++
-            continue
-          }
+          insert.source_pkd = CURRENT_PKD
+          insert.zus_segment = calcZusSegment(insert.data_rozpoczecia ?? null)
+          insert.obywatelstwo = null
           records.push(insert)
         }
       }

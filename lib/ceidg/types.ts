@@ -197,5 +197,8 @@ export interface ProspectInsert {
   telefon: string | null
   // Geo (lat/lng) pomijamy — CEIDG nie zwraca, future geocoding step.
   raw_data: unknown
+  source_pkd?: string | null
+  zus_segment?: string | null
+  obywatelstwo?: string | null
   source?: string                 // default 'ceidg' w DB
 }
