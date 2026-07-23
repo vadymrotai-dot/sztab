@@ -32,6 +32,25 @@ const ZUS_OPTIONS = [
   { id: 'ULGA', label: '🟢 Ulga' },
 ]
 
+const REGION_OPTIONS = [
+  { id: 'mazowieckie', label: '🏙️ Mazowieckie (Warszawa)' },
+  { id: 'malopolskie', label: '🏔️ Małopolskie (Kraków)' },
+  { id: 'dolnoslaskie', label: '⛪ Dolnośląskie (Wrocław)' },
+  { id: 'wielkopolskie', label: '🌾 Wielkopolskie (Poznań)' },
+  { id: 'pomorskie', label: '⚓ Pomorskie (Gdańsk)' },
+  { id: 'slaskie', label: '🏭 Śląskie (Katowice)' },
+  { id: 'lodzkie', label: '🧵 Łódzkie (Łódź)' },
+  { id: 'lubelskie', label: '🌻 Lubelskie (Lublin)' },
+  { id: 'podkarpackie', label: '🏕️ Podkarpackie (Rzeszów)' },
+  { id: 'kujawsko-pomorskie', label: '🌊 Kujawsko-Pomorskie (Bydgoszcz)' },
+  { id: 'warminsko-mazurskie', label: '🦌 Warmińsko-Mazurskie (Olsztyn)' },
+  { id: 'zachodniopomorskie', label: '🌅 Zachodniopomorskie (Szczecin)' },
+  { id: 'lubuskie', label: '🌲 Lubuskie (Zielona Góra)' },
+  { id: 'swietokrzyskie', label: '⛰️ Świętokrzyskie (Kielce)' },
+  { id: 'podlaskie', label: '🦬 Podlaskie (Białystok)' },
+  { id: 'opolskie', label: '🌷 Opolskie (Opole)' },
+]
+
 const OBYW_OPTIONS = [
   { id: 'PL', label: '🇵🇱 PL' },
   { id: 'UA', label: '🇺🇦 UA' },
@@ -86,7 +105,7 @@ export function CreateCampaignDialog({ open, onClose }: CreateCampaignDialogProp
   const [pkd, setPkd] = useState<string[]>([])
   const [zus, setZus] = useState<string[]>([])
   const [obyw, setObyw] = useState<string[]>([])
-  const [wojew, setWojew] = useState('mazowieckie')
+  const [regions, setRegions] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -103,7 +122,7 @@ export function CreateCampaignDialog({ open, onClose }: CreateCampaignDialogProp
           filter_pkd: pkd.length > 0 ? pkd : null,
           filter_zus: zus.length > 0 ? zus : null,
           filter_obyw: obyw.length > 0 ? obyw : null,
-          filter_wojewodztwo: wojew || null,
+          filter_regions: regions.length > 0 ? regions : null,
         }),
       })
       if (!res.ok) {
@@ -114,7 +133,7 @@ export function CreateCampaignDialog({ open, onClose }: CreateCampaignDialogProp
       setPkd([])
       setZus([])
       setObyw([])
-      setWojew('mazowieckie')
+      setRegions([])
       onClose()
       router.refresh()
     } catch (e) {
@@ -154,13 +173,9 @@ export function CreateCampaignDialog({ open, onClose }: CreateCampaignDialogProp
             <MultiToggle options={OBYW_OPTIONS} selected={obyw} onChange={setObyw} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="wojew">Województwo</Label>
-            <Input
-              id="wojew"
-              placeholder="mazowieckie"
-              value={wojew}
-              onChange={e => setWojew(e.target.value)}
-            />
+            <Label>Region / Województwo</Label>
+            <MultiToggle options={REGION_OPTIONS} selected={regions} onChange={setRegions} />
+            <p className="text-xs text-muted-foreground">Brak wyboru = cała Polska</p>
           </div>
           {error && (
             <p className="text-sm text-destructive">{error}</p>

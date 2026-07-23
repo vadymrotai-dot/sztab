@@ -24,7 +24,7 @@ export async function POST(req: Request) {
         filter_pkd: body.filter_pkd ?? null,
         filter_zus: body.filter_zus ?? null,
         filter_obyw: body.filter_obyw ?? null,
-        filter_wojewodztwo: body.filter_wojewodztwo ?? null,
+        filter_regions: (body as { filter_regions?: string[] | null }).filter_regions ?? null,
         status: 'DRAFT',
       })
       .select('id')

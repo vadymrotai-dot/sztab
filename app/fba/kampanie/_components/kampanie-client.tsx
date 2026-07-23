@@ -27,6 +27,17 @@ interface KampanieClientProps {
 
 export function KampanieClient({ campaigns, error }: KampanieClientProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [localCampaigns, setLocalCampaigns] = useState<CampaignRow[]>(campaigns)
+
+  async function handleDelete(id: string, name: string) {
+    if (!confirm(`Usunąć kampanię "${name}"?`)) return
+    setLocalCampaigns(prev => prev.filter(c => c.id !== id))
+    try {
+      await fetch(`/api/fba/kampanie/${id}`, { method: 'DELETE' })
+    } catch (e) {
+      console.error('Delete failed', e)
+    }
+  }
 
   if (error) {
     return (
@@ -71,7 +82,7 @@ export function KampanieClient({ campaigns, error }: KampanieClientProps) {
         </div>
       ) : (
         <div className="grid gap-3">
-          {campaigns.map(c => (
+          {localCampaigns.map(c => (
             <div key={c.id} className="rounded-xl border bg-card p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
@@ -91,9 +102,9 @@ export function KampanieClient({ campaigns, error }: KampanieClientProps) {
                     {c.filter_obyw?.map(o => (
                       <span key={o} className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{o}</span>
                     ))}
-                    {c.filter_wojewodztwo && (
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{c.filter_wojewodztwo}</span>
-                    )}
+                    {c.filter_regions?.map(r => (
+                      <span key={r} className="rounded-full bg-violet-50 px-2 py-0.5 text-xs text-violet-700">{r}</span>
+                    ))}
                   </div>
                 </div>
                 <div className="grid grid-cols-5 gap-3 text-center shrink-0">
@@ -111,9 +122,19 @@ export function KampanieClient({ campaigns, error }: KampanieClientProps) {
                   ))}
                 </div>
               </div>
-              <div className="mt-2 text-xs text-muted-foreground">
-                Utworzona: {new Date(c.created_at).toLocaleDateString('pl-PL')}
-                {c.started_at && ` · Start: ${new Date(c.started_at).toLocaleDateString('pl-PL')}`}
+              <div className="mt-3 flex items-center justify-between">
+                <div className="text-xs text-muted-foreground">
+                  Utworzona: {new Date(c.created_at).toLocaleDateString('pl-PL')}
+                  {c.started_at && ` · Start: ${new Date(c.started_at).toLocaleDateString('pl-PL')}`}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleDelete(c.id, c.name)}
+                    className="rounded-md border border-destructive/30 px-2.5 py-1 text-xs text-destructive hover:bg-destructive/10 transition-colors"
+                  >
+                    🗑️ Usuń
+                  </button>
+                </div>
               </div>
             </div>
           ))}

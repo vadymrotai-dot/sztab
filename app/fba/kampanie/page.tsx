@@ -11,7 +11,7 @@ export interface CampaignRow {
   filter_pkd: string[] | null
   filter_zus: string[] | null
   filter_obyw: string[] | null
-  filter_wojewodztwo: string | null
+  filter_regions: string[] | null
   leads_count: number
   enriched_count: number
   sent_count: number
@@ -25,7 +25,7 @@ export default async function FbaKampaniePage() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('fba_campaigns')
-    .select('id, name, status, filter_pkd, filter_zus, filter_obyw, filter_wojewodztwo, leads_count, enriched_count, sent_count, replied_count, converted_count, created_at, started_at')
+    .select('id, name, status, filter_pkd, filter_zus, filter_obyw, filter_regions, leads_count, enriched_count, sent_count, replied_count, converted_count, created_at, started_at')
     .order('created_at', { ascending: false })
 
   return (
