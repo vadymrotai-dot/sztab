@@ -4,7 +4,26 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { PlusIcon } from 'lucide-react'
 import { CreateCampaignDialog } from './create-campaign-dialog'
+import { EditCampaignDialog } from './edit-campaign-dialog'
 import type { CampaignRow } from '../page'
+
+const PKD_LABELS: Record<string, string> = {
+  '6201Z': '💻 Programista',
+  '6201A': '💻 Programista',
+  '6201B': '💻 Programista',
+  '6202Z': '🖥️ Konsultant IT',
+  '6220B': '🖥️ Konsultant IT',
+  '7410Z': '🎨 Designer',
+  '7411Z': '🎨 Grafik',
+  '7412Z': '📐 Design wizualny',
+  '7420Z': '📷 Fotograf',
+  '7311Z': '📣 Marketing/SMM',
+  '7430Z': '🌍 Tłumacz',
+  '9003Z': '✍️ Copywriter',
+  '9011Z': '✍️ Twórca treści',
+  '5911Z': '🎬 Video/Film',
+  '5912Z': '✂️ Montaż video',
+}
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'bg-gray-100 text-gray-600',
@@ -28,6 +47,7 @@ interface KampanieClientProps {
 export function KampanieClient({ campaigns, error }: KampanieClientProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [localCampaigns, setLocalCampaigns] = useState<CampaignRow[]>(campaigns)
+  const [editCampaign, setEditCampaign] = useState<CampaignRow | null>(null)
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Usunąć kampanię "${name}"?`)) return
@@ -94,7 +114,9 @@ export function KampanieClient({ campaigns, error }: KampanieClientProps) {
                   </div>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {c.filter_pkd?.map(p => (
-                      <span key={p} className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground font-mono">{p}</span>
+                      <span key={p} className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                        {PKD_LABELS[p] ?? p}
+                      </span>
                     ))}
                     {c.filter_zus?.map(z => (
                       <span key={z} className="rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-700">{z}</span>
@@ -129,6 +151,12 @@ export function KampanieClient({ campaigns, error }: KampanieClientProps) {
                 </div>
                 <div className="flex gap-2">
                   <button
+                    onClick={() => setEditCampaign(c)}
+                    className="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted transition-colors"
+                  >
+                    ✏️ Edytuj
+                  </button>
+                  <button
                     onClick={() => handleDelete(c.id, c.name)}
                     className="rounded-md border border-destructive/30 px-2.5 py-1 text-xs text-destructive hover:bg-destructive/10 transition-colors"
                   >
@@ -142,6 +170,15 @@ export function KampanieClient({ campaigns, error }: KampanieClientProps) {
       )}
 
       <CreateCampaignDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
+      <EditCampaignDialog
+        campaign={editCampaign}
+        open={editCampaign !== null}
+        onClose={() => setEditCampaign(null)}
+        onSaved={(updated) => {
+          setLocalCampaigns(prev => prev.map(c => c.id === updated.id ? updated : c))
+          setEditCampaign(null)
+        }}
+      />
     </div>
   )
 }
