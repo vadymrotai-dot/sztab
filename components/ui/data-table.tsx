@@ -88,6 +88,8 @@ export interface DataTableProps<TData, TValue> {
   getRowId?: (row: TData, index: number, parent?: unknown) => string
   /** Enable row selection (checkbox column expected у columns[]). */
   enableRowSelection?: boolean
+  /** Optional row click handler — fires with original TData row. */
+  onRowClick?: (row: TData) => void
   /** Callback коли rowSelection changes (для bulk action bar). */
   onRowSelectionChange?: (selection: RowSelectionState) => void
   /** Empty state ReactNode (показується коли filtered.length === 0). */
@@ -140,6 +142,7 @@ export function DataTable<TData, TValue>({
   defaultPageSize = 50,
   getRowId,
   enableRowSelection = false,
+  onRowClick,
   onRowSelectionChange,
   emptyState,
   toolbar,
@@ -310,7 +313,7 @@ export function DataTable<TData, TValue>({
                 </TableRow>
               ) : (
                 table.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id} data-state={row.getIsSelected() && 'selected'}>
+                  <TableRow key={row.id} data-state={row.getIsSelected() && 'selected'} onClick={() => onRowClick?.(row.original)} className={onRowClick ? 'cursor-pointer' : undefined}>
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id}>
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}

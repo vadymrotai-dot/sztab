@@ -12,11 +12,14 @@ const ZUS_OPTIONS = [
   { id: 'ULGA', label: '🟢 Ulga' },
 ]
 
+const EU_COUNTRIES = ['AT','BE','BG','CY','CZ','DE','DK','EE','ES','FI','FR','GR','HR','HU','IE','IT','LT','LU','LV','MT','NL','PT','RO','SE','SI','SK']
+const KNOWN_COUNTRIES = ['PL','UA','BY', ...EU_COUNTRIES]
+
 const OBYW_OPTIONS = [
   { id: 'PL', label: '🇵🇱 PL' },
   { id: 'UA', label: '🇺🇦 UA' },
-  { id: 'IN', label: '🇮🇳 IN' },
   { id: 'BY', label: '🇧🇾 BY' },
+  { id: 'INNE', label: '🌍 Inne (non-EU)' },
 ]
 
 const STATUS_OPTIONS = [
@@ -24,11 +27,21 @@ const STATUS_OPTIONS = [
   { id: 'SENT', label: 'Wysłane' },
   { id: 'REPLIED', label: 'Odpowiedź' },
   { id: 'CONVERTED', label: 'Konwersja' },
+  { id: 'REJECTED', label: 'Odrzucone' },
 ]
 
 const PAGE_SIZES = [50, 100, 200] as const
 type PageSize = (typeof PAGE_SIZES)[number]
 const DEFAULT_SIZE: PageSize = 50
+
+function parseMulti(raw: string | undefined): string[] {
+  if (!raw) return []
+  return raw.split(',').map(s => s.trim()).filter(Boolean)
+}
+
+function toggleMulti(arr: string[], id: string): string[] {
+  return arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id]
+}
 
 export default async function FbaLeidyPage({
   searchParams,
@@ -44,9 +57,9 @@ export default async function FbaLeidyPage({
   }>
 }) {
   const sp = await searchParams
-  const zus = sp.zus ?? null
-  const obyw = sp.obyw ?? null
-  const status = sp.status ?? null
+  const zusSelected = parseMulti(sp.zus)
+  const obywSelected = parseMulti(sp.obyw)
+  const statusSelected = parseMulti(sp.status)
   const pkd = sp.pkd ?? null
   const q = (sp.q ?? '').trim()
   const size: PageSize = (PAGE_SIZES as readonly number[]).includes(Number(sp.size))
@@ -64,9 +77,27 @@ export default async function FbaLeidyPage({
     .eq('status', 'AKTYWNY')
     .order('data_rozpoczecia', { ascending: true, nullsFirst: false })
 
-  if (zus) query = query.eq('zus_segment', zus)
-  if (obyw) query = query.eq('obywatelstwo', obyw)
-  if (status) query = query.eq('outreach_status', status)
+  if (zusSelected.length > 0) {
+    query = query.in('zus_segment', zusSelected)
+  }
+
+  const hasInne = obywSelected.includes('INNE')
+  const knownSelected = obywSelected.filter(o => o !== 'INNE')
+  if (obywSelected.length > 0) {
+    if (hasInne && knownSelected.length === 0) {
+      query = query.not('obywatelstwo', 'in', `(${KNOWN_COUNTRIES.join(',')})`)
+    } else if (hasInne && knownSelected.length > 0) {
+      query = query.or(
+        `obywatelstwo.in.(${knownSelected.join(',')}),obywatelstwo.not.in.(${KNOWN_COUNTRIES.join(',')})`
+      )
+    } else {
+      query = query.in('obywatelstwo', knownSelected)
+    }
+  }
+
+  if (statusSelected.length > 0) {
+    query = query.in('outreach_status', statusSelected)
+  }
   if (pkd) query = query.eq('source_pkd', pkd)
   if (q.length > 0) {
     query = query.or(`name.ilike.*${q}*,owner_name.ilike.*${q}*`)
@@ -78,16 +109,15 @@ export default async function FbaLeidyPage({
   )
 
   const totalCount = count ?? 0
-  const totalPages = Math.max(1, Math.ceil(totalCount / size))
   const rangeStart = totalCount === 0 ? 0 : (page - 1) * size + 1
   const rangeEnd = totalCount === 0 ? 0 : (page - 1) * size + (data?.length ?? 0)
 
   function buildHref(overrides: Record<string, string | null>) {
     const params = new URLSearchParams()
     const current: Record<string, string | null> = {
-      zus,
-      obyw,
-      status,
+      zus: zusSelected.length > 0 ? zusSelected.join(',') : null,
+      obyw: obywSelected.length > 0 ? obywSelected.join(',') : null,
+      status: statusSelected.length > 0 ? statusSelected.join(',') : null,
       pkd,
       q: q || null,
       page: page > 1 ? String(page) : null,
@@ -101,6 +131,21 @@ export default async function FbaLeidyPage({
     return s ? `/fba/leidy?${s}` : '/fba/leidy'
   }
 
+  function zusToggleHref(id: string) {
+    const next = toggleMulti(zusSelected, id)
+    return buildHref({ zus: next.length > 0 ? next.join(',') : null, page: null })
+  }
+
+  function obywToggleHref(id: string) {
+    const next = toggleMulti(obywSelected, id)
+    return buildHref({ obyw: next.length > 0 ? next.join(',') : null, page: null })
+  }
+
+  function statusToggleHref(id: string) {
+    const next = toggleMulti(statusSelected, id)
+    return buildHref({ status: next.length > 0 ? next.join(',') : null, page: null })
+  }
+
   return (
     <div className="flex flex-col">
       <PageHeader
@@ -109,30 +154,30 @@ export default async function FbaLeidyPage({
       />
       <div className="flex flex-wrap items-center gap-2 px-6 pt-4">
         <span className="text-sm text-muted-foreground">ZUS:</span>
-        <Button size="sm" variant={!zus ? 'default' : 'outline'} asChild>
+        <Button size="sm" variant={zusSelected.length === 0 ? 'default' : 'outline'} asChild>
           <Link href={buildHref({ zus: null, page: null })}>Wszyscy</Link>
         </Button>
         {ZUS_OPTIONS.map((o) => (
-          <Button key={o.id} size="sm" variant={zus === o.id ? 'default' : 'outline'} asChild>
-            <Link href={buildHref({ zus: o.id, page: null })}>{o.label}</Link>
+          <Button key={o.id} size="sm" variant={zusSelected.includes(o.id) ? 'default' : 'outline'} asChild>
+            <Link href={zusToggleHref(o.id)}>{o.label}</Link>
           </Button>
         ))}
         <span className="ml-2 border-l pl-2 text-sm text-muted-foreground">Kraj:</span>
-        <Button size="sm" variant={!obyw ? 'default' : 'outline'} asChild>
+        <Button size="sm" variant={obywSelected.length === 0 ? 'default' : 'outline'} asChild>
           <Link href={buildHref({ obyw: null, page: null })}>Wszyscy</Link>
         </Button>
         {OBYW_OPTIONS.map((o) => (
-          <Button key={o.id} size="sm" variant={obyw === o.id ? 'default' : 'outline'} asChild>
-            <Link href={buildHref({ obyw: o.id, page: null })}>{o.label}</Link>
+          <Button key={o.id} size="sm" variant={obywSelected.includes(o.id) ? 'default' : 'outline'} asChild>
+            <Link href={obywToggleHref(o.id)}>{o.label}</Link>
           </Button>
         ))}
         <span className="ml-2 border-l pl-2 text-sm text-muted-foreground">Status:</span>
-        <Button size="sm" variant={!status ? 'default' : 'outline'} asChild>
+        <Button size="sm" variant={statusSelected.length === 0 ? 'default' : 'outline'} asChild>
           <Link href={buildHref({ status: null, page: null })}>Wszystkie</Link>
         </Button>
         {STATUS_OPTIONS.map((o) => (
-          <Button key={o.id} size="sm" variant={status === o.id ? 'default' : 'outline'} asChild>
-            <Link href={buildHref({ status: o.id, page: null })}>{o.label}</Link>
+          <Button key={o.id} size="sm" variant={statusSelected.includes(o.id) ? 'default' : 'outline'} asChild>
+            <Link href={statusToggleHref(o.id)}>{o.label}</Link>
           </Button>
         ))}
         <span className="ml-auto text-xs text-muted-foreground">
