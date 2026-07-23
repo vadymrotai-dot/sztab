@@ -21,12 +21,12 @@
 
 import { cookies } from 'next/headers'
 
-export type WorkspaceId = 'sztab' | 'operacje' | 'intelligence'
+export type WorkspaceId = 'sztab' | 'operacje' | 'intelligence' | 'fba'
 
 const COOKIE_NAME = 'sztab_workspace'
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365
 
-const VALID_WORKSPACES: WorkspaceId[] = ['sztab', 'operacje', 'intelligence']
+const VALID_WORKSPACES: WorkspaceId[] = ['sztab', 'operacje', 'intelligence', 'fba']
 
 export async function setWorkspace(
   workspace: WorkspaceId,

@@ -42,6 +42,7 @@ import {
   HomeIcon,
   ChevronsUpDownIcon,
   CheckIcon,
+  UsersIcon,
 } from 'lucide-react'
 
 import { setWorkspace, type WorkspaceId } from '@/lib/workspace/switch'
@@ -88,9 +89,18 @@ const WORKSPACE_META: Record<WorkspaceId, WorkspaceMeta> = {
     tagline: 'Analiza i dopasowania',
     href: '/intelligence/pulpit',
   },
+  fba: {
+    iconBg: 'bg-emerald-100',
+    iconText: 'text-emerald-700',
+    Icon: UsersIcon,
+    badge: 'FBA',
+    badgeBg: 'bg-emerald-600',
+    tagline: 'Leady i prowizje',
+    href: '/fba/pulpit',
+  },
 }
 
-const WORKSPACE_ORDER: WorkspaceId[] = ['sztab', 'operacje', 'intelligence']
+const WORKSPACE_ORDER: WorkspaceId[] = ['sztab', 'operacje', 'intelligence', 'fba']
 
 // ─── Props ──────────────────────────────────────────────────────
 
