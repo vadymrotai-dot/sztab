@@ -341,17 +341,21 @@ export class CeidgClient {
         try {
           data = JSON.parse(responseText) as T
         } catch (parseErr) {
-          // Non-HTML invalid JSON — fail fast з body preview (per Q3=(a)).
-          // Не retryable бо unlikely to recover.
+          // Invalid JSON — same symptom as HTML response (CEIDG truncated body
+          // under load). Treat as retryable з HTML_RETRY_DELAY_MS.
           const msg =
             parseErr instanceof Error ? parseErr.message : String(parseErr)
-          console.error(
-            `[CEIDG] GET ${response.status} ${sanitizedUrl} (${durationMs}ms) — invalid JSON`,
-            responseText.slice(0, 300),
-          )
-          throw new Error(
+          lastError = new Error(
             `CEIDG response invalid JSON: ${msg}; first 200 chars: ${responseText.slice(0, 200)}`,
           )
+          console.warn(
+            `[CEIDG] GET ${response.status} ${sanitizedUrl} (${durationMs}ms) — invalid JSON, retry ${attempt + 1}`,
+          )
+          if (attempt < RETRY_DELAYS_MS.length) {
+            await sleep(HTML_RETRY_DELAY_MS)
+            continue
+          }
+          throw lastError
         }
         console.log(
           `[CEIDG] GET ${response.status} ${sanitizedUrl} (${durationMs}ms)`,
