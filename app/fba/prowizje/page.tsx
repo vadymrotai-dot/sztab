@@ -18,7 +18,7 @@ const FBA_RESULT_LABELS: Record<string, string> = {
 export default async function FbaProwizjePage() {
   const supabase = await createClient()
   const { data: leads, error } = await supabase
-    .from('ceidg_prospects')
+    .from('fba_prospects')
     .select('id, name, owner_name, miejscowosc, source_pkd, sent_to_fba_at, fba_result, commission_paid, outreach_status, email')
     .not('sent_to_fba_at', 'is', null)
     .order('sent_to_fba_at', { ascending: false })

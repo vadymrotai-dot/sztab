@@ -200,5 +200,21 @@ export interface ProspectInsert {
   source_pkd?: string | null
   zus_segment?: string | null
   obywatelstwo?: string | null
+  fba_segment?: string | null
+  fba_pitch?: string | null
+  linkedin_url?: string | null
+  apollo_enriched_at?: string | null
+  outreach_status?: string | null
+  outreach_channel?: string | null
+  first_contact_at?: string | null
+  last_contact_at?: string | null
+  sent_to_fba_at?: string | null
+  fba_result?: string | null
+  commission_paid?: boolean | null
+  campaign_id?: string | null
   source?: string                 // default 'ceidg' w DB
 }
+
+// FBA prospects — окрема таблиця fba_prospects
+// Ідентична ProspectInsert але явно для FBA Desktop
+export type FbaProspectInsert = ProspectInsert

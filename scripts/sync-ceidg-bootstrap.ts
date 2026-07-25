@@ -472,7 +472,7 @@ async function main() {
         // Pre-check existing IDs dla accurate inserted vs updated count.
         const ids = records.map((r) => r.ceidg_id)
         const { data: existing, error: selErr } = await supabase
-          .from('ceidg_prospects')
+          .from('fba_prospects')
           .select('ceidg_id')
           .in('ceidg_id', ids)
         if (selErr) {
@@ -489,7 +489,7 @@ async function main() {
           last_synced_at: new Date().toISOString(),
         }))
         const { error: upErr } = await supabase
-          .from('ceidg_prospects')
+          .from('fba_prospects')
           .upsert(upsertPayload, {
             onConflict: 'ceidg_id',
             ignoreDuplicates: false,

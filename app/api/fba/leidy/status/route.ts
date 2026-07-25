@@ -23,7 +23,7 @@ export async function PATCH(req: Request) {
     }
 
     const { error } = await supabase
-      .from('ceidg_prospects')
+      .from('fba_prospects')
       .update(update)
       .eq('id', body.id)
 

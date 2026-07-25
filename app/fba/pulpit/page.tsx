@@ -15,13 +15,13 @@ async function getStats() {
     { count: commissionPaid },
     { data: campaigns },
   ] = await Promise.all([
-    supabase.from('ceidg_prospects').select('*', { count: 'exact', head: true }),
-    supabase.from('ceidg_prospects').select('*', { count: 'exact', head: true }).not('apollo_enriched_at', 'is', null),
-    supabase.from('ceidg_prospects').select('*', { count: 'exact', head: true }).eq('outreach_status', 'SENT'),
-    supabase.from('ceidg_prospects').select('*', { count: 'exact', head: true }).eq('outreach_status', 'REPLIED'),
-    supabase.from('ceidg_prospects').select('*', { count: 'exact', head: true }).not('sent_to_fba_at', 'is', null),
-    supabase.from('ceidg_prospects').select('*', { count: 'exact', head: true }).eq('fba_result', 'SIGNED'),
-    supabase.from('ceidg_prospects').select('*', { count: 'exact', head: true }).eq('commission_paid', true),
+    supabase.from('fba_prospects').select('*', { count: 'exact', head: true }),
+    supabase.from('fba_prospects').select('*', { count: 'exact', head: true }).not('apollo_enriched_at', 'is', null),
+    supabase.from('fba_prospects').select('*', { count: 'exact', head: true }).eq('outreach_status', 'SENT'),
+    supabase.from('fba_prospects').select('*', { count: 'exact', head: true }).eq('outreach_status', 'REPLIED'),
+    supabase.from('fba_prospects').select('*', { count: 'exact', head: true }).not('sent_to_fba_at', 'is', null),
+    supabase.from('fba_prospects').select('*', { count: 'exact', head: true }).eq('fba_result', 'SIGNED'),
+    supabase.from('fba_prospects').select('*', { count: 'exact', head: true }).eq('commission_paid', true),
     supabase.from('fba_campaigns').select('id, name, status, leads_count, enriched_count, sent_count, replied_count, converted_count').order('created_at', { ascending: false }).limit(5),
   ])
   const commissionTotal = (commissionPaid ?? 0) * 350

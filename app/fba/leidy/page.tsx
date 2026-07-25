@@ -69,7 +69,7 @@ export default async function FbaLeidyPage({
 
   const supabase = await createClient()
   let query = supabase
-    .from('ceidg_prospects')
+    .from('fba_prospects')
     .select(
       'id, ceidg_id, name, owner_name, miejscowosc, pkd_main, data_rozpoczecia, zus_segment, obywatelstwo, fba_segment, outreach_status, email, telefon, source_pkd',
       { count: 'exact' },
