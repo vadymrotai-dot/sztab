@@ -169,10 +169,13 @@ function calcZusSegment(dataRozpoczecia: string | null): string {
 function calcObywatelstwo(raw: unknown): string | null {
   try {
     const d = raw as Record<string, unknown>
-    const obyw = d?.wlasciciel as Record<string, unknown>
-    const val = obyw?.obywatelstwa
-    if (Array.isArray(val) && val.length > 0) return String(val[0]).toUpperCase()
-    if (typeof val === 'string') return val.toUpperCase()
+    // raw.obywatelstwa = [{kraj: 'Białoruś', symbol: 'BY'}, ...]
+    const val = d?.obywatelstwa
+    if (Array.isArray(val) && val.length > 0) {
+      const first = val[0] as Record<string, unknown>
+      const symbol = first?.symbol
+      if (typeof symbol === 'string') return symbol.toUpperCase()
+    }
     return null
   } catch {
     return null
