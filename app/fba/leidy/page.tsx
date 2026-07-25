@@ -71,7 +71,7 @@ export default async function FbaLeidyPage({
   let query = supabase
     .from('fba_prospects')
     .select(
-      'id, ceidg_id, name, owner_name, miejscowosc, pkd_main, data_rozpoczecia, zus_segment, obywatelstwo, fba_segment, outreach_status, email, telefon, source_pkd',
+      'id, ceidg_id, name, owner_name, miejscowosc, pkd_main, data_rozpoczecia, zus_segment, obywatelstwo, fba_segment, outreach_status, email, telefon, source_pkd, linkedin_url, apollo_enriched_at, data_source',
       { count: 'exact' },
     )
     .eq('status', 'AKTYWNY')

@@ -35,6 +35,9 @@ export interface LeidRow {
   email: string | null
   telefon: string | null
   source_pkd: string | null
+  linkedin_url: string | null
+  apollo_enriched_at: string | null
+  data_source: Record<string, string | null> | null
 }
 
 const ZUS_COLORS: Record<string, string> = {
@@ -122,9 +125,10 @@ interface LeidPanelProps {
   onClose: () => void
   onStatusChange: (id: string, status: string) => void
   onSendToFba: (id: string) => void
+  onEnrichApollo: (id: string) => void
 }
 
-function LeidPanel({ row, open, onClose, onStatusChange, onSendToFba }: LeidPanelProps) {
+function LeidPanel({ row, open, onClose, onStatusChange, onSendToFba, onEnrichApollo }: LeidPanelProps) {
   if (!row) return null
   const zus = row.zus_segment ?? 'UNKNOWN'
   const st = row.outreach_status ?? 'NEW'
@@ -217,6 +221,48 @@ function LeidPanel({ row, open, onClose, onStatusChange, onSendToFba }: LeidPane
           </div>
           {/* Akcje */}
           <div className="space-y-2">
+            {/* Apollo збагачення */}
+            {!row.apollo_enriched_at ? (
+              <Button
+                className="w-full bg-violet-600 hover:bg-violet-700 text-white"
+                size="sm"
+                onClick={() => onEnrichApollo(row.id)}
+              >
+                🔍 Wzbogać przez Apollo
+              </Button>
+            ) : (
+              <div className="rounded-lg border border-violet-200 bg-violet-50 p-2 text-xs text-violet-700">
+                ✅ Apollo: {new Date(row.apollo_enriched_at).toLocaleDateString('pl-PL')}
+              </div>
+            )}
+            {/* LinkedIn */}
+            {row.linkedin_url && (
+              <a
+                href={row.linkedin_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex w-full items-center justify-center gap-1 rounded-md border border-blue-300 px-2.5 py-1.5 text-xs text-blue-700 hover:bg-blue-50 transition-colors"
+              >
+                🔗 LinkedIn
+              </a>
+            )}
+            {/* Data source info */}
+            {row.data_source && Object.keys(row.data_source).length > 0 && (
+              <div className="rounded-lg border p-2">
+                <div className="text-xs text-muted-foreground mb-1">Źródło danych (RODO)</div>
+                <div className="space-y-0.5">
+                  {Object.entries(row.data_source)
+                    .filter(([, v]) => v !== null)
+                    .slice(0, 4)
+                    .map(([field, source]) => (
+                      <div key={field} className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">{field}</span>
+                        <span className="font-medium uppercase text-xs">{source}</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
             <Button
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
               size="sm"
@@ -270,6 +316,48 @@ export function LeidyTable({ rows, rowCount }: LeidyTableProps) {
       })
     } catch (e) {
       console.error('Status update failed', e)
+    }
+  }
+
+  async function handleEnrichApollo(id: string) {
+    try {
+      const res = await fetch('/api/fba/leidy/enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      })
+      if (res.ok) {
+        const data = await res.json() as {
+          email?: string | null
+          linkedin_url?: string | null
+          telefon?: string | null
+          apollo_enriched_at?: string
+        }
+        setLocalRows(prev => prev.map(r => r.id === id ? {
+          ...r,
+          email: data.email ?? r.email,
+          linkedin_url: data.linkedin_url ?? r.linkedin_url,
+          telefon: data.telefon ?? r.telefon,
+          apollo_enriched_at: data.apollo_enriched_at ?? r.apollo_enriched_at,
+          data_source: {
+            ...r.data_source,
+            ...(data.email ? { email: 'apollo' } : {}),
+            ...(data.linkedin_url ? { linkedin_url: 'apollo' } : {}),
+            ...(data.telefon ? { telefon: 'apollo' } : {}),
+          },
+        } : r))
+        if (selectedRow?.id === id) {
+          setSelectedRow(prev => prev ? {
+            ...prev,
+            email: data.email ?? prev.email,
+            linkedin_url: data.linkedin_url ?? prev.linkedin_url,
+            telefon: data.telefon ?? prev.telefon,
+            apollo_enriched_at: data.apollo_enriched_at ?? prev.apollo_enriched_at,
+          } : prev)
+        }
+      }
+    } catch (e) {
+      console.error('Apollo enrich failed', e)
     }
   }
 
@@ -395,6 +483,7 @@ export function LeidyTable({ rows, rowCount }: LeidyTableProps) {
         onClose={handleClose}
         onStatusChange={handleStatusChange}
         onSendToFba={handleSendToFba}
+        onEnrichApollo={handleEnrichApollo}
       />
     </>
   )
