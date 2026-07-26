@@ -436,23 +436,14 @@ async function main() {
       // Detail fetch dla każdej firmy → pełny pkd[] + adresKoresp.
       const records: ProspectInsert[] = []
       let detailMissCount = 0
+      // LIST-ONLY режим: 1 запит на сторінку замість 26.
+      // obywatelstwo = null для нових — заповнюється пізніше через SQL backfill.
       for (const firm of firms) {
-        const detail = await ceidg.getFirmDetails(firm.id)
-        state.api_calls_count += 1
-        if (detail) {
-          const insert = detailToInsert(detail)
-          insert.source_pkd = CURRENT_PKD
-          insert.zus_segment = calcZusSegment(insert.data_rozpoczecia ?? null)
-          insert.obywatelstwo = calcObywatelstwo(detail)
-          records.push(insert)
-        } else {
-          detailMissCount += 1
-          const insert = listToInsert(firm)
-          insert.source_pkd = CURRENT_PKD
-          insert.zus_segment = calcZusSegment(insert.data_rozpoczecia ?? null)
-          insert.obywatelstwo = null
-          records.push(insert)
-        }
+        const insert = listToInsert(firm)
+        insert.source_pkd = CURRENT_PKD
+        insert.zus_segment = calcZusSegment(insert.data_rozpoczecia ?? null)
+        insert.obywatelstwo = null
+        records.push(insert)
       }
 
       let pageInserted = 0

@@ -26,12 +26,12 @@ const CEIDG_BASE = 'https://dane.biznes.gov.pl/api/ceidg/v3'
 const DEFAULT_MAX_REQUESTS = 50
 const DEFAULT_WINDOW_MS = 180_000
 
-const RETRY_DELAYS_MS = [1_000, 2_000, 4_000]
+const RETRY_DELAYS_MS = [5_000, 15_000, 30_000]
 
 // 5s delay для HTML response retry (per Vadym 2026-05-04 fix).
 // CEIDG cold-cache повертає HTML сторінку замість JSON з status 200,
 // що падає на JSON.parse. 5s buffer дає server warm-up time.
-const HTML_RETRY_DELAY_MS = 5_000
+const HTML_RETRY_DELAY_MS = 30_000
 
 // ────────────────────────────────────────────────────────────
 // Errors
