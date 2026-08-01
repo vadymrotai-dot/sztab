@@ -3,6 +3,11 @@
 export const isNonEmptyString = (v: unknown): v is string =>
   typeof v === 'string' && v.trim().length > 0
 
+// Normalizacja nazwy do dedup fallback (bez EAN): lowercase, trim, zbite spacje.
+// Pure — używane i po stronie serwera (import action) i klienta (importer).
+export const normalizeProductName = (name: string): string =>
+  name.trim().toLowerCase().replace(/\s+/g, ' ')
+
 export const isPositiveNumber = (v: unknown): v is number =>
   typeof v === 'number' && Number.isFinite(v) && v > 0
 

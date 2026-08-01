@@ -16,6 +16,7 @@ export interface ImportPreset {
   has_category_headers: boolean
   category_header_pattern?: string // regex source. example: '^\\s*▼\\s*(.+)$'
   sheet?: string // optional sheet name (defaults to first)
+  currency?: 'EUR' | 'PLN' // zapamiętana waluta kosztu dla re-importu
   options?: Record<string, unknown>
 }
 
@@ -36,7 +37,9 @@ export interface CanonicalField {
   hint?: string // польською
 }
 
-export type RowStatus = 'new' | 'duplicate' | 'invalid'
+// 'review' — niejednoznaczny duplikat (dopasowanie po nazwie+dostawcy dało
+// >1 kandydata). NIE auto-insert; do ręcznej decyzji (Część 2 / dedup).
+export type RowStatus = 'new' | 'duplicate' | 'invalid' | 'review'
 
 export interface ParsedRow<TRow> {
   raw: RawRow
@@ -44,6 +47,8 @@ export interface ParsedRow<TRow> {
   issues: ValidationIssue[]
   category?: string // last seen category header (▼ KISZONKI)
   status: RowStatus
+  // id istniejącego produktu dopasowanego jako duplikat (EAN albo nazwa+dostawca)
+  existingId?: string | null
   rowIndex: number // 1-indexed within the data section
 }
 
@@ -58,4 +63,7 @@ export interface ImportResult {
 export interface CommitOptions {
   updateExisting: boolean
   supplierId?: string
+  // Waluta kosztu z pliku. 'EUR' → cost_pln = cost_eur × kurs × overhead
+  // (dawne zachowanie, domyślne). 'PLN' → cost_pln brany wprost z pliku.
+  currency?: 'EUR' | 'PLN'
 }

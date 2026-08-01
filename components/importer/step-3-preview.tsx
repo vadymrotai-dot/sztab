@@ -30,17 +30,19 @@ interface StepPreviewProps {
   onUpdateExistingChange: (v: boolean) => void
 }
 
-type FilterMode = 'all' | 'errors' | 'warnings' | 'duplicates'
+type FilterMode = 'all' | 'errors' | 'warnings' | 'duplicates' | 'review'
 
 const STATUS_BADGE: Record<string, string> = {
   new: 'bg-green-100 text-green-800 border-transparent',
   duplicate: 'bg-amber-100 text-amber-800 border-transparent',
   invalid: 'bg-red-100 text-red-800 border-transparent',
+  review: 'bg-purple-100 text-purple-800 border-transparent',
 }
 const STATUS_LABEL: Record<string, string> = {
   new: 'Nowy',
   duplicate: 'Duplikat',
   invalid: 'Błąd',
+  review: 'Do przeglądu',
 }
 
 const formatVal = (v: unknown): string => {
@@ -64,18 +66,20 @@ export function StepPreview({
     let neu = 0
     let dup = 0
     let invalid = 0
+    let review = 0
     let warns = 0
     for (const r of rows) {
       if (r.status === 'new') neu++
       else if (r.status === 'duplicate') dup++
       else if (r.status === 'invalid') invalid++
+      else if (r.status === 'review') review++
       if (
         r.status !== 'invalid' &&
         r.issues.some((i) => i.severity === 'warning')
       )
         warns++
     }
-    return { neu, dup, invalid, warns, total: rows.length }
+    return { neu, dup, invalid, review, warns, total: rows.length }
   }, [rows])
 
   const filtered = useMemo(() => {
@@ -90,6 +94,8 @@ export function StepPreview({
         )
       case 'duplicates':
         return rows.filter((r) => r.status === 'duplicate')
+      case 'review':
+        return rows.filter((r) => r.status === 'review')
       default:
         return rows
     }
@@ -102,6 +108,7 @@ export function StepPreview({
       <div className="grid gap-3 sm:grid-cols-4">
         <StatTile color="green" label="Nowych" value={stats.neu} />
         <StatTile color="amber" label="Duplikatów" value={stats.dup} />
+        <StatTile color="purple" label="Do przeglądu" value={stats.review} />
         <StatTile color="red" label="Błędów" value={stats.invalid} />
         <StatTile color="slate" label="Ostrzeżeń" value={stats.warns} />
       </div>
@@ -227,7 +234,7 @@ function StatTile({
   label,
   value,
 }: {
-  color: 'green' | 'amber' | 'red' | 'slate'
+  color: 'green' | 'amber' | 'red' | 'slate' | 'purple'
   label: string
   value: number
 }) {
@@ -236,6 +243,7 @@ function StatTile({
     amber: 'bg-amber-50 text-amber-800',
     red: 'bg-red-50 text-red-800',
     slate: 'bg-slate-50 text-slate-700',
+    purple: 'bg-purple-50 text-purple-800',
   }[color]
   return (
     <div className={cn('rounded-md border p-3', cls)}>
