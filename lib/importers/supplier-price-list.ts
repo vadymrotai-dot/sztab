@@ -4,6 +4,7 @@ import {
   isEAN,
   isLikelyGramatura,
   isNonEmptyString,
+  normalizeProductName,
   toNumberOrNull,
   toStringOrNull,
 } from './validation'
@@ -20,7 +21,6 @@ import {
   batchCommitProducts,
   findProductsByEans,
   findProductsByNameSupplier,
-  normalizeProductName,
 } from '@/app/actions/import'
 
 // Reviewed 2026-04-26: EAN duplicate detection is supplier-scoped

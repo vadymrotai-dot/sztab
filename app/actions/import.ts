@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 
 import { createClient } from '@/lib/supabase/server'
+import { normalizeProductName } from '@/lib/importers/validation'
 import type {
   CommitOptions,
   ImportResult,
@@ -76,11 +77,6 @@ export async function findProductsByEans(
     if (row.ean && row.id) map[row.ean as string] = row.id as string
   }
   return map
-}
-
-// Normalizacja nazwy do dedup fallback (bez EAN): lowercase, trim, zbite spacje.
-export function normalizeProductName(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
 // Mapa znormalizowana_nazwa → [id...] dla produktów tego owner+supplier.
