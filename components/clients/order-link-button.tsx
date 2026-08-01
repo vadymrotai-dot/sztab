@@ -7,6 +7,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { toast } from 'sonner'
 
 interface Props {
   clientId: string
@@ -26,21 +27,30 @@ export function OrderLinkButton({ clientId, clientName, cohortId }: Props) {
 
   const generateLink = () => {
     startTransition(async () => {
-      const res = await fetch('/api/orders/admin/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id: clientId,
-          cohort_id: cohortId || null,
-        }),
-      })
-      if (res.ok) {
-        const data = await res.json()
+      try {
+        const res = await fetch('/api/orders/admin/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            client_id: clientId,
+            cohort_id: cohortId || null,
+          }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          toast.error(data.error || `Błąd generowania linku (HTTP ${res.status})`)
+          return
+        }
+        if (!data.access_token) {
+          toast.error('Serwer nie zwrócił tokenu zamówienia')
+          return
+        }
         const url = `${window.location.origin}/zamowienie/${data.access_token}`
         setLinkData({ url, is_existing: data.is_existing })
-      } else {
-        const data = await res.json().catch(() => ({}))
-        alert(data.error || 'Błąd generowania linku')
+      } catch (e) {
+        toast.error(
+          e instanceof Error ? `Błąd sieci: ${e.message}` : 'Błąd sieci',
+        )
       }
     })
   }

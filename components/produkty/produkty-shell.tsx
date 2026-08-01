@@ -15,6 +15,8 @@ import {
   UploadIcon,
   SparklesIcon,
   Loader2Icon,
+  PencilIcon,
+  PercentIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
@@ -304,19 +306,27 @@ function ProductDetail({ product, supplier }: { product: Product; supplier: Supp
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <Button
-              size="sm"
-              onClick={handleAnalyzeProduct}
-              disabled={analyzing}
-              className="bg-purple-600 hover:bg-purple-700"
-            >
-              {analyzing ? (
-                <Loader2Icon className="mr-1.5 size-3.5 animate-spin" />
-              ) : (
-                <SparklesIcon className="mr-1.5 size-3.5" />
-              )}
-              {analyzing ? 'Analiza w toku…' : 'Analiza produktu'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" asChild>
+                <Link href={`/products/${product.id}/edit`}>
+                  <PencilIcon className="mr-1.5 size-3.5" />
+                  Edytuj
+                </Link>
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleAnalyzeProduct}
+                disabled={analyzing}
+                className="bg-purple-600 hover:bg-purple-700"
+              >
+                {analyzing ? (
+                  <Loader2Icon className="mr-1.5 size-3.5 animate-spin" />
+                ) : (
+                  <SparklesIcon className="mr-1.5 size-3.5" />
+                )}
+                {analyzing ? 'Analiza w toku…' : 'Analiza produktu'}
+              </Button>
+            </div>
             {supplier && (
               <Link
                 href={`/suppliers?id=${supplier.id}`}
@@ -438,6 +448,13 @@ export function ProduktyTopBar({ onAddProduct, onImportPricelist }: { onAddProdu
       <Button size="sm" variant="outline" onClick={onImportPricelist}>
         <UploadIcon className="mr-1.5 size-3.5" />
         Importuj cennik
+      </Button>
+      {/* Faza 1 DAGOLD (089) — KROK C: wejście do bulk-edycji marż. */}
+      <Button size="sm" variant="outline" asChild>
+        <Link href="/produkty/marze">
+          <PercentIcon className="mr-1.5 size-3.5" />
+          Marże
+        </Link>
       </Button>
     </div>
   )
