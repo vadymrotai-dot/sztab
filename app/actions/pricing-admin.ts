@@ -87,7 +87,7 @@ export async function upsertPriceSegment(input: {
       { onConflict: 'code' },
     )
   if (error) return { ok: false, error: error.message }
-  revalidatePath('/ustawienia/segmenty-cenowe')
+  revalidatePath('/ceny/segmenty')
   return { ok: true }
 }
 
@@ -123,4 +123,50 @@ export async function updateClientPricing(input: {
   if (error) return { ok: false, error: error.message }
   revalidatePath(`/clients/${parsed.data.clientId}`)
   return { ok: true }
+}
+
+// ── price-admin nav — masowe przypisanie segmentu klientom ─────────────────
+// code=null → wyczyść (NULL = domyślnie segment A / cena standardowa).
+const BulkSegmentSchema = z.object({
+  code: z.string().trim().min(1).max(16).nullable(),
+  clientIds: z.array(z.string().uuid()).min(1).max(1000),
+})
+
+export async function assignSegmentToClients(
+  code: string | null,
+  clientIds: string[],
+): Promise<{ ok: true; updated: number } | { ok: false; error: string }> {
+  const parsed = BulkSegmentSchema.safeParse({ code, clientIds })
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? 'Niepoprawne dane',
+    }
+  }
+  const { supabase, user } = await requireUser()
+  if (!user) return { ok: false, error: 'Nieautoryzowany' }
+
+  const ids = Array.from(new Set(parsed.data.clientIds))
+  const normalized = parsed.data.code ? parsed.data.code.toUpperCase() : null
+
+  // Jeśli code podany — musi istnieć w price_segments (FK i tak by złapał,
+  // ale czytelny błąd lepszy niż 23503).
+  if (normalized) {
+    const { data: seg, error: segErr } = await supabase
+      .from('price_segments')
+      .select('code')
+      .eq('code', normalized)
+      .maybeSingle()
+    if (segErr) return { ok: false, error: segErr.message }
+    if (!seg) return { ok: false, error: `Segment "${normalized}" nie istnieje` }
+  }
+
+  const { error, count } = await supabase
+    .from('clients')
+    .update({ price_segment_code: normalized }, { count: 'exact' })
+    .in('id', ids)
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath('/ceny/klienci')
+  return { ok: true, updated: count ?? 0 }
 }
