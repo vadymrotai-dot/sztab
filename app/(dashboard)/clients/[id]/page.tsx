@@ -19,6 +19,11 @@ import { WebsiteOverrideCard } from '@/components/clients/website-override-card'
 import { EnrichmentProgressBanner } from '@/components/clients/enrichment-progress-banner'
 import { AccordionSection } from '@/components/clients/accordion-section'
 import { MetricStrip } from '@/components/clients/metric-strip'
+import {
+  ClientPricingPanel,
+  type PricingSegmentOption,
+  type PricingExample,
+} from '@/components/clients/client-pricing-panel'
 import { ProfileSectionV2 } from '@/components/clients/profile-section-v2'
 import { FinancialStatementsTable } from '@/components/clients/financial-statements-table'
 import { PersonsSectionV2 } from '@/components/clients/persons-section-v2'
@@ -576,6 +581,44 @@ export default async function ClientDetailPage({
   // robiło się sync AI calls (Haiku per dish) i blokowało page render → 503.
   // Tepere: page renderuje HTML natychmiast; section stremuje gdy AI ready.
 
+  // Faza 1 DAGOLD (089) — KROK E: dane do panelu cen klienta.
+  // Segmenty A/B/C + produkt przykładowy (pierwszy z marżą bazową i kosztem)
+  // do żywego podglądu ceny tego klienta.
+  const [{ data: priceSegmentsData }, { data: exampleProductData }] = await Promise.all([
+    supabase
+      .from('price_segments')
+      .select('code, name, znizka_pct')
+      .order('sort_order', { ascending: true }),
+    supabase
+      .from('products')
+      .select('name, cost_pln, marza_bazowa_pct')
+      .not('marza_bazowa_pct', 'is', null)
+      .gt('cost_pln', 0)
+      .order('name', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ])
+  const pricingSegments: PricingSegmentOption[] = (priceSegmentsData ?? []).map((s) => ({
+    code: s.code as string,
+    name: s.name as string,
+    znizka_pct: Number(s.znizka_pct ?? 0),
+  }))
+  const pricingExample: PricingExample | null =
+    exampleProductData &&
+    exampleProductData.cost_pln != null &&
+    exampleProductData.marza_bazowa_pct != null &&
+    Number(exampleProductData.marza_bazowa_pct) < 1
+      ? {
+          name: exampleProductData.name as string,
+          segAPrice:
+            Math.round(
+              (Number(exampleProductData.cost_pln) /
+                (1 - Number(exampleProductData.marza_bazowa_pct))) *
+                100,
+            ) / 100,
+        }
+      : null
+
   return (
     <div className="flex flex-col bg-[#FAFAF7] min-h-screen">
       <PageHeader
@@ -660,6 +703,16 @@ export default async function ClientDetailPage({
           revenueYoyPct={revenueYoyPct}
           employeesCount={employeesCount}
           branchOfficesCount={branchOfficesCount}
+        />
+
+        <ClientPricingPanel
+          clientId={id}
+          initialSegmentCode={(c.price_segment_code as string | null) ?? null}
+          initialZnizka={
+            c.znizka_indywidualna_pct != null ? Number(c.znizka_indywidualna_pct) : null
+          }
+          segments={pricingSegments}
+          example={pricingExample}
         />
 
         {/* Sprint S6D Day 3 — Menu section (тільки для gastronomia клієнтів).
