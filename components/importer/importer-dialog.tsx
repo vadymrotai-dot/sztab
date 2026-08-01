@@ -64,6 +64,9 @@ export function ImporterDialog({
   const [pending, startTransition] = useTransition()
 
   const [supplierId, setSupplierId] = useState<string>('')
+  const [currency, setCurrency] = useState<'EUR' | 'PLN'>('EUR')
+  // Dostawcy utworzeni inline w kroku 1 (Karol/AVIS-D nie istnieją jeszcze).
+  const [extraSuppliers, setExtraSuppliers] = useState<SupplierOption[]>([])
   const [file, setFile] = useState<File | null>(null)
   const [workbook, setWorkbook] = useState<ParsedWorkbook | null>(null)
   const [sheetName, setSheetName] = useState<string>('')
@@ -87,13 +90,15 @@ export function ImporterDialog({
   const [result, setResult] = useState<ImportResult | null>(null)
 
   const importer = useMemo(
-    () => (supplierId ? new SupplierPriceListImporter(supplierId) : null),
-    [supplierId],
+    () => (supplierId ? new SupplierPriceListImporter(supplierId, currency) : null),
+    [supplierId, currency],
   )
 
   const reset = () => {
     setStep(1)
     setSupplierId('')
+    setCurrency('EUR')
+    setExtraSuppliers([])
     setFile(null)
     setWorkbook(null)
     setSheetName('')
@@ -124,6 +129,7 @@ export function ImporterDialog({
         setHeaderRow(preset.header_row)
         setDataStartRow(preset.data_start_row)
         setHasCategoryHeaders(preset.has_category_headers)
+        if (preset.currency) setCurrency(preset.currency)
       }
     })
     return () => {
@@ -157,6 +163,7 @@ export function ImporterDialog({
     has_category_headers: hasCategoryHeaders,
     category_header_pattern: DEFAULT_PRESET.category_header_pattern,
     sheet: sheetName || undefined,
+    currency,
   })
 
   const runParseAndValidate = async (preset: ImportPreset) => {
@@ -171,12 +178,14 @@ export function ImporterDialog({
     let neu = 0
     let dup = 0
     let invalid = 0
+    let review = 0
     for (const r of rows) {
       if (r.status === 'new') neu++
       else if (r.status === 'duplicate') dup++
       else if (r.status === 'invalid') invalid++
+      else if (r.status === 'review') review++
     }
-    return { neu, dup, invalid }
+    return { neu, dup, invalid, review }
   }, [rows])
 
   const canAdvanceStep1 = !!supplierId && !!workbook
@@ -318,9 +327,15 @@ export function ImporterDialog({
 
         {step === 1 && (
           <StepUpload
-            suppliers={suppliers}
+            suppliers={[...suppliers, ...extraSuppliers]}
             supplierId={supplierId}
             onSupplierChange={setSupplierId}
+            currency={currency}
+            onCurrencyChange={setCurrency}
+            onSupplierCreated={(s) => {
+              setExtraSuppliers((prev) => [...prev, s])
+              setSupplierId(s.id)
+            }}
             file={file}
             onFile={handleFileChosen}
             workbook={workbook}

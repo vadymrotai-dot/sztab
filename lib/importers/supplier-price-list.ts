@@ -19,6 +19,8 @@ import type {
 import {
   batchCommitProducts,
   findProductsByEans,
+  findProductsByNameSupplier,
+  normalizeProductName,
 } from '@/app/actions/import'
 
 // Reviewed 2026-04-26: EAN duplicate detection is supplier-scoped
@@ -37,6 +39,8 @@ export interface ImportedProductDraft {
   gramatura: string | null
   ean: string | null
   cost_eur: number | null
+  cost_pln: number | null
+  unit: string | null
   category: string | null
   is_hero: boolean | null
   seasonality_status: string | null
@@ -44,15 +48,21 @@ export interface ImportedProductDraft {
 }
 
 export class SupplierPriceListImporter extends Importer<ImportedProductDraft> {
-  constructor(public supplierId: string) {
+  // currency — waluta kolumny kosztu wybrana przy uploadzie.
+  constructor(
+    public supplierId: string,
+    public currency: 'EUR' | 'PLN' = 'EUR',
+  ) {
     super()
   }
 
   canonicalSchema: CanonicalField[] = [
     { field: 'name', required: true, type: 'string', label: 'Nazwa produktu' },
     { field: 'gramatura', required: false, type: 'string', label: 'Gramatura', hint: 'np. 3000 g, 500g / ~300g' },
-    { field: 'ean', required: true, type: 'string', label: 'EAN', hint: '8, 12 lub 13 cyfr' },
-    { field: 'cost_eur', required: true, type: 'number', label: 'Koszt EUR', hint: 'cena zakupu od dostawcy' },
+    { field: 'ean', required: false, type: 'string', label: 'EAN', hint: '8, 12 lub 13 cyfr (opcjonalny)' },
+    { field: 'cost_eur', required: false, type: 'number', label: 'Koszt EUR', hint: 'gdy waluta = EUR' },
+    { field: 'cost_pln', required: false, type: 'number', label: 'Koszt PLN', hint: 'gdy waluta = PLN' },
+    { field: 'unit', required: false, type: 'string', label: 'Jednostka', hint: 'szt / kg / opak' },
     { field: 'category', required: false, type: 'string', label: 'Kategoria' },
     { field: 'is_hero', required: false, type: 'boolean', label: 'Hero (★)', hint: 'kolumna ze statusem' },
     { field: 'seasonality_status', required: false, type: 'string', label: 'Status sezonowy' },
@@ -108,6 +118,8 @@ export class SupplierPriceListImporter extends Importer<ImportedProductDraft> {
       const gramatura = toStringOrNull(cellAt(preset.columns.gramatura))
       const ean = toStringOrNull(cellAt(preset.columns.ean))
       const costEur = toNumberOrNull(cellAt(preset.columns.cost_eur))
+      const costPln = toNumberOrNull(cellAt(preset.columns.cost_pln))
+      const unit = toStringOrNull(cellAt(preset.columns.unit))
       const categoryFromColumn = toStringOrNull(
         cellAt(preset.columns.category),
       )
@@ -121,6 +133,8 @@ export class SupplierPriceListImporter extends Importer<ImportedProductDraft> {
         gramatura,
         ean,
         cost_eur: costEur,
+        cost_pln: costPln,
+        unit,
         category: categoryFromColumn ?? currentCategory ?? null,
         is_hero: isHero,
         seasonality_status: seasonality,
@@ -166,21 +180,42 @@ export class SupplierPriceListImporter extends Importer<ImportedProductDraft> {
           message: `Nietypowy format gramatury: "${p.gramatura}"`,
         })
       }
-      if (!p.ean || !isEAN(p.ean)) {
+      // EAN opcjonalny: błąd tylko gdy podany ale w złym formacie. Brak EAN =
+      // dedup po nazwie+dostawcy (findDuplicates), z ostrzeżeniem.
+      if (p.ean && !isEAN(p.ean)) {
         issues.push({
           row: r.rowIndex,
           field: 'ean',
           severity: 'error',
-          message: 'EAN wymagany — 8, 12 lub 13 cyfr',
+          message: 'EAN w złym formacie — 8, 12 lub 13 cyfr',
         })
-      }
-      if (p.cost_eur == null || p.cost_eur <= 0) {
+      } else if (!p.ean) {
         issues.push({
           row: r.rowIndex,
-          field: 'cost_eur',
-          severity: 'error',
-          message: 'Koszt EUR wymagany i > 0',
+          field: 'ean',
+          severity: 'warning',
+          message: 'Brak EAN — dedup po nazwie + dostawcy',
         })
+      }
+      // Koszt wymagany w wybranej walucie.
+      if (this.currency === 'PLN') {
+        if (p.cost_pln == null || p.cost_pln <= 0) {
+          issues.push({
+            row: r.rowIndex,
+            field: 'cost_pln',
+            severity: 'error',
+            message: 'Koszt PLN wymagany i > 0',
+          })
+        }
+      } else {
+        if (p.cost_eur == null || p.cost_eur <= 0) {
+          issues.push({
+            row: r.rowIndex,
+            field: 'cost_eur',
+            severity: 'error',
+            message: 'Koszt EUR wymagany i > 0',
+          })
+        }
       }
 
       const status = issues.some((i) => i.severity === 'error')
@@ -193,18 +228,48 @@ export class SupplierPriceListImporter extends Importer<ImportedProductDraft> {
   async findDuplicates(
     rows: ParsedRow<ImportedProductDraft>[],
   ): Promise<ParsedRow<ImportedProductDraft>[]> {
+    // 1) EAN — dokładne dopasowanie (supplier-scoped).
     const eans = rows
       .map((r) => r.parsed.ean)
       .filter((e): e is string => typeof e === 'string' && e.length > 0)
-    if (eans.length === 0) return rows
+    const eanMap =
+      eans.length > 0 ? await findProductsByEans(eans, this.supplierId) : {}
 
-    const existing = await findProductsByEans(eans, this.supplierId)
+    // 2) Bez EAN — fallback po znormalizowanej nazwie + dostawcy.
+    const noEanNames = rows
+      .filter(
+        (r) =>
+          r.status !== 'invalid' &&
+          !(r.parsed.ean && r.parsed.ean.length > 0) &&
+          typeof r.parsed.name === 'string',
+      )
+      .map((r) => r.parsed.name as string)
+    const nameMap =
+      noEanNames.length > 0
+        ? await findProductsByNameSupplier(noEanNames, this.supplierId)
+        : {}
+
     return rows.map((r) => {
-      const ean = r.parsed.ean
-      if (!ean) return r
       if (r.status === 'invalid') return r
-      const existingId = existing[ean]
-      return existingId ? { ...r, status: 'duplicate' as const } : r
+      const ean = r.parsed.ean
+
+      // EAN present → exact match
+      if (ean && ean.length > 0) {
+        const existingId = eanMap[ean]
+        return existingId
+          ? { ...r, status: 'duplicate' as const, existingId }
+          : r
+      }
+
+      // No EAN → name + supplier
+      const name = r.parsed.name
+      if (!name) return r
+      const ids = nameMap[normalizeProductName(name)] ?? []
+      if (ids.length === 0) return r // nowy
+      if (ids.length === 1)
+        return { ...r, status: 'duplicate' as const, existingId: ids[0] }
+      // >1 dopasowanie → niejednoznaczne, do ręcznego przeglądu
+      return { ...r, status: 'review' as const }
     })
   }
 
@@ -217,8 +282,9 @@ export class SupplierPriceListImporter extends Importer<ImportedProductDraft> {
         ean: r.parsed.ean,
         draft: r.parsed,
         status: r.status,
+        existingId: r.existingId ?? null,
       })),
-      { ...options, supplierId: this.supplierId },
+      { ...options, supplierId: this.supplierId, currency: this.currency },
     )
   }
 }

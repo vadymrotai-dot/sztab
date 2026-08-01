@@ -131,7 +131,11 @@ export function PriceSegmentsEditor({ segments }: { segments: PriceSegment[] }) 
       </div>
 
       <div className="rounded-lg border border-dashed border-[#E5E1D8] bg-white p-4">
-        <h3 className="mb-3 text-[13px] font-medium">Dodaj nowy segment</h3>
+        <h3 className="mb-1 text-[13px] font-medium">Dodaj nowy segment</h3>
+        <p className="mb-3 text-[12px] text-amber-700">
+          Segment = zniżka współdzielona przez wielu klientów. Dla pojedynczego
+          klienta użyj pola „Zniżka indywidualna" na jego profilu.
+        </p>
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
             <label className="text-[11px] uppercase tracking-wider text-[#888]">Kod</label>

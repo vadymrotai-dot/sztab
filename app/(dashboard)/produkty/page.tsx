@@ -6,8 +6,9 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
-import { PlusIcon, UploadIcon } from 'lucide-react'
+import { PlusIcon } from 'lucide-react'
 import { ProduktyShell } from '@/components/produkty/produkty-shell'
+import { ImportLauncher } from '@/components/products/import-launcher'
 import type { Product, Supplier } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -38,10 +39,7 @@ export default async function ProduktyPage() {
                 Dodaj produkt
               </Link>
             </Button>
-            <Button size="sm" variant="outline" disabled title="Wkrótce — Sprint S5">
-              <UploadIcon className="mr-1.5 size-3.5" />
-              Importuj cennik
-            </Button>
+            <ImportLauncher suppliers={(suppliers ?? []) as Supplier[]} />
           </div>
         }
       />

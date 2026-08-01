@@ -78,10 +78,48 @@ export async function findProductsByEans(
   return map
 }
 
+// Normalizacja nazwy do dedup fallback (bez EAN): lowercase, trim, zbite spacje.
+export function normalizeProductName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+// Mapa znormalizowana_nazwa → [id...] dla produktów tego owner+supplier.
+// >1 id = niejednoznaczność (wiersz idzie do 'review', nie auto-insert).
+export async function findProductsByNameSupplier(
+  names: string[],
+  supplierId: string,
+): Promise<Record<string, string[]>> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return {}
+
+  const wanted = new Set(names.map(normalizeProductName).filter((n) => n.length > 0))
+  if (wanted.size === 0) return {}
+
+  const { data } = await supabase
+    .from('products')
+    .select('id, name')
+    .eq('owner_id', user.id)
+    .eq('supplier_id', supplierId)
+
+  const map: Record<string, string[]> = {}
+  for (const row of data ?? []) {
+    if (!row.name || !row.id) continue
+    const key = normalizeProductName(row.name as string)
+    if (!wanted.has(key)) continue
+    ;(map[key] ??= []).push(row.id as string)
+  }
+  return map
+}
+
 interface CommitInput {
   ean: string | null | undefined
   draft: Partial<ImportedProductDraft>
-  status: 'new' | 'duplicate' | 'invalid'
+  status: 'new' | 'duplicate' | 'invalid' | 'review'
+  // id dopasowanego produktu (z findDuplicates) — używane przy update.
+  existingId?: string | null
 }
 
 // Bulk insert/update products from a price-list import.
@@ -119,11 +157,11 @@ export async function batchCommitProducts(
   }
 
   const { kurs, overhead } = await readPricingSettings()
+  const currency: 'EUR' | 'PLN' = options.currency ?? 'EUR'
 
-  // import path is EUR-only for now (CM is the only EUR-priced supplier
-  // with an Excel cennik). When PL suppliers start sending PLN
-  // spreadsheets we'll teach SupplierPriceListImporter to read a
-  // cost_pln column and let the wizard pick the currency at upload.
+  // Waluta wybierana przy uploadzie:
+  //   EUR → cost_pln = cost_eur × kurs × overhead (dostawcy EUR, np. CM)
+  //   PLN → cost_pln brany wprost z pliku (dostawcy PLN, np. Karol/AVIS-D)
 
   // Pre-resolve duplicate ids in one query so we don't issue N selects.
   const eans = rows
@@ -145,13 +183,20 @@ export async function batchCommitProducts(
   // are <500 rows so per-row latency is acceptable.
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i]
-    if (r.status === 'invalid') {
+    // 'invalid' (błędy walidacji) i 'review' (niejednoznaczny duplikat) —
+    // nigdy nie auto-insert; do ręcznej decyzji.
+    if (r.status === 'invalid' || r.status === 'review') {
       skipped++
       continue
     }
 
-    const cost_eur = r.draft.cost_eur ?? 0
-    const cost_pln = cost_eur > 0 ? +(cost_eur * kurs * overhead).toFixed(2) : 0
+    const cost_eur = currency === 'EUR' ? r.draft.cost_eur ?? 0 : 0
+    const cost_pln =
+      currency === 'PLN'
+        ? r.draft.cost_pln ?? 0
+        : cost_eur > 0
+          ? +(cost_eur * kurs * overhead).toFixed(2)
+          : 0
 
     const payload = {
       owner_id: user.id,
@@ -159,7 +204,8 @@ export async function batchCommitProducts(
       name: r.draft.name ?? '',
       gramatura: r.draft.gramatura ?? null,
       ean: r.draft.ean ?? null,
-      cost_eur,
+      unit: r.draft.unit ?? null,
+      cost_eur: currency === 'EUR' ? cost_eur : null,
       cost_pln,
       category: r.draft.category ?? null,
       is_hero: r.draft.is_hero ?? false,
@@ -172,7 +218,9 @@ export async function batchCommitProducts(
         skipped++
         continue
       }
-      const existingId = r.ean ? existingMap[r.ean] : undefined
+      // existingId z findDuplicates (EAN albo nazwa+dostawca); EAN-mapa fallback.
+      const existingId =
+        r.existingId ?? (r.ean ? existingMap[r.ean] : undefined)
       if (!existingId) {
         skipped++
         continue
@@ -183,6 +231,7 @@ export async function batchCommitProducts(
           // Preserve owner_id/supplier_id; only refresh price-list payload.
           name: payload.name,
           gramatura: payload.gramatura,
+          unit: payload.unit,
           cost_eur: payload.cost_eur,
           cost_pln: payload.cost_pln,
           category: payload.category,
