@@ -263,7 +263,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     .select(
       // Sprint T-ORDER.4b-API — dodano `unit` dla snapshotu pozycji (unit_snapshot).
       // Przejście 2A — dodano `grupa` (podział CM/seafood) i `vat_rate` (VAT mieszany).
-      'id, name, display_name, gramatura, unit, grupa, vat_rate, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, show_in_orders',
+      // Faza 1 DAGOLD (089) — marza_bazowa_pct + cost_pln dla nowego price-path.
+      'id, name, display_name, gramatura, unit, grupa, vat_rate, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, marza_bazowa_pct, cost_pln, show_in_orders',
     )
     .in('id', productIds)
   if (!products || products.length !== productIds.length) {
@@ -291,10 +292,79 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     order.cennik_tier === 'wielki_hurt' ? 'wielki_hurt' : 'standard'
   const priceMode: 'auto' | 'minimum' = order.price_mode === 'minimum' ? 'minimum' : 'auto'
 
+  // ── Faza 1 DAGOLD (089) — NOWY price-path ──────────────────────────────────
+  // cena = segmentA_price(produkt) × (1 − znizka_klienta)
+  //   segmentA_price = cost_pln / (1 − marza_bazowa_pct)
+  //   znizka = clients.znizka_indywidualna_pct
+  //            ?? price_segments.znizka_pct (po clients.price_segment_code)
+  //            ?? 0
+  // Stosowane TYLKO gdy produkt ma marza_bazowa_pct != NULL. Inaczej — stara
+  // matryca poniżej (nietknięta) jako fallback.
+  let znizkaKlienta = 0
+  {
+    const clientId = (order as { client_id?: string }).client_id ?? null
+    if (clientId) {
+      const { data: cli } = await supabase
+        .from('clients')
+        .select('price_segment_code, znizka_indywidualna_pct')
+        .eq('id', clientId)
+        .maybeSingle()
+      if (cli?.znizka_indywidualna_pct != null) {
+        znizkaKlienta = Number(cli.znizka_indywidualna_pct)
+      } else if (cli?.price_segment_code) {
+        const { data: seg } = await supabase
+          .from('price_segments')
+          .select('znizka_pct')
+          .eq('code', cli.price_segment_code)
+          .maybeSingle()
+        if (seg?.znizka_pct != null) znizkaKlienta = Number(seg.znizka_pct)
+      }
+    }
+    if (!Number.isFinite(znizkaKlienta) || znizkaKlienta < 0) znizkaKlienta = 0
+    if (znizkaKlienta > 0.95) znizkaKlienta = 0.95
+  }
+
+  // Nowa cena jednostkowa gdy produkt ma marza_bazowa_pct. NULL → stary flow.
+  // NaN → marża ustawiona, ale brak cost_pln > 0 (błąd danych — guard niżej).
+  const newUnitPrice = (p: (typeof products)[number]): number | null => {
+    const marzaRaw = (p as { marza_bazowa_pct?: number | string | null }).marza_bazowa_pct
+    if (marzaRaw == null) return null
+    const marza = Math.min(Number(marzaRaw), 0.95)
+    const cost = Number((p as { cost_pln?: number | string | null }).cost_pln ?? 0)
+    if (!(cost > 0) || !(marza < 1)) return NaN
+    const segmentA = cost / (1 - marza)
+    return Math.round(segmentA * (1 - znizkaKlienta) * 100) / 100
+  }
+
+  const newPriceBroken = products.filter(
+    (p) =>
+      (p as { marza_bazowa_pct?: unknown }).marza_bazowa_pct != null &&
+      Number.isNaN(newUnitPrice(p) as number),
+  )
+  if (newPriceBroken.length > 0) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          'Produkt ma marżę bazową, ale brak kosztu (cost_pln): ' +
+          newPriceBroken.map((p) => p.display_name || p.name).join(', '),
+      },
+      { status: 400 },
+    )
+  }
+
+  const hasNewPrice = (pid: string): boolean => {
+    const p = products.find((pp) => pp.id === pid)
+    return !!p && (p as { marza_bazowa_pct?: unknown }).marza_bazowa_pct != null
+  }
+  // ───────────────────────────────────────────────────────────────────────────
+
   const isSeafood = (pid: string): boolean =>
     products.find((pp) => pp.id === pid)?.grupa === 'owoce_morza'
-  const cmItems = input.items.filter((it) => !isSeafood(it.product_id))
-  const seafoodItems = input.items.filter((it) => isSeafood(it.product_id))
+  // Stara matryca liczy poziom TYLKO na pozycjach bez marza_bazowa_pct (fallback).
+  const oldItems = input.items.filter((it) => !hasNewPrice(it.product_id))
+  const cmItems = oldItems.filter((it) => !isSeafood(it.product_id))
+  const seafoodItems = oldItems.filter((it) => isSeafood(it.product_id))
 
   // Suma (qty × cena[priceKey]) po PODZBIORZE pozycji. NaN gdy brak ceny (null).
   const sumSubset = (
@@ -398,6 +468,9 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   const cmPriceKey = cmTier ? TIER_PRICE[cmTier] : null
   const seafoodPriceKey = seafoodTier ? TIER_PRICE[seafoodTier] : null
   const unitPriceFor = (p: (typeof products)[number]): number => {
+    // Faza 1 DAGOLD (089) — nowy price-path ma pierwszeństwo gdy marża ustawiona.
+    const np = newUnitPrice(p)
+    if (np != null && !Number.isNaN(np)) return np
     const key = p.grupa === 'owoce_morza' ? seafoodPriceKey : cmPriceKey
     return key ? Number((p as Record<string, unknown>)[key]) : 0
   }
@@ -405,7 +478,17 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   // tier_at_submit (TEXT free-form) — reprezentatywny: CM jeśli jest, inaczej seafood.
   const tier: TierAtSubmit = cmTier ?? seafoodTier ?? 'maly'
 
-  const totalNet = cmTotal + seafoodTotal
+  // Faza 1 DAGOLD (089) — totalNet z sumy per-pozycja przez unitPriceFor:
+  //   - nowy price-path (marża) → segmentA × (1 − znizka)
+  //   - stary (fallback) → identyczne z cmTotal+seafoodTotal (ta sama kolumna/tier)
+  // VAT (netByVat niżej) też liczony przez unitPriceFor → spójne.
+  const totalNet =
+    Math.round(
+      input.items.reduce((sum, item) => {
+        const p = products.find((pp) => pp.id === item.product_id)!
+        return sum + item.qty * unitPriceFor(p)
+      }, 0) * 100,
+    ) / 100
 
   // VAT MIESZANY — księgowo: VAT liczony na sumie netto KAŻDEJ stawki osobno,
   // zaokrąglony do grosza per stawka, potem suma (zamiast globalnego *0.05).
