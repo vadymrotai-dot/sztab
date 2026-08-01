@@ -45,6 +45,7 @@ import {
   ChevronUpIcon,
   ChevronRightIcon,
   SearchIcon,
+  TagIcon,
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -263,6 +264,19 @@ export function AppSidebar({ user, prospectHotCount = 0, counts = {} }: AppSideb
       ],
     },
     { name: 'Produkty', href: '/produkty', icon: PackageIcon, badgeCount: counts.products },
+    {
+      // Faza 1 DAGOLD — dom całej administracji cenami. Sam "/ceny" nie ma
+      // strony, więc klik w parent prowadzi do /ceny/segmenty; chevron rozwija
+      // trzy sub-itemy (Marże / Segmenty / Klienci → segmenty).
+      name: 'Ceny',
+      href: '/ceny/segmenty',
+      icon: TagIcon,
+      items: [
+        { name: 'Marże produktów', href: '/produkty/marze' },
+        { name: 'Segmenty', href: '/ceny/segmenty' },
+        { name: 'Klienci → segmenty', href: '/ceny/klienci' },
+      ],
+    },
     {
       name: 'Dostawcy',
       href: '/suppliers',

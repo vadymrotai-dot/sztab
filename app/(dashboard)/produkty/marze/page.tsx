@@ -25,7 +25,7 @@ export default async function MarzeProduktowPage() {
         breadcrumbs={[{ label: 'Produkty', href: '/produkty' }, { label: 'Marże' }]}
         actions={
           <Button size="sm" variant="outline" asChild>
-            <Link href="/ustawienia/segmenty-cenowe">
+            <Link href="/ceny/segmenty">
               <SlidersHorizontalIcon className="mr-1.5 size-3.5" />
               Segmenty cenowe
             </Link>

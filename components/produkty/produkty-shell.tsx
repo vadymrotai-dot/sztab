@@ -11,12 +11,9 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   SearchIcon,
-  PlusIcon,
-  UploadIcon,
   SparklesIcon,
   Loader2Icon,
   PencilIcon,
-  PercentIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
@@ -434,28 +431,6 @@ function MetricCard({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-[#E5E1D8] bg-white px-4 py-3">
       <div className="text-[10px] uppercase tracking-wider text-[#888]">{label}</div>
       <div className="mt-1 font-mono text-[14px] font-medium">{value}</div>
-    </div>
-  )
-}
-
-export function ProduktyTopBar({ onAddProduct, onImportPricelist }: { onAddProduct?: () => void; onImportPricelist?: () => void }) {
-  return (
-    <div className="flex items-center gap-2">
-      <Button size="sm" onClick={onAddProduct}>
-        <PlusIcon className="mr-1.5 size-3.5" />
-        Dodaj produkt
-      </Button>
-      <Button size="sm" variant="outline" onClick={onImportPricelist}>
-        <UploadIcon className="mr-1.5 size-3.5" />
-        Importuj cennik
-      </Button>
-      {/* Faza 1 DAGOLD (089) — KROK C: wejście do bulk-edycji marż. */}
-      <Button size="sm" variant="outline" asChild>
-        <Link href="/produkty/marze">
-          <PercentIcon className="mr-1.5 size-3.5" />
-          Marże
-        </Link>
-      </Button>
     </div>
   )
 }
