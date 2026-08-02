@@ -47,6 +47,30 @@ export async function updateProductMarza(
   return { ok: true }
 }
 
+// ── Task #14 Część 2 — przełącznik widoczności produktu w ofercie ───────────
+const ShowInOrdersSchema = z.object({
+  productId: z.string().uuid(),
+  show: z.boolean(),
+})
+
+export async function setProductShowInOrders(
+  productId: string,
+  show: boolean,
+): Promise<ActionResult> {
+  const parsed = ShowInOrdersSchema.safeParse({ productId, show })
+  if (!parsed.success) return { ok: false, error: 'Niepoprawne dane' }
+  const { supabase, user } = await requireUser()
+  if (!user) return { ok: false, error: 'Nieautoryzowany' }
+  const { error } = await supabase
+    .from('products')
+    .update({ show_in_orders: parsed.data.show })
+    .eq('id', parsed.data.productId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath('/produkty/marze')
+  revalidatePath('/produkty')
+  return { ok: true }
+}
+
 // ── KROK D — segmenty cenowe ───────────────────────────────────────────────
 const SegmentSchema = z.object({
   code: z

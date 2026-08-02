@@ -22,7 +22,7 @@ export default async function MarzeProduktowPage() {
     supabase
       .from('products')
       .select(
-        'id, name, display_name, category, gramatura, ean, unit, brand, supplier_id, cost_pln, marza_bazowa_pct',
+        'id, name, display_name, category, gramatura, ean, unit, brand, supplier_id, cost_pln, marza_bazowa_pct, show_in_orders',
       )
       .order('name', { ascending: true }),
     supabase.from('suppliers').select('id, name').order('name', { ascending: true }),

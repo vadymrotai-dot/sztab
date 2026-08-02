@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { computeNewUnitPrice, resolveClientDiscount } from '@/lib/orders/pricing'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -119,7 +120,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
   const { data: order } = await admin
     .from('orders')
-    .select('id, status, tier_at_submit')
+    .select('id, status, tier_at_submit, client_id')
     .eq('id', id)
     .maybeSingle()
   if (!order) {
@@ -148,7 +149,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
   const { data: product } = await admin
     .from('products')
-    .select(`id, name, display_name, gramatura, ${priceKey}, show_in_orders`)
+    .select(`id, name, display_name, gramatura, ${priceKey}, marza_bazowa_pct, cost_pln, show_in_orders`)
     .eq('id', parsed.data.product_id)
     .eq('show_in_orders', true)
     .maybeSingle()
@@ -159,15 +160,24 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     )
   }
 
-  // Sprint S-CENNIK-WH.2 — guard against NULL price (e.g. wielki_hurt_entry SKU bez price_hurt_wh)
-  const rawPrice = (product as any)[priceKey]
-  if (rawPrice == null) {
-    return NextResponse.json(
-      { ok: false, error: `Produkt nie ma ceny w cenniku (${priceKey}) — admin override required` },
-      { status: 400 },
-    )
+  // Task #14 — new-price-path (marża bazowa) ma pierwszeństwo, spójnie z submit/GET.
+  // Fallback na starą matrycę (tier_at_submit) tylko gdy marża NULL.
+  const discount = await resolveClientDiscount(admin, (order as any).client_id ?? null)
+  const np = computeNewUnitPrice(product as any, discount)
+  let unitPrice: number
+  if (np != null && !Number.isNaN(np)) {
+    unitPrice = np
+  } else {
+    // Sprint S-CENNIK-WH.2 — guard against NULL price (np. wielki_hurt_entry SKU bez price_hurt_wh)
+    const rawPrice = (product as any)[priceKey]
+    if (rawPrice == null) {
+      return NextResponse.json(
+        { ok: false, error: `Produkt nie ma ceny w cenniku (${priceKey}) — admin override required` },
+        { status: 400 },
+      )
+    }
+    unitPrice = Number(rawPrice)
   }
-  const unitPrice = Number(rawPrice)
   const lineTotal = parsed.data.qty * unitPrice
 
   const { data: inserted, error: insErr } = await admin

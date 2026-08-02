@@ -15,6 +15,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  computeNewUnitPrice,
+  hasNewPrice as hasNewPriceFn,
+  resolveClientDiscount,
+} from '@/lib/orders/pricing'
 // Sprint T-ORDER.1 (30.05.2026) — usunięto `after()` + processProforma import.
 // Proforma teraz wysyłana ręcznie przez admina (przycisk "Potwierdź i wyślij
 // proformę" w panelu zamówienia → POST /api/orders/admin/[id]/send-proforma).
@@ -300,41 +305,20 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   //            ?? 0
   // Stosowane TYLKO gdy produkt ma marza_bazowa_pct != NULL. Inaczej — stara
   // matryca poniżej (nietknięta) jako fallback.
-  let znizkaKlienta = 0
-  {
-    const clientId = (order as { client_id?: string }).client_id ?? null
-    if (clientId) {
-      const { data: cli } = await supabase
-        .from('clients')
-        .select('price_segment_code, znizka_indywidualna_pct')
-        .eq('id', clientId)
-        .maybeSingle()
-      if (cli?.znizka_indywidualna_pct != null) {
-        znizkaKlienta = Number(cli.znizka_indywidualna_pct)
-      } else if (cli?.price_segment_code) {
-        const { data: seg } = await supabase
-          .from('price_segments')
-          .select('znizka_pct')
-          .eq('code', cli.price_segment_code)
-          .maybeSingle()
-        if (seg?.znizka_pct != null) znizkaKlienta = Number(seg.znizka_pct)
-      }
-    }
-    if (!Number.isFinite(znizkaKlienta) || znizkaKlienta < 0) znizkaKlienta = 0
-    if (znizkaKlienta > 0.95) znizkaKlienta = 0.95
-  }
+  // Task #14 — zniżka klienta z wspólnej funkcji (ta sama co GET/order-form).
+  const znizkaKlienta = await resolveClientDiscount(
+    supabase,
+    (order as { client_id?: string }).client_id ?? null,
+  )
 
   // Nowa cena jednostkowa gdy produkt ma marza_bazowa_pct. NULL → stary flow.
   // NaN → marża ustawiona, ale brak cost_pln > 0 (błąd danych — guard niżej).
-  const newUnitPrice = (p: (typeof products)[number]): number | null => {
-    const marzaRaw = (p as { marza_bazowa_pct?: number | string | null }).marza_bazowa_pct
-    if (marzaRaw == null) return null
-    const marza = Math.min(Number(marzaRaw), 0.95)
-    const cost = Number((p as { cost_pln?: number | string | null }).cost_pln ?? 0)
-    if (!(cost > 0) || !(marza < 1)) return NaN
-    const segmentA = cost / (1 - marza)
-    return Math.round(segmentA * (1 - znizkaKlienta) * 100) / 100
-  }
+  // Task #14 — wspólna funkcja z lib/orders/pricing.ts (parity GET↔POST).
+  const newUnitPrice = (p: (typeof products)[number]): number | null =>
+    computeNewUnitPrice(
+      p as { marza_bazowa_pct?: number | string | null; cost_pln?: number | string | null },
+      znizkaKlienta,
+    )
 
   const newPriceBroken = products.filter(
     (p) =>
@@ -355,7 +339,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
   const hasNewPrice = (pid: string): boolean => {
     const p = products.find((pp) => pp.id === pid)
-    return !!p && (p as { marza_bazowa_pct?: unknown }).marza_bazowa_pct != null
+    return !!p && hasNewPriceFn(p as { marza_bazowa_pct?: number | string | null; cost_pln?: number | string | null })
   }
   // ───────────────────────────────────────────────────────────────────────────
 
