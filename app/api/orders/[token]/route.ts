@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { computeNewUnitPrice, resolveClientDiscount } from '@/lib/orders/pricing'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -108,7 +109,8 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     // produktów niedostępnych (in_stock=false).
     .select(
       // Przejście 2C — dodano vat_rate (front liczy VAT per-stawka jak serwer 2A).
-      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, order_form_sort, category, grupa, podgrupa, in_stock, unit, vat_rate',
+      // Task #14 — dodano marza_bazowa_pct + cost_pln dla new-price-path (parity z submit).
+      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, order_form_sort, category, grupa, podgrupa, in_stock, unit, vat_rate, marza_bazowa_pct, cost_pln',
     )
     .eq('show_in_orders', true)
     .order('order_form_sort', { ascending: true })
@@ -126,6 +128,10 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       .update({ link_opened_at: new Date().toISOString() })
       .eq('id', order.id)
   }
+
+  // Task #14 — zniżka klienta (ta sama funkcja co submit) do policzenia
+  // new_unit_price per produkt. Klient widzi TĘ SAMĄ cenę co potem submit.
+  const discount = await resolveClientDiscount(supabase, order.client_id)
 
   return NextResponse.json({
     ok: true,
@@ -170,6 +176,16 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       sort: p.order_form_sort,
       // Przejście 2C — vat_rate per produkt (CM 0.05, kalmary 0.23, putasu 0.05).
       vat_rate: p.vat_rate == null ? 0.05 : Number(p.vat_rate),
+      // Task #14 — new-price-path (marża bazowa). Gdy != null, order-form pokazuje
+      // TĘ cenę (stałą), a nie starą matrycę → parity z submit. NaN (marża bez
+      // kosztu) → null (fallback na matrycę, jak w submit guard).
+      new_unit_price: (() => {
+        const np = computeNewUnitPrice(
+          { marza_bazowa_pct: p.marza_bazowa_pct, cost_pln: p.cost_pln },
+          discount,
+        )
+        return np != null && !Number.isNaN(np) ? np : null
+      })(),
       prices: {
         maly: Number(p.price_maly_opt),
         sredni: Number(p.price_sredni),

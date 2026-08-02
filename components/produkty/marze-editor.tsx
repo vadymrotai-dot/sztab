@@ -12,7 +12,11 @@ import { toast } from 'sonner'
 import { ChevronRightIcon, PencilIcon } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { updateProductMarza } from '@/app/actions/pricing-admin'
+import { Switch } from '@/components/ui/switch'
+import {
+  updateProductMarza,
+  setProductShowInOrders,
+} from '@/app/actions/pricing-admin'
 
 export interface MarzaRow {
   id: string
@@ -26,6 +30,7 @@ export interface MarzaRow {
   supplier_id: string | null
   cost_pln: number | null
   marza_bazowa_pct: number | null // ułamek
+  show_in_orders: boolean
 }
 
 export interface SupplierLite {
@@ -68,6 +73,11 @@ export function MarzeEditor({
   )
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  // Task #14 Część 2 — optymistyczny stan widoczności + blokada w trakcie zapisu.
+  const [vis, setVis] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(products.map((p) => [p.id, p.show_in_orders])),
+  )
+  const [visBusy, setVisBusy] = useState<Record<string, boolean>>({})
 
   const supplierById = useMemo(() => {
     const m = new Map<string, string>()
@@ -116,6 +126,20 @@ export function MarzeEditor({
     }
     setSaved((s) => ({ ...s, [p.id]: draft[p.id] ?? '' }))
     toast.success(`Zapisano marżę: ${p.name}`)
+  }
+
+  // Task #14 Część 2 — natychmiastowy zapis widoczności (bez osobnego „Zapisz").
+  async function toggleVis(p: MarzaRow, next: boolean) {
+    setVis((v) => ({ ...v, [p.id]: next })) // optymistycznie
+    setVisBusy((b) => ({ ...b, [p.id]: true }))
+    const res = await setProductShowInOrders(p.id, next)
+    setVisBusy((b) => ({ ...b, [p.id]: false }))
+    if (!res.ok) {
+      setVis((v) => ({ ...v, [p.id]: !next })) // rollback
+      toast.error(`Nie zmieniono widoczności: ${res.error}`)
+      return
+    }
+    toast.success(`${p.name}: ${next ? 'w ofercie' : 'ukryty'}`)
   }
 
   function toggleGroup(key: string) {
@@ -189,6 +213,7 @@ export function MarzeEditor({
                         <th className="px-3 py-1.5 text-right font-medium">Koszt PLN</th>
                         <th className="px-3 py-1.5 text-right font-medium">Marża %</th>
                         <th className="px-3 py-1.5 text-right font-medium">Cena A</th>
+                        <th className="px-3 py-1.5 text-center font-medium">W ofercie</th>
                         <th className="px-3 py-1.5" />
                       </tr>
                     </thead>
@@ -234,6 +259,14 @@ export function MarzeEditor({
                                 <span className="text-[#bbb]">—</span>
                               )}
                             </td>
+                            <td className="px-3 py-2 text-center">
+                              <Switch
+                                checked={vis[p.id] ?? false}
+                                disabled={visBusy[p.id]}
+                                onCheckedChange={(v) => toggleVis(p, v)}
+                                aria-label={`Widoczność w ofercie: ${p.name}`}
+                              />
+                            </td>
                             <td className="px-3 py-2">
                               <div className="flex items-center justify-end gap-1.5">
                                 <Button
@@ -265,7 +298,8 @@ export function MarzeEditor({
       <p className="text-[12px] text-[#888]">
         Puste pole marży = produkt korzysta ze starej logiki (fallback). Cena
         segment A = koszt PLN / (1 − marża). „Edytuj" otwiera pełny formularz
-        produktu (koszt, EAN, tiery). Grupowanie: Dostawca → Kategoria.
+        produktu (koszt, EAN, tiery). Przełącznik „W ofercie" = widoczność w
+        formularzu zamówień klienta (zapis natychmiastowy). Grupowanie: Dostawca → Kategoria.
       </p>
     </div>
   )

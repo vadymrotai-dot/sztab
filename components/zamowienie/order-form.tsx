@@ -40,6 +40,10 @@ type Product = {
   unit: string | null
   sort: number | null
   vat_rate: number
+  // Task #14 — new-price-path z serwera (marża bazowa). Gdy != null, to jest
+  // CENA STAŁA tego produktu (parity z submit); stara matryca prices tylko
+  // fallback dla produktów bez marży.
+  new_unit_price?: number | null
   prices: {
     maly: number
     sredni: number
@@ -156,8 +160,12 @@ function computeOrderTotals(
   const entries = Object.entries(cart).filter(([, q]) => q > 0)
   const prodOf = (id: string): Product | undefined => products.find((p) => p.id === id)
   const isSeafood = (id: string): boolean => prodOf(id)?.grupa === 'owoce_morza'
-  const cmEntries = entries.filter(([id]) => !isSeafood(id))
-  const seafoodEntries = entries.filter(([id]) => isSeafood(id))
+  // Task #14 — produkty z new_unit_price (marża bazowa) mają cenę STAŁĄ i są
+  // wykluczone z matrycy tierowej — dokładnie jak `oldItems` w submit/route.ts.
+  const hasNew = (id: string): boolean => (prodOf(id)?.new_unit_price ?? null) != null
+  const oldEntries = entries.filter(([id]) => !hasNew(id))
+  const cmEntries = oldEntries.filter(([id]) => !isSeafood(id))
+  const seafoodEntries = oldEntries.filter(([id]) => isSeafood(id))
 
   const sumSubset = (
     subset: Array<[string, number]>,
@@ -220,13 +228,25 @@ function computeOrderTotals(
     seafoodTotal = sumSubset(seafoodEntries, (p) => p.prices[sfTier])
   }
 
-  // Cena jednostkowa per-produkt wg gałęzi (do VAT i wyświetlania).
+  // Cena jednostkowa per-produkt (do VAT i wyświetlania).
+  // Task #14 — new_unit_price (marża) ma pierwszeństwo = cena stała (parity z submit);
+  // inaczej stara matryca wg gałęzi/tieru.
   const unitPriceOf = (p: Product): number => {
+    if (p.new_unit_price != null) return p.new_unit_price
     if (p.grupa === 'owoce_morza') return seafoodTier ? p.prices[seafoodTier] ?? 0 : 0
     return cmTier ? p.prices[tierToPriceKey(cmTier)] ?? 0 : 0
   }
 
-  const totalNet = cmTotal + seafoodTotal
+  // Task #14 — totalNet z sumy per-pozycja przez unitPriceOf po WSZYSTKICH
+  // pozycjach (new-price + legacy), lustro submit. cmTotal/seafoodTotal niżej
+  // zostają jako sumy legacy (do plansz tierów).
+  const totalNet =
+    Math.round(
+      entries.reduce((sum, [id, qty]) => {
+        const p = prodOf(id)
+        return p ? sum + qty * unitPriceOf(p) : sum
+      }, 0) * 100,
+    ) / 100
 
   // VAT MIESZANY — lustro serwera 2A: netto per stawka, round do grosza per stawka, suma.
   const netByVat = new Map<number, number>()
@@ -404,8 +424,11 @@ export function OrderForm({
   const startTier: StandardTier = isMinimum ? 'duzy' : 'maly'
   const cmDisplayTier: Tier = cmTier ?? startTier
   const seafoodDisplayTier: StandardTier = seafoodTier ?? startTier
-  // Cena jednostkowa per-produkt wg gałęzi, z fallbackiem startowym (pusty koszyk → maly/duzy).
+  // Cena jednostkowa per-produkt do WYŚWIETLANIA.
+  // Task #14 — new_unit_price (marża) = cena stała (parity z submit); inaczej
+  // stara matryca wg gałęzi, z fallbackiem startowym (pusty koszyk → maly/duzy).
   const productUnitPrice = (p: Product): number => {
+    if (p.new_unit_price != null) return p.new_unit_price
     if (p.grupa === 'owoce_morza') return p.prices[seafoodDisplayTier] ?? 0
     return p.prices[tierToPriceKey(cmDisplayTier)] ?? 0
   }
