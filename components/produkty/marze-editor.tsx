@@ -14,9 +14,19 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   updateProductMarza,
   setProductShowInOrders,
+  setProductAvailability,
 } from '@/app/actions/pricing-admin'
+
+type Dostepnosc = 'w_magazynie' | 'na_zamowienie'
 
 export interface MarzaRow {
   id: string
@@ -31,6 +41,7 @@ export interface MarzaRow {
   cost_pln: number | null
   marza_bazowa_pct: number | null // ułamek
   show_in_orders: boolean
+  dostepnosc: Dostepnosc
 }
 
 export interface SupplierLite {
@@ -78,6 +89,11 @@ export function MarzeEditor({
     Object.fromEntries(products.map((p) => [p.id, p.show_in_orders])),
   )
   const [visBusy, setVisBusy] = useState<Record<string, boolean>>({})
+  // Dostępność — optymistyczny stan + blokada w trakcie zapisu.
+  const [avail, setAvail] = useState<Record<string, Dostepnosc>>(() =>
+    Object.fromEntries(products.map((p) => [p.id, p.dostepnosc])),
+  )
+  const [availBusy, setAvailBusy] = useState<Record<string, boolean>>({})
 
   const supplierById = useMemo(() => {
     const m = new Map<string, string>()
@@ -140,6 +156,23 @@ export function MarzeEditor({
       return
     }
     toast.success(`${p.name}: ${next ? 'w ofercie' : 'ukryty'}`)
+  }
+
+  // Dostępność — natychmiastowy zapis (bez osobnego „Zapisz").
+  async function changeAvail(p: MarzaRow, next: Dostepnosc) {
+    const prev = avail[p.id] ?? 'w_magazynie'
+    setAvail((a) => ({ ...a, [p.id]: next }))
+    setAvailBusy((b) => ({ ...b, [p.id]: true }))
+    const res = await setProductAvailability(p.id, next)
+    setAvailBusy((b) => ({ ...b, [p.id]: false }))
+    if (!res.ok) {
+      setAvail((a) => ({ ...a, [p.id]: prev }))
+      toast.error(`Nie zmieniono dostępności: ${res.error}`)
+      return
+    }
+    toast.success(
+      `${p.name}: ${next === 'w_magazynie' ? 'w magazynie' : 'na zamówienie'}`,
+    )
   }
 
   function toggleGroup(key: string) {
@@ -214,6 +247,7 @@ export function MarzeEditor({
                         <th className="px-3 py-1.5 text-right font-medium">Marża %</th>
                         <th className="px-3 py-1.5 text-right font-medium">Cena A</th>
                         <th className="px-3 py-1.5 text-center font-medium">W ofercie</th>
+                        <th className="px-3 py-1.5 font-medium">Dostępność</th>
                         <th className="px-3 py-1.5" />
                       </tr>
                     </thead>
@@ -266,6 +300,21 @@ export function MarzeEditor({
                                 onCheckedChange={(v) => toggleVis(p, v)}
                                 aria-label={`Widoczność w ofercie: ${p.name}`}
                               />
+                            </td>
+                            <td className="px-3 py-2">
+                              <Select
+                                value={avail[p.id] ?? 'w_magazynie'}
+                                onValueChange={(v) => changeAvail(p, v as Dostepnosc)}
+                                disabled={availBusy[p.id]}
+                              >
+                                <SelectTrigger className="h-8 w-40 text-[12px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="w_magazynie">W magazynie</SelectItem>
+                                  <SelectItem value="na_zamowienie">Na zamówienie</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </td>
                             <td className="px-3 py-2">
                               <div className="flex items-center justify-end gap-1.5">

@@ -110,7 +110,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     .select(
       // Przejście 2C — dodano vat_rate (front liczy VAT per-stawka jak serwer 2A).
       // Task #14 — dodano marza_bazowa_pct + cost_pln dla new-price-path (parity z submit).
-      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, order_form_sort, category, grupa, podgrupa, in_stock, unit, vat_rate, marza_bazowa_pct, cost_pln',
+      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, order_form_sort, category, grupa, podgrupa, in_stock, unit, vat_rate, marza_bazowa_pct, cost_pln, dostepnosc',
     )
     .eq('show_in_orders', true)
     .order('order_form_sort', { ascending: true })
@@ -172,6 +172,10 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       grupa: p.grupa,
       podgrupa: p.podgrupa,
       in_stock: p.in_stock,
+      // Faza 1 DAGOLD — oś dostępności (display-only, badge w order-form).
+      dostepnosc: (p.dostepnosc === 'na_zamowienie' ? 'na_zamowienie' : 'w_magazynie') as
+        | 'w_magazynie'
+        | 'na_zamowienie',
       unit: p.unit,
       sort: p.order_form_sort,
       // Przejście 2C — vat_rate per produkt (CM 0.05, kalmary 0.23, putasu 0.05).
