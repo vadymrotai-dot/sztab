@@ -71,6 +71,30 @@ export async function setProductShowInOrders(
   return { ok: true }
 }
 
+// ── Faza 1 DAGOLD — dostępność produktu (oś niezależna od show_in_orders) ────
+const AvailabilitySchema = z.object({
+  productId: z.string().uuid(),
+  value: z.enum(['w_magazynie', 'na_zamowienie']),
+})
+
+export async function setProductAvailability(
+  productId: string,
+  value: 'w_magazynie' | 'na_zamowienie',
+): Promise<ActionResult> {
+  const parsed = AvailabilitySchema.safeParse({ productId, value })
+  if (!parsed.success) return { ok: false, error: 'Niepoprawna dostępność' }
+  const { supabase, user } = await requireUser()
+  if (!user) return { ok: false, error: 'Nieautoryzowany' }
+  const { error } = await supabase
+    .from('products')
+    .update({ dostepnosc: parsed.data.value })
+    .eq('id', parsed.data.productId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath('/produkty/marze')
+  revalidatePath('/produkty')
+  return { ok: true }
+}
+
 // ── KROK D — segmenty cenowe ───────────────────────────────────────────────
 const SegmentSchema = z.object({
   code: z

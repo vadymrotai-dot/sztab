@@ -37,6 +37,8 @@ type Product = {
   grupa: string | null
   podgrupa: string | null
   in_stock: boolean
+  // Faza 1 DAGOLD — dostępność (display-only): badge „od ręki" / „na zamówienie".
+  dostepnosc?: 'w_magazynie' | 'na_zamowienie'
   unit: string | null
   sort: number | null
   vat_rate: number
@@ -1626,6 +1628,17 @@ export function OrderForm({
                             {isPomidor && p.in_stock && (
                               <span className="shrink-0 text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold uppercase">
                                 Ostatnie
+                              </span>
+                            )}
+                            {/* Faza 1 DAGOLD — badge dostępności (display-only, nie wpływa na cenę). */}
+                            {p.in_stock && p.dostepnosc === 'na_zamowienie' && (
+                              <span className="shrink-0 text-[10px] bg-[#dbeafe] text-[#1e40af] px-1.5 py-0.5 rounded font-bold uppercase">
+                                Na zamówienie
+                              </span>
+                            )}
+                            {p.in_stock && p.dostepnosc !== 'na_zamowienie' && (
+                              <span className="shrink-0 text-[10px] bg-[#dcfce7] text-[#166534] px-1.5 py-0.5 rounded font-bold uppercase">
+                                Od ręki
                               </span>
                             )}
                           </div>
