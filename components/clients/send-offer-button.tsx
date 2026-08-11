@@ -23,7 +23,7 @@ type Props = {
   cohorts?: Cohort[]
 }
 
-function buildDefaultMessage(orderLink: string, lang: 'pl' | 'ua') {
+function buildDefaultMessage(lang: 'pl' | 'ua') {
   if (lang === 'ua') {
     return `Доброго дня,
 
@@ -31,8 +31,7 @@ function buildDefaultMessage(orderLink: string, lang: 'pl' | 'ua') {
 
 У вкладенні файл Excel з повним асортиментом, цінами нетто та таблицею знижок від суми замовлення.
 
-Щоб оформити замовлення онлайн — просто натисніть посилання нижче, форма займає 2 хвилини (знижка рахується автоматично в міру набору товару):
-${orderLink}
+Щоб оформити замовлення онлайн — натисніть велику кнопку «ЗАМОВИТИ ТУТ» нижче. Форма займає 2 хвилини, знижка рахується автоматично в міру набору товару.
 
 За питаннями — телефонуйте або пишіть.
 
@@ -47,8 +46,7 @@ Przesyłam aktualną ofertę hurtową DAGOLD — kiszonki i surówki (Czudowa Ma
 
 W załączeniu plik Excel z pełnym asortymentem, cenami netto i tabelą rabatów od wartości zamówienia.
 
-Aby złożyć zamówienie online — wystarczy kliknąć link poniżej, formularz zajmuje 2 minuty (rabat nalicza się automatycznie w miarę dodawania towaru):
-${orderLink}
+Aby złożyć zamówienie online — kliknij duży przycisk „ZAMÓW TUTAJ" poniżej. Formularz zajmuje 2 minuty, rabat nalicza się automatycznie w miarę dodawania towaru.
 
 W razie pytań proszę o telefon lub maila.
 
@@ -80,7 +78,7 @@ export function SendOfferButton({
   useEffect(() => {
     if (open) {
       setEmail(clientEmail || '')
-      setMessage(buildDefaultMessage('<<order_link>>', offerLang))
+      setMessage(buildDefaultMessage(offerLang))
       setResult(null)
     }
   }, [open, clientEmail, offerLang])

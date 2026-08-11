@@ -40,11 +40,17 @@ export function renderOfferEmail(data: OfferEmailData): {
         subject: 'Гуртова оферта — DAGOLD',
         h1: 'Гуртова оферта',
         attach: 'Вкладення:',
+        cta: 'ЗАМОВИТИ ТУТ',
+        ctaHint: 'Натисніть кнопку, щоб оформити замовлення онлайн (2 хвилини)',
+        ctaFallback: 'Якщо кнопка не працює — відкрийте посилання:',
       }
     : {
         subject: 'Oferta hurtowa — DAGOLD',
         h1: 'Oferta hurtowa',
         attach: 'Załącznik:',
+        cta: 'ZAMÓW TUTAJ',
+        ctaHint: 'Kliknij przycisk, aby złożyć zamówienie online (2 minuty)',
+        ctaFallback: 'Jeśli przycisk nie działa — otwórz link:',
       }
   const subject = L.subject
   const footer = 'DAGOLD &middot; Sergiy &middot; +48 510 924 301 &middot; vasin@dagold.com'
@@ -84,6 +90,15 @@ export function renderOfferEmail(data: OfferEmailData): {
     <h1>${L.h1}</h1>
   </div>
   ${messageHtml}
+  ${
+    data.order_link
+      ? `<div style="text-align:center;margin:28px 0">
+    <a href="${data.order_link}" style="display:inline-block;background:#d97706;color:#ffffff;font-size:19px;font-weight:700;text-decoration:none;padding:16px 46px;border-radius:8px;letter-spacing:0.03em">${L.cta} &rarr;</a>
+    <div style="margin-top:10px;font-size:12px;color:#64748b">${L.ctaHint}</div>
+    <div style="margin-top:6px;font-size:11px;color:#94a3b8">${L.ctaFallback}<br><a href="${data.order_link}" style="color:#94a3b8;word-break:break-all">${data.order_link}</a></div>
+  </div>`
+      : ''
+  }
   <div class="attachment-note">
     <strong>${L.attach}</strong> ${attachmentFilename}
   </div>
