@@ -110,7 +110,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     .select(
       // Przejście 2C — dodano vat_rate (front liczy VAT per-stawka jak serwer 2A).
       // Task #14 — dodano marza_bazowa_pct + cost_pln dla new-price-path (parity z submit).
-      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, order_form_sort, category, grupa, podgrupa, in_stock, unit, vat_rate, marza_bazowa_pct, cost_pln, dostepnosc',
+      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, order_form_sort, category, grupa, podgrupa, in_stock, unit, vat_rate, marza_bazowa_pct, cost_pln, supplier_id, dostepnosc',
     )
     .eq('show_in_orders', true)
     .order('order_form_sort', { ascending: true })
@@ -190,6 +190,16 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         )
         return np != null && !Number.isNaN(np) ? np : null
       })(),
+      // Krok 3 DAGOLD — rabaty wolumenowe per grupa. Front liczy je live z
+      // base_unit_price (cena A BEZ rabatu) + supplier_id (klucz grupy).
+      supplier_id: p.supplier_id,
+      base_unit_price: (() => {
+        const b = computeNewUnitPrice(
+          { marza_bazowa_pct: p.marza_bazowa_pct, cost_pln: p.cost_pln },
+          0,
+        )
+        return b != null && !Number.isNaN(b) ? b : null
+      })(),
       prices: {
         maly: Number(p.price_maly_opt),
         sredni: Number(p.price_sredni),
@@ -199,6 +209,9 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         hurt_wh: p.price_hurt_wh == null ? null : Number(p.price_hurt_wh),
       },
     })),
+    // Krok 3 DAGOLD — indywidualny rabat klienta (jeśli > 0, override progów
+    // wolumenowych na całym koszyku — spójnie z submit i logiką discount-tiers).
+    individual_discount: discount,
     // Poprawki 1B — czy klient ma już zgodę marketingową (UI ukrywa galochkę).
     has_marketing_consent: client?.marketing_consent === true,
     // Przejście 1B — zapisane punkty dostawy klienta (dla akcji "Nowe zamówienie").

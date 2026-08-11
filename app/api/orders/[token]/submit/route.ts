@@ -20,6 +20,9 @@ import {
   hasNewPrice as hasNewPriceFn,
   resolveClientDiscount,
 } from '@/lib/orders/pricing'
+// Krok 3 DAGOLD — rabaty wolumenowe per grupa (supplier). Serwerowa (autorytatywna)
+// wersja tej samej logiki co order-form → parity display==charge.
+import { groupDiscounts, effectiveLineDiscount } from '@/lib/orders/discount-tiers'
 // Sprint T-ORDER.1 (30.05.2026) — usunięto `after()` + processProforma import.
 // Proforma teraz wysyłana ręcznie przez admina (przycisk "Potwierdź i wyślij
 // proformę" w panelu zamówienia → POST /api/orders/admin/[id]/send-proforma).
@@ -269,7 +272,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       // Sprint T-ORDER.4b-API — dodano `unit` dla snapshotu pozycji (unit_snapshot).
       // Przejście 2A — dodano `grupa` (podział CM/seafood) i `vat_rate` (VAT mieszany).
       // Faza 1 DAGOLD (089) — marza_bazowa_pct + cost_pln dla nowego price-path.
-      'id, name, display_name, gramatura, unit, grupa, vat_rate, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, marza_bazowa_pct, cost_pln, show_in_orders',
+      'id, name, display_name, gramatura, unit, grupa, vat_rate, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, marza_bazowa_pct, cost_pln, supplier_id, show_in_orders',
     )
     .in('id', productIds)
   if (!products || products.length !== productIds.length) {
@@ -311,13 +314,46 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     (order as { client_id?: string }).client_id ?? null,
   )
 
+  // Krok 3 DAGOLD — rabaty wolumenowe per grupa (supplier_id).
+  //   base = cena A (bez rabatu) = computeNewUnitPrice(p, 0)
+  //   próg per grupa liczony z Σ(base × qty) tej grupy → -5% / -8%
+  //   rabat indywidualny klienta (znizkaKlienta) > 0 PRZEBIJA progi (override)
+  // Baza (cena A, zaokrąglona do grosza) identyczna jak base_unit_price w GET →
+  // ta sama podstawa progów po stronie klienta i serwera (parity).
+  const baseUnit = (p: (typeof products)[number]): number | null =>
+    computeNewUnitPrice(
+      p as { marza_bazowa_pct?: number | string | null; cost_pln?: number | string | null },
+      0,
+    )
+  const volLines = input.items
+    .map((it) => {
+      const p = products.find((pp) => pp.id === it.product_id)
+      if (!p) return null
+      const b = baseUnit(p)
+      if (b == null || Number.isNaN(b)) return null // nie new-path albo błąd danych
+      return {
+        supplierId: (p as { supplier_id?: string | null }).supplier_id ?? null,
+        baseUnitPrice: b,
+        qty: it.qty,
+      }
+    })
+    .filter(
+      (x): x is { supplierId: string | null; baseUnitPrice: number; qty: number } =>
+        x != null,
+    )
+  const grpDisc = groupDiscounts(volLines)
+
   // Nowa cena jednostkowa gdy produkt ma marza_bazowa_pct. NULL → stary flow.
   // NaN → marża ustawiona, ale brak cost_pln > 0 (błąd danych — guard niżej).
-  // Task #14 — wspólna funkcja z lib/orders/pricing.ts (parity GET↔POST).
+  // Rabat efektywny = override indywidualny albo wolumenowy grupy.
   const newUnitPrice = (p: (typeof products)[number]): number | null =>
     computeNewUnitPrice(
       p as { marza_bazowa_pct?: number | string | null; cost_pln?: number | string | null },
-      znizkaKlienta,
+      effectiveLineDiscount(
+        (p as { supplier_id?: string | null }).supplier_id ?? null,
+        znizkaKlienta,
+        grpDisc,
+      ),
     )
 
   const newPriceBroken = products.filter(

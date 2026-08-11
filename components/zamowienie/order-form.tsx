@@ -9,6 +9,13 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+// Krok 3 DAGOLD — rabaty wolumenowe per grupa (ta sama logika co submit → parity).
+import {
+  groupDiscounts,
+  groupNetTotals,
+  effectiveLineDiscount,
+  nextTierGap,
+} from '@/lib/orders/discount-tiers'
 import {
   Minus,
   Plus,
@@ -46,6 +53,10 @@ type Product = {
   // CENA STAŁA tego produktu (parity z submit); stara matryca prices tylko
   // fallback dla produktów bez marży.
   new_unit_price?: number | null
+  // Krok 3 DAGOLD — rabaty wolumenowe per grupa. base_unit_price = cena A BEZ
+  // rabatu; supplier_id = klucz grupy. Rabat liczony live z całego koszyka.
+  base_unit_price?: number | null
+  supplier_id?: string | null
   prices: {
     maly: number
     sredni: number
@@ -93,6 +104,8 @@ export type OrderInitial = {
   saved_delivery_points?: SavedPoint[]
   // Poprawki 1B — czy klient ma już zgodę marketingową.
   has_marketing_consent?: boolean
+  // Krok 3 DAGOLD — indywidualny rabat klienta (>0 przebija progi wolumenowe).
+  individual_discount?: number
 }
 
 type SubmitOk = {
@@ -148,6 +161,7 @@ function computeOrderTotals(
   products: Product[],
   cennikTier: CennikTier,
   priceMode: PriceMode,
+  individualDiscount: number,
 ): {
   tier: Tier
   cmTier: Tier | null
@@ -164,7 +178,8 @@ function computeOrderTotals(
   const isSeafood = (id: string): boolean => prodOf(id)?.grupa === 'owoce_morza'
   // Task #14 — produkty z new_unit_price (marża bazowa) mają cenę STAŁĄ i są
   // wykluczone z matrycy tierowej — dokładnie jak `oldItems` w submit/route.ts.
-  const hasNew = (id: string): boolean => (prodOf(id)?.new_unit_price ?? null) != null
+  const hasNew = (id: string): boolean =>
+    (prodOf(id)?.base_unit_price ?? prodOf(id)?.new_unit_price ?? null) != null
   const oldEntries = entries.filter(([id]) => !hasNew(id))
   const cmEntries = oldEntries.filter(([id]) => !isSeafood(id))
   const seafoodEntries = oldEntries.filter(([id]) => isSeafood(id))
@@ -230,10 +245,29 @@ function computeOrderTotals(
     seafoodTotal = sumSubset(seafoodEntries, (p) => p.prices[sfTier])
   }
 
+  // Krok 3 DAGOLD — rabaty wolumenowe per grupa (base × qty), override indywidualnym.
+  const volLines = entries
+    .map(([id, qty]) => {
+      const p = prodOf(id)
+      const b = p?.base_unit_price ?? null
+      if (!p || b == null) return null
+      return { supplierId: p.supplier_id ?? null, baseUnitPrice: b, qty }
+    })
+    .filter(
+      (x): x is { supplierId: string | null; baseUnitPrice: number; qty: number } =>
+        x != null,
+    )
+  const grpDisc = groupDiscounts(volLines)
+
   // Cena jednostkowa per-produkt (do VAT i wyświetlania).
-  // Task #14 — new_unit_price (marża) ma pierwszeństwo = cena stała (parity z submit);
-  // inaczej stara matryca wg gałęzi/tieru.
+  // Krok 3 — new-path (base_unit_price) → cena A × (1 − rabat efektywny), gdzie
+  // rabat = override indywidualny albo wolumenowy grupy (ta sama logika co submit).
+  // Inaczej: new_unit_price legacy / stara matryca wg gałęzi/tieru.
   const unitPriceOf = (p: Product): number => {
+    if (p.base_unit_price != null) {
+      const eff = effectiveLineDiscount(p.supplier_id ?? null, individualDiscount, grpDisc)
+      return Math.round(p.base_unit_price * (1 - eff) * 100) / 100
+    }
     if (p.new_unit_price != null) return p.new_unit_price
     if (p.grupa === 'owoce_morza') return seafoodTier ? p.prices[seafoodTier] ?? 0 : 0
     return cmTier ? p.prices[tierToPriceKey(cmTier)] ?? 0 : 0
@@ -345,6 +379,8 @@ export function OrderForm({
   const savedPoints = initial.saved_delivery_points ?? []
   const cennikTier: CennikTier = initial.order.cennik_tier ?? 'standard'
   const priceMode: PriceMode = initial.order.price_mode ?? 'auto'
+  // Krok 3 DAGOLD — indywidualny rabat klienta (>0 → override progów wolumenowych).
+  const individualDiscount = initial.individual_discount ?? 0
   const isWielkiHurt = cennikTier === 'wielki_hurt'
   const isMinimum = priceMode === 'minimum'
   const isAutoStandard = cennikTier === 'standard' && priceMode === 'auto'
@@ -418,18 +454,70 @@ export function OrderForm({
 
   const { tier, cmTier, seafoodTier, seafoodSzt, cmTotal, seafoodTotal, totalNet, totalVat, totalBrutto } =
     useMemo(
-      () => computeOrderTotals(mergedCart, products, cennikTier, priceMode),
-      [mergedCart, products, cennikTier, priceMode],
+      () =>
+        computeOrderTotals(mergedCart, products, cennikTier, priceMode, individualDiscount),
+      [mergedCart, products, cennikTier, priceMode, individualDiscount],
     )
   // Poprawka 2 — startowy display-tier gdy koszyk pusty (cmTier/seafoodTier null):
   //   auto → 'maly' (najdroższy, mały obrót), minimum → 'duzy' (cena minimalna).
   const startTier: StandardTier = isMinimum ? 'duzy' : 'maly'
   const cmDisplayTier: Tier = cmTier ?? startTier
   const seafoodDisplayTier: StandardTier = seafoodTier ?? startTier
+  // Krok 3 DAGOLD — rabaty wolumenowe per grupa, liczone LIVE z całego koszyka
+  // (base × qty per supplier). Ta sama logika co computeOrderTotals i submit.
+  const groupDisc = useMemo(() => {
+    const lines = Object.entries(mergedCart)
+      .filter(([, q]) => q > 0)
+      .map(([id, qty]) => {
+        const p = products.find((pp) => pp.id === id)
+        const b = p?.base_unit_price ?? null
+        if (!p || b == null) return null
+        return { supplierId: p.supplier_id ?? null, baseUnitPrice: b, qty }
+      })
+      .filter(
+        (x): x is { supplierId: string | null; baseUnitPrice: number; qty: number } =>
+          x != null,
+      )
+    return groupDiscounts(lines)
+  }, [mergedCart, products])
+
+  // Krok 3 — widoczny wskaźnik rabatu per grupa (poziom + ile do następnego progu).
+  const GROUP_LABELS: Record<string, string> = {
+    'a75927f4-eb9b-426e-b901-4a106c33e7e6': 'Kiszonki i surówki',
+    '0f27ad77-a8be-431f-bb1a-1ca537424307': 'Ryby i owoce morza',
+    'd7a780ec-22cd-4013-960c-80884c342d5d': 'Kalmary i przekąski',
+  }
+  const groupSummary = useMemo(() => {
+    if (individualDiscount > 0) return []
+    const lines = Object.entries(mergedCart)
+      .filter(([, q]) => q > 0)
+      .map(([id, qty]) => {
+        const p = products.find((pp) => pp.id === id)
+        const b = p?.base_unit_price ?? null
+        if (!p || b == null || !p.supplier_id) return null
+        return { supplierId: p.supplier_id, baseUnitPrice: b, qty }
+      })
+      .filter(
+        (x): x is { supplierId: string; baseUnitPrice: number; qty: number } => x != null,
+      )
+    const nets = groupNetTotals(lines)
+    return Object.entries(nets)
+      .filter(([sid]) => GROUP_LABELS[sid])
+      .map(([sid, net]) => ({
+        label: GROUP_LABELS[sid],
+        pct: groupDisc[sid] ?? 0,
+        next: nextTierGap(sid, net),
+      }))
+  }, [mergedCart, products, groupDisc, individualDiscount])
+
   // Cena jednostkowa per-produkt do WYŚWIETLANIA.
-  // Task #14 — new_unit_price (marża) = cena stała (parity z submit); inaczej
-  // stara matryca wg gałęzi, z fallbackiem startowym (pusty koszyk → maly/duzy).
+  // Krok 3 — new-path (base_unit_price) → cena A × (1 − rabat efektywny) live;
+  // inaczej new_unit_price legacy / stara matryca z fallbackiem startowym.
   const productUnitPrice = (p: Product): number => {
+    if (p.base_unit_price != null) {
+      const eff = effectiveLineDiscount(p.supplier_id ?? null, individualDiscount, groupDisc)
+      return Math.round(p.base_unit_price * (1 - eff) * 100) / 100
+    }
     if (p.new_unit_price != null) return p.new_unit_price
     if (p.grupa === 'owoce_morza') return p.prices[seafoodDisplayTier] ?? 0
     return p.prices[tierToPriceKey(cmDisplayTier)] ?? 0
@@ -1717,6 +1805,23 @@ export function OrderForm({
                 <div className="flex-1 min-w-0 text-[14px] font-bold leading-tight">
                   Koszyk: {totalItems} {totalItems === 1 ? 'pozycja' : 'pozycji'}
                   <span className="block text-[12px] font-medium text-white/80">Suma netto: {fmt(totalNet)} zł</span>
+                  {groupSummary.map((g) => (
+                    <span
+                      key={g.label}
+                      className="block text-[11px] font-medium text-white/90 mt-0.5"
+                    >
+                      {g.label}:{' '}
+                      {g.pct > 0 ? `rabat −${Math.round(g.pct * 100)}%` : 'bez rabatu'}
+                      {g.next
+                        ? ` · do −${Math.round(g.next.toPct * 100)}% brakuje ${fmt(g.next.gap)} zł`
+                        : ''}
+                    </span>
+                  ))}
+                  {individualDiscount > 0 && (
+                    <span className="block text-[11px] font-medium text-white/90 mt-0.5">
+                      Rabat indywidualny: −{Math.round(individualDiscount * 100)}%
+                    </span>
+                  )}
                 </div>
                 <button
                   type="button"
