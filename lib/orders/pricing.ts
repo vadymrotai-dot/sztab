@@ -31,31 +31,50 @@ export function computeNewUnitPrice(
 export const hasNewPrice = (p: NewPriceProduct): boolean =>
   p.marza_bazowa_pct != null
 
-// Server-only (DB): zniżka klienta = indywidualna ?? segment ?? 0, clamp 0..0.95.
+// Krok DAGOLD — rozdzielona zniżka klienta:
+//   ogolna → ЧМ + ryby + reszta (indywidualna ?? segment ?? 0)
+//   kalmar → GLOBAL FOOD (kalmary/przekąski): osobna indywidualna ?? 0
+// Brak zniżki kalmarów → na kalmary działają progi wolumenowe. Segment dotyczy
+// tylko części OGÓLNEJ (nie kalmarów). Clamp 0..0.95.
+export interface ClientDiscounts {
+  ogolna: number
+  kalmar: number
+}
+
+const clampFrac = (d: number): number => {
+  if (!Number.isFinite(d) || d < 0) return 0
+  return d > 0.95 ? 0.95 : d
+}
+
 // Przyjmuje dowolny klient Supabase (server albo admin/service-role).
 export async function resolveClientDiscount(
   supabase: SupabaseClient,
   clientId: string | null | undefined,
-): Promise<number> {
-  if (!clientId) return 0
+): Promise<ClientDiscounts> {
+  if (!clientId) return { ogolna: 0, kalmar: 0 }
   const { data: cli } = await supabase
     .from('clients')
-    .select('price_segment_code, znizka_indywidualna_pct')
+    .select(
+      'price_segment_code, znizka_indywidualna_pct, znizka_indywidualna_kalmar_pct',
+    )
     .eq('id', clientId)
     .maybeSingle()
-  if (!cli) return 0
+  if (!cli) return { ogolna: 0, kalmar: 0 }
 
-  let d = 0
+  let ogolna = 0
   if (cli.znizka_indywidualna_pct != null) {
-    d = Number(cli.znizka_indywidualna_pct)
+    ogolna = Number(cli.znizka_indywidualna_pct)
   } else if (cli.price_segment_code) {
     const { data: seg } = await supabase
       .from('price_segments')
       .select('znizka_pct')
       .eq('code', cli.price_segment_code)
       .maybeSingle()
-    if (seg?.znizka_pct != null) d = Number(seg.znizka_pct)
+    if (seg?.znizka_pct != null) ogolna = Number(seg.znizka_pct)
   }
-  if (!Number.isFinite(d) || d < 0) d = 0
-  return d > 0.95 ? 0.95 : d
+  const kalmar =
+    cli.znizka_indywidualna_kalmar_pct != null
+      ? Number(cli.znizka_indywidualna_kalmar_pct)
+      : 0
+  return { ogolna: clampFrac(ogolna), kalmar: clampFrac(kalmar) }
 }

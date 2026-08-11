@@ -14,6 +14,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { computeNewUnitPrice, resolveClientDiscount } from '@/lib/orders/pricing'
+import { GLOBAL_FOOD_SUPPLIER_ID } from '@/lib/orders/discount-tiers'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -149,7 +150,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
   const { data: product } = await admin
     .from('products')
-    .select(`id, name, display_name, gramatura, ${priceKey}, marza_bazowa_pct, cost_pln, show_in_orders`)
+    .select(`id, name, display_name, gramatura, ${priceKey}, marza_bazowa_pct, cost_pln, supplier_id, show_in_orders`)
     .eq('id', parsed.data.product_id)
     .eq('show_in_orders', true)
     .maybeSingle()
@@ -162,8 +163,12 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
   // Task #14 — new-price-path (marża bazowa) ma pierwszeństwo, spójnie z submit/GET.
   // Fallback na starą matrycę (tier_at_submit) tylko gdy marża NULL.
-  const discount = await resolveClientDiscount(admin, (order as any).client_id ?? null)
-  const np = computeNewUnitPrice(product as any, discount)
+  const discounts = await resolveClientDiscount(admin, (order as any).client_id ?? null)
+  const ind =
+    (product as any).supplier_id === GLOBAL_FOOD_SUPPLIER_ID
+      ? discounts.kalmar
+      : discounts.ogolna
+  const np = computeNewUnitPrice(product as any, ind)
   let unitPrice: number
   if (np != null && !Number.isNaN(np)) {
     unitPrice = np

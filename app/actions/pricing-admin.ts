@@ -145,12 +145,15 @@ const ClientPricingSchema = z.object({
   price_segment_code: z.string().trim().max(16).nullable(),
   // ułamek 0..0.95 albo null (brak zniżki indywidualnej → segment)
   znizka_indywidualna_pct: z.number().min(0).max(0.95).nullable(),
+  // Krok DAGOLD — osobna zniżka indywidualna na kalmary/przekąski (null → progi wolumenowe).
+  znizka_indywidualna_kalmar_pct: z.number().min(0).max(0.95).nullable(),
 })
 
 export async function updateClientPricing(input: {
   clientId: string
   price_segment_code: string | null
   znizka_indywidualna_pct: number | null
+  znizka_indywidualna_kalmar_pct: number | null
 }): Promise<ActionResult> {
   const parsed = ClientPricingSchema.safeParse(input)
   if (!parsed.success) {
@@ -166,6 +169,7 @@ export async function updateClientPricing(input: {
     .update({
       price_segment_code: parsed.data.price_segment_code || null,
       znizka_indywidualna_pct: parsed.data.znizka_indywidualna_pct,
+      znizka_indywidualna_kalmar_pct: parsed.data.znizka_indywidualna_kalmar_pct,
     })
     .eq('id', parsed.data.clientId)
   if (error) return { ok: false, error: error.message }

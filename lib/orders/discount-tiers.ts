@@ -84,15 +84,27 @@ export function groupDiscounts(lines: CartLine[]): Record<string, number> {
   return out
 }
 
-// Efektywny rabat dla pozycji: indywidualny rabat klienta > 0 WYGRYWA (override),
-// inaczej rabat wolumenowy grupy. Zwraca ułamek 0..0.95.
+// Klucz grupy kalmarów/przekąsek (GLOBAL FOOD) — ma OSOBNĄ zniżkę indywidualną.
+export const GLOBAL_FOOD_SUPPLIER_ID = 'd7a780ec-22cd-4013-960c-80884c342d5d'
+
+// Rozdzielona zniżka indywidualna klienta.
+export interface IndividualDiscounts {
+  ogolna: number // ЧМ + ryby + reszta
+  kalmar: number // GLOBAL FOOD (kalmary/przekąski)
+}
+
+// Efektywny rabat dla pozycji: rabat indywidualny (ogólny albo kalmarowy — wg
+// grupy produktu) > 0 WYGRYWA (override), inaczej rabat wolumenowy grupy.
+// Kalmary/przekąski bez zniżki kalmarowej → normalne progi wolumenowe. 0..0.95.
 export function effectiveLineDiscount(
   supplierId: string | null,
-  individualDiscount: number,
+  individual: IndividualDiscounts,
   discountsByGroup: Record<string, number>,
 ): number {
+  const ind =
+    supplierId === GLOBAL_FOOD_SUPPLIER_ID ? individual.kalmar : individual.ogolna
   let d = 0
-  if (individualDiscount > 0) d = individualDiscount
+  if (ind > 0) d = ind
   else if (supplierId) d = discountsByGroup[supplierId] ?? 0
   if (!Number.isFinite(d) || d < 0) return 0
   return d > 0.95 ? 0.95 : d

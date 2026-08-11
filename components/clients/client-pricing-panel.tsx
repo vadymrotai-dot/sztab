@@ -47,22 +47,28 @@ export function ClientPricingPanel({
   clientId,
   initialSegmentCode,
   initialZnizka,
+  initialZnizkaKalmar,
   segments,
   example,
 }: {
   clientId: string
   initialSegmentCode: string | null
-  initialZnizka: number | null // ułamek
+  initialZnizka: number | null // ułamek (ogólna)
+  initialZnizkaKalmar: number | null // ułamek (kalmary/przekąski)
   segments: PricingSegmentOption[]
   example: PricingExample | null
 }) {
   const router = useRouter()
   const [segCode, setSegCode] = useState<string>(initialSegmentCode ?? NONE)
   const [znizkaDraft, setZnizkaDraft] = useState<string>(fracToStr(initialZnizka))
+  const [znizkaKalmarDraft, setZnizkaKalmarDraft] = useState<string>(
+    fracToStr(initialZnizkaKalmar),
+  )
   const [saving, setSaving] = useState(false)
 
   const znizkaFrac = strToFrac(znizkaDraft)
-  const invalid = Number.isNaN(znizkaFrac)
+  const znizkaKalmarFrac = strToFrac(znizkaKalmarDraft)
+  const invalid = Number.isNaN(znizkaFrac) || Number.isNaN(znizkaKalmarFrac)
 
   const selectedSegment = useMemo(
     () => segments.find((s) => s.code === segCode) ?? null,
@@ -88,7 +94,10 @@ export function ClientPricingPanel({
   const dirty =
     (segCode === NONE ? null : segCode) !== (initialSegmentCode ?? null) ||
     (znizkaFrac === null || Number.isNaN(znizkaFrac) ? null : (znizkaFrac as number)) !==
-      (initialZnizka ?? null)
+      (initialZnizka ?? null) ||
+    (znizkaKalmarFrac === null || Number.isNaN(znizkaKalmarFrac)
+      ? null
+      : (znizkaKalmarFrac as number)) !== (initialZnizkaKalmar ?? null)
 
   async function save() {
     if (invalid) {
@@ -100,6 +109,7 @@ export function ClientPricingPanel({
       clientId,
       price_segment_code: segCode === NONE ? null : segCode,
       znizka_indywidualna_pct: znizkaFrac as number | null,
+      znizka_indywidualna_kalmar_pct: znizkaKalmarFrac as number | null,
     })
     setSaving(false)
     if (!res.ok) {
@@ -146,14 +156,27 @@ export function ClientPricingPanel({
 
         <div className="space-y-1">
           <label className="text-[11px] uppercase tracking-wider text-[#888]">
-            Zniżka indywidualna %
+            Zniżka indyw. — ogólna %
           </label>
           <Input
             value={znizkaDraft}
             onChange={(e) => setZnizkaDraft(e.target.value)}
             placeholder="—"
             inputMode="decimal"
-            className={`h-9 w-28 text-right font-mono ${invalid ? 'border-red-400' : ''}`}
+            className={`h-9 w-28 text-right font-mono ${Number.isNaN(znizkaFrac) ? 'border-red-400' : ''}`}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[11px] uppercase tracking-wider text-[#888]">
+            Zniżka indyw. — kalmary/przekąski %
+          </label>
+          <Input
+            value={znizkaKalmarDraft}
+            onChange={(e) => setZnizkaKalmarDraft(e.target.value)}
+            placeholder="—"
+            inputMode="decimal"
+            className={`h-9 w-28 text-right font-mono ${Number.isNaN(znizkaKalmarFrac) ? 'border-red-400' : ''}`}
           />
         </div>
       </div>
@@ -182,9 +205,10 @@ export function ClientPricingPanel({
       </div>
 
       <p className="mt-3 text-[12px] text-[#888]">
-        Zniżka indywidualna (jeśli ustawiona) nadpisuje zniżkę segmentu. Puste
-        pole = klient korzysta ze zniżki wybranego segmentu. Cena = cena segmentu
-        A × (1 − zniżka).
+        Zniżka <b>ogólna</b> (indywidualna nadpisuje segment) dotyczy kiszonek,
+        ryb i reszty. Zniżka na <b>kalmary/przekąski</b> jest osobna — puste pole =
+        na kalmary działają progi wolumenowe (4000/8000 zł). Podgląd niżej dotyczy
+        zniżki ogólnej.
       </p>
     </div>
   )

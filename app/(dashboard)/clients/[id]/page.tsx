@@ -711,6 +711,11 @@ export default async function ClientDetailPage({
           initialZnizka={
             c.znizka_indywidualna_pct != null ? Number(c.znizka_indywidualna_pct) : null
           }
+          initialZnizkaKalmar={
+            c.znizka_indywidualna_kalmar_pct != null
+              ? Number(c.znizka_indywidualna_kalmar_pct)
+              : null
+          }
           segments={pricingSegments}
           example={pricingExample}
         />

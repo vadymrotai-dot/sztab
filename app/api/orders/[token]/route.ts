@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { computeNewUnitPrice, resolveClientDiscount } from '@/lib/orders/pricing'
+import { GLOBAL_FOOD_SUPPLIER_ID } from '@/lib/orders/discount-tiers'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -131,7 +132,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
 
   // Task #14 — zniżka klienta (ta sama funkcja co submit) do policzenia
   // new_unit_price per produkt. Klient widzi TĘ SAMĄ cenę co potem submit.
-  const discount = await resolveClientDiscount(supabase, order.client_id)
+  const discounts = await resolveClientDiscount(supabase, order.client_id)
 
   return NextResponse.json({
     ok: true,
@@ -184,9 +185,11 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       // TĘ cenę (stałą), a nie starą matrycę → parity z submit. NaN (marża bez
       // kosztu) → null (fallback na matrycę, jak w submit guard).
       new_unit_price: (() => {
+        const ind =
+          p.supplier_id === GLOBAL_FOOD_SUPPLIER_ID ? discounts.kalmar : discounts.ogolna
         const np = computeNewUnitPrice(
           { marza_bazowa_pct: p.marza_bazowa_pct, cost_pln: p.cost_pln },
-          discount,
+          ind,
         )
         return np != null && !Number.isNaN(np) ? np : null
       })(),
@@ -209,9 +212,10 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         hurt_wh: p.price_hurt_wh == null ? null : Number(p.price_hurt_wh),
       },
     })),
-    // Krok 3 DAGOLD — indywidualny rabat klienta (jeśli > 0, override progów
-    // wolumenowych na całym koszyku — spójnie z submit i logiką discount-tiers).
-    individual_discount: discount,
+    // Krok DAGOLD — rozdzielony rabat indywidualny: ogólny (ЧМ/ryby/reszta) i
+    // osobny na kalmary/przekąski. Front i submit stosują wg grupy produktu.
+    individual_discount: discounts.ogolna,
+    individual_discount_kalmar: discounts.kalmar,
     // Poprawki 1B — czy klient ma już zgodę marketingową (UI ukrywa galochkę).
     has_marketing_consent: client?.marketing_consent === true,
     // Przejście 1B — zapisane punkty dostawy klienta (dla akcji "Nowe zamówienie").

@@ -15,6 +15,7 @@ import {
   groupNetTotals,
   effectiveLineDiscount,
   nextTierGap,
+  GLOBAL_FOOD_SUPPLIER_ID,
 } from '@/lib/orders/discount-tiers'
 import {
   Minus,
@@ -104,8 +105,9 @@ export type OrderInitial = {
   saved_delivery_points?: SavedPoint[]
   // Poprawki 1B — czy klient ma już zgodę marketingową.
   has_marketing_consent?: boolean
-  // Krok 3 DAGOLD — indywidualny rabat klienta (>0 przebija progi wolumenowe).
+  // Krok DAGOLD — rozdzielony rabat indywidualny: ogólny + osobny na kalmary/przekąski.
   individual_discount?: number
+  individual_discount_kalmar?: number
 }
 
 type SubmitOk = {
@@ -148,7 +150,7 @@ function computeOrderTotals(
   products: Product[],
   cennikTier: CennikTier,
   priceMode: PriceMode,
-  individualDiscount: number,
+  individual: { ogolna: number; kalmar: number },
 ): {
   tier: Tier
   cmTier: Tier | null
@@ -252,7 +254,7 @@ function computeOrderTotals(
   // Inaczej: new_unit_price legacy / stara matryca wg gałęzi/tieru.
   const unitPriceOf = (p: Product): number => {
     if (p.base_unit_price != null) {
-      const eff = effectiveLineDiscount(p.supplier_id ?? null, individualDiscount, grpDisc)
+      const eff = effectiveLineDiscount(p.supplier_id ?? null, individual, grpDisc)
       return Math.round(p.base_unit_price * (1 - eff) * 100) / 100
     }
     if (p.new_unit_price != null) return p.new_unit_price
@@ -366,8 +368,12 @@ export function OrderForm({
   const savedPoints = initial.saved_delivery_points ?? []
   const cennikTier: CennikTier = initial.order.cennik_tier ?? 'standard'
   const priceMode: PriceMode = initial.order.price_mode ?? 'auto'
-  // Krok 3 DAGOLD — indywidualny rabat klienta (>0 → override progów wolumenowych).
-  const individualDiscount = initial.individual_discount ?? 0
+  // Krok DAGOLD — rozdzielony rabat indywidualny: ogólny (ЧМ/ryby/reszta) i osobny
+  // na kalmary/przekąski (GLOBAL FOOD). effectiveLineDiscount wybiera wg grupy.
+  const individualDiscounts = {
+    ogolna: initial.individual_discount ?? 0,
+    kalmar: initial.individual_discount_kalmar ?? 0,
+  }
   const isWielkiHurt = cennikTier === 'wielki_hurt'
   const isMinimum = priceMode === 'minimum'
   const isAutoWH = cennikTier === 'wielki_hurt' && priceMode === 'auto'
@@ -441,8 +447,15 @@ export function OrderForm({
   const { tier, cmTier, seafoodTier, totalNet, totalVat, totalBrutto } =
     useMemo(
       () =>
-        computeOrderTotals(mergedCart, products, cennikTier, priceMode, individualDiscount),
-      [mergedCart, products, cennikTier, priceMode, individualDiscount],
+        computeOrderTotals(mergedCart, products, cennikTier, priceMode, individualDiscounts),
+      [
+        mergedCart,
+        products,
+        cennikTier,
+        priceMode,
+        individualDiscounts.ogolna,
+        individualDiscounts.kalmar,
+      ],
     )
   // Poprawka 2 — startowy display-tier gdy koszyk pusty (cmTier/seafoodTier null):
   //   auto → 'maly' (najdroższy, mały obrót), minimum → 'duzy' (cena minimalna).
@@ -490,7 +503,7 @@ export function OrderForm({
   // inaczej new_unit_price legacy / stara matryca z fallbackiem startowym.
   const productUnitPrice = (p: Product): number => {
     if (p.base_unit_price != null) {
-      const eff = effectiveLineDiscount(p.supplier_id ?? null, individualDiscount, groupDisc)
+      const eff = effectiveLineDiscount(p.supplier_id ?? null, individualDiscounts, groupDisc)
       return Math.round(p.base_unit_price * (1 - eff) * 100) / 100
     }
     if (p.new_unit_price != null) return p.new_unit_price
@@ -1586,7 +1599,11 @@ export function OrderForm({
               {(() => {
                 const pg = podgrupy.find((g) => g.key === activePodgrupa)
                 if (!pg || !pg.sid) return null
-                if (individualDiscount > 0) {
+                const activeInd =
+                  pg.sid === GLOBAL_FOOD_SUPPLIER_ID
+                    ? individualDiscounts.kalmar
+                    : individualDiscounts.ogolna
+                if (activeInd > 0) {
                   return (
                     <div className="mx-4 mt-2">
                       <div
@@ -1594,7 +1611,7 @@ export function OrderForm({
                         style={{ background: '#eef3f9', border: '1px solid #c7d5e6' }}
                       >
                         <div className="text-[13px] font-bold text-[#1F3A5F]">
-                          Rabat indywidualny: −{Math.round(individualDiscount * 100)}% na wszystko
+                          Rabat indywidualny: −{Math.round(activeInd * 100)}% (cena stała dla tej grupy)
                         </div>
                       </div>
                     </div>
