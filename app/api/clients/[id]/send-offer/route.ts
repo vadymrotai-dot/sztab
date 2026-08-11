@@ -47,12 +47,13 @@ export async function POST(
   const message = body.message?.trim()
   const createOrderLink = body.create_order_link !== false
   const cohortId = body.cohort_id || null
-  // Sprint S-CENNIK-WH.1 (26.05.2026) — cennik tier locked at offer-send
-  const cennikTier: 'standard' | 'wielki_hurt' =
-    body.cennik_tier === 'wielki_hurt' ? 'wielki_hurt' : 'standard'
-  // Sprint S-CENNIK-WH.2 (26.05.2026) — price mode locked at offer-send (matrix 2x2)
-  const priceMode: 'auto' | 'minimum' =
-    body.price_mode === 'minimum' ? 'minimum' : 'auto'
+  // Krok DAGOLD — stara matryca (cennik_tier/price_mode) wycofana; zamówienia
+  // liczą się przez cena A + rabaty wolumenowe. Stałe defaulty utrzymują spójność
+  // kolumn order (legacy produkty bez marży → standard/auto).
+  const cennikTier = 'standard' as const
+  const priceMode = 'auto' as const
+  // Język oferty (PL/UA) wybrany przez operatora przy wysyłce.
+  const offerLang: 'pl' | 'ua' = body.offer_lang === 'ua' ? 'ua' : 'pl'
 
   if (!email || !email.includes('@')) {
     return NextResponse.json(
@@ -157,11 +158,10 @@ export async function POST(
     finalMessage = message.replace(/<<order_link>>/g, orderLink)
   }
 
-  // Read xlsx cennik — branch by tier (S-CENNIK-WH.1)
+  // Krok DAGOLD — załącznik = oferta DAGOLD (ЧМ + ryby + kalmary z tabelą rabatów)
+  // w wybranym języku.
   const xlsxFilename =
-    cennikTier === 'wielki_hurt'
-      ? 'Ziomek_Fish_Cennik_Wielki_Hurt_2026.xlsx'
-      : 'Ziomek_Fish_Cennik_B2B_2026.xlsx'
+    offerLang === 'ua' ? 'DAGOLD_oferta_UA.xlsx' : 'DAGOLD_oferta_PL.xlsx'
   let xlsxBytes: Buffer
   try {
     const xlsxPath = path.join(process.cwd(), 'public', 'cennik', xlsxFilename)
@@ -185,8 +185,9 @@ export async function POST(
       custom_message: finalMessage,
       order_link: orderLink,
       client_name: client.title,
-      // Sprint S-CENNIK-WH.1 — attachment filename matches tier
       attachment_filename: xlsxFilename,
+      // Krok DAGOLD — język oferty (temat + etykiety maila).
+      lang: offerLang,
     },
     attachments: [
       {

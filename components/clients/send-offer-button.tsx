@@ -23,23 +23,39 @@ type Props = {
   cohorts?: Cohort[]
 }
 
-function buildDefaultMessage(orderLink: string) {
+function buildDefaultMessage(orderLink: string, lang: 'pl' | 'ua') {
+  if (lang === 'ua') {
+    return `Доброго дня,
+
+Надсилаю актуальну гуртову оферту DAGOLD — квашені й салати (Czudowa Marka), риба та морепродукти (AVIS-D, Латвія), кальмари й сушені снеки.
+
+У вкладенні файл Excel з повним асортиментом, цінами нетто та таблицею знижок від суми замовлення.
+
+Щоб оформити замовлення онлайн — просто натисніть посилання нижче, форма займає 2 хвилини (знижка рахується автоматично в міру набору товару):
+${orderLink}
+
+За питаннями — телефонуйте або пишіть.
+
+З повагою,
+Sergiy · DAGOLD
++48 510 924 301
+vasin@dagold.com`
+  }
   return `Dzień dobry,
 
-W nawiązaniu do naszej rozmowy przesyłam aktualny cennik hurtowy Czudowa Marka — pełen asortyment kiszonek, sałatek i marynat z 5% VAT.
+Przesyłam aktualną ofertę hurtową DAGOLD — kiszonki i surówki (Czudowa Marka), ryby i owoce morza (AVIS-D, Łotwa) oraz kalmary i przekąski suszone.
 
-W załączeniu plik Excel z cennikiem na rok 2026 (3 zakładki: Cennik, Warunki współpracy, Kontakt).
+W załączeniu plik Excel z pełnym asortymentem, cenami netto i tabelą rabatów od wartości zamówienia.
 
-Aby złożyć zamówienie online — wystarczy kliknąć link poniżej, formularz zajmuje 2 minuty:
+Aby złożyć zamówienie online — wystarczy kliknąć link poniżej, formularz zajmuje 2 minuty (rabat nalicza się automatycznie w miarę dodawania towaru):
 ${orderLink}
 
 W razie pytań proszę o telefon lub maila.
 
 Pozdrawiam,
-Vadym Rotai
-Sprzedaż B2B  ·  Czudowa Marka  ·  hurt
-+48 733 050 568
-zamowienia@sztabapp.com`
+Sergiy · DAGOLD
++48 510 924 301
+vasin@dagold.com`
 }
 
 export function SendOfferButton({
@@ -58,18 +74,16 @@ export function SendOfferButton({
     orderLink?: string
   } | null>(null)
   const [cohortId, setCohortId] = useState<string>('')
-  // Sprint S-CENNIK-WH.1 (26.05.2026) — cennik tier selector
-  const [cennikTier, setCennikTier] = useState<'standard' | 'wielki_hurt'>('standard')
-  // Sprint S-CENNIK-WH.2 (26.05.2026) — price mode selector (auto/minimum). Matrix 2x2 з cennikTier.
-  const [priceMode, setPriceMode] = useState<'auto' | 'minimum'>('auto')
+  // Krok DAGOLD — język oferty (PL/UA): steruje załącznikiem i językiem maila.
+  const [offerLang, setOfferLang] = useState<'pl' | 'ua'>('pl')
 
   useEffect(() => {
     if (open) {
       setEmail(clientEmail || '')
-      setMessage(buildDefaultMessage('<<order_link>>'))
+      setMessage(buildDefaultMessage('<<order_link>>', offerLang))
       setResult(null)
     }
-  }, [open, clientEmail])
+  }, [open, clientEmail, offerLang])
 
   const hasEmail = Boolean(clientEmail)
 
@@ -85,9 +99,8 @@ export function SendOfferButton({
           message,
           create_order_link: true,
           cohort_id: cohortId || null,
-          cennik_tier: cennikTier,
-          // Sprint S-CENNIK-WH.2 — price mode (auto/minimum) — matrix 2x2 з cennik_tier
-          price_mode: priceMode,
+          // Krok DAGOLD — język oferty (załącznik + treść maila PL/UA).
+          offer_lang: offerLang,
         }),
       })
       const data = await res.json()
@@ -181,83 +194,42 @@ export function SendOfferButton({
                 </div>
               )}
 
-              {/* Sprint S-CENNIK-WH.1 (26.05.2026) — cennik tier selector */}
+              {/* Krok DAGOLD — język oferty (załącznik DAGOLD PL/UA + treść maila) */}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Cennik (wersja załącznika)
+                  Język oferty
                 </label>
                 <div className="flex gap-3">
                   <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
                     <input
                       type="radio"
-                      name="cennik_tier"
-                      value="standard"
-                      checked={cennikTier === 'standard'}
-                      onChange={() => setCennikTier('standard')}
+                      name="offer_lang"
+                      value="pl"
+                      checked={offerLang === 'pl'}
+                      onChange={() => setOfferLang('pl')}
                       className="accent-amber-600"
                     />
                     <span>
-                      <strong>Standardowy</strong> — opt B2B
+                      <strong>Polski</strong> — oferta PL
                     </span>
                   </label>
                   <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
                     <input
                       type="radio"
-                      name="cennik_tier"
-                      value="wielki_hurt"
-                      checked={cennikTier === 'wielki_hurt'}
-                      onChange={() => setCennikTier('wielki_hurt')}
+                      name="offer_lang"
+                      value="ua"
+                      checked={offerLang === 'ua'}
+                      onChange={() => setOfferLang('ua')}
                       className="accent-amber-600"
                     />
                     <span>
-                      <strong>Wielki Hurt</strong> — najniższy poziom
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Sprint S-CENNIK-WH.2 (26.05.2026) — price mode (auto/minimum) — matrix 2x2 */}
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Tryb wyceny
-                </label>
-                <div className="flex gap-3">
-                  <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
-                    <input
-                      type="radio"
-                      name="price_mode"
-                      value="auto"
-                      checked={priceMode === 'auto'}
-                      onChange={() => setPriceMode('auto')}
-                      className="accent-amber-600"
-                    />
-                    <span>
-                      <strong>Auto</strong> —{' '}
-                      {cennikTier === 'wielki_hurt'
-                        ? 'Hurt < 10k → Wielki Hurt >= 10k'
-                        : '3 progi (mały / średni / duży)'}
-                    </span>
-                  </label>
-                  <label className="flex flex-1 cursor-pointer items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
-                    <input
-                      type="radio"
-                      name="price_mode"
-                      value="minimum"
-                      checked={priceMode === 'minimum'}
-                      onChange={() => setPriceMode('minimum')}
-                      className="accent-amber-600"
-                    />
-                    <span>
-                      <strong>Minimum</strong> —{' '}
-                      {cennikTier === 'wielki_hurt'
-                        ? 'locked Wielki Hurt'
-                        : 'locked duży opt'}
+                      <strong>Українська</strong> — oferta UA
                     </span>
                   </label>
                 </div>
                 <p className="mt-1 text-[11px] text-slate-500">
-                  Tryb wybrany teraz jest zablokowany w zamówieniu klienta — nie może być
-                  zmieniony przez klienta.
+                  Zmienia załącznik i język wiadomości. Ceny liczą się automatycznie
+                  przez rabaty wolumenowe w formularzu.
                 </p>
               </div>
 
@@ -279,9 +251,7 @@ export function SendOfferButton({
 
               <div className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 <strong>Załącznik:</strong>{' '}
-                {cennikTier === 'wielki_hurt'
-                  ? 'Ziomek_Fish_Cennik_Wielki_Hurt_2026.xlsx'
-                  : 'Ziomek_Fish_Cennik_B2B_2026.xlsx'}
+                {offerLang === 'ua' ? 'DAGOLD_oferta_UA.xlsx' : 'DAGOLD_oferta_PL.xlsx'}
               </div>
 
               {result && (

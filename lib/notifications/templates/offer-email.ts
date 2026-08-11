@@ -22,6 +22,8 @@ export type OfferEmailData = {
   // Sprint S-CENNIK-WH.1 (26.05.2026) — attachment filename branches by tier.
   // Defaults to standard cennik if not provided (backward compat).
   attachment_filename?: string
+  // Krok DAGOLD — język oferty (PL/UA) wybrany przy wysyłce → temat + etykiety.
+  lang?: 'pl' | 'ua'
 }
 
 export function renderOfferEmail(data: OfferEmailData): {
@@ -29,10 +31,23 @@ export function renderOfferEmail(data: OfferEmailData): {
   html: string
   text: string
 } {
-  // Sprint S-CENNIK-WH.1 — attachment filename driven by tier (parametrized).
+  // Krok DAGOLD — załącznik + etykiety wg języka oferty (PL/UA).
+  const ua = data.lang === 'ua'
   const attachmentFilename =
-    data.attachment_filename || 'Ziomek_Fish_Cennik_B2B_2026.xlsx'
-  const subject = 'Oferta hurtowa Czudowa Marka  ·  Ziomek Fish'
+    data.attachment_filename || (ua ? 'DAGOLD_oferta_UA.xlsx' : 'DAGOLD_oferta_PL.xlsx')
+  const L = ua
+    ? {
+        subject: 'Гуртова оферта — DAGOLD',
+        h1: 'Гуртова оферта',
+        attach: 'Вкладення:',
+      }
+    : {
+        subject: 'Oferta hurtowa — DAGOLD',
+        h1: 'Oferta hurtowa',
+        attach: 'Załącznik:',
+      }
+  const subject = L.subject
+  const footer = 'DAGOLD &middot; Sergiy &middot; +48 510 924 301 &middot; vasin@dagold.com'
 
   // Convert plain text → HTML (paragraph splitting + make URLs clickable)
   const messageHtml = data.custom_message
@@ -51,7 +66,7 @@ export function renderOfferEmail(data: OfferEmailData): {
     .join('\n')
 
   const html = `<!DOCTYPE html>
-<html lang="pl">
+<html lang="${ua ? 'uk' : 'pl'}">
 <head>
 <meta charset="utf-8">
 <style>
@@ -65,17 +80,15 @@ export function renderOfferEmail(data: OfferEmailData): {
 </head>
 <body>
   <div class="header">
-    <div class="brand">Ziomek Fish &middot; Czudowa Marka</div>
-    <h1>Oferta hurtowa</h1>
+    <div class="brand">DAGOLD</div>
+    <h1>${L.h1}</h1>
   </div>
   ${messageHtml}
   <div class="attachment-note">
-    <strong>Załącznik:</strong> ${attachmentFilename}
+    <strong>${L.attach}</strong> ${attachmentFilename}
   </div>
   <div class="footer">
-    Ziomek Fish Sp. z o.o.<br>
-    ul. Szczęsna 26, 02-454 Warszawa<br>
-    NIP: 5223239864 &middot; KRS: 0001000146
+    ${footer}
   </div>
 </body>
 </html>`
