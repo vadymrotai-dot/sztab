@@ -36,7 +36,7 @@ function buildDefaultMessage(lang: 'pl' | 'ua') {
 За питаннями — телефонуйте або пишіть.
 
 З повагою,
-Sergiy · DAGOLD
+Менеджер із замовлень · DAGOLD
 +48 510 924 301
 vasin@dagold.com`
   }
@@ -51,7 +51,7 @@ Aby złożyć zamówienie online — kliknij duży przycisk „ZAMÓW TUTAJ" pon
 W razie pytań proszę o telefon lub maila.
 
 Pozdrawiam,
-Sergiy · DAGOLD
+Menedżer ds. zamówień · DAGOLD
 +48 510 924 301
 vasin@dagold.com`
 }

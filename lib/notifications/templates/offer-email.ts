@@ -49,7 +49,9 @@ export function renderOfferEmail(data: OfferEmailData): {
         ctaFallback: 'Jeśli przycisk nie działa — otwórz link:',
       }
   const subject = L.subject
-  const footer = 'DAGOLD &middot; Sergiy &middot; +48 510 924 301 &middot; vasin@dagold.com'
+  const footer = ua
+    ? 'DAGOLD &middot; Менеджер із замовлень &middot; +48 510 924 301 &middot; vasin@dagold.com'
+    : 'DAGOLD &middot; Menedżer ds. zamówień &middot; +48 510 924 301 &middot; vasin@dagold.com'
 
   // Convert plain text → HTML (paragraph splitting + make URLs clickable)
   const messageHtml = data.custom_message
