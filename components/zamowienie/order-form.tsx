@@ -125,22 +125,9 @@ const TIER_LABEL: Record<Tier, string> = {
   wielki_hurt_entry: 'Hurt',
 }
 
-// Poprawka 3 — etykiety poziomów dla plansz gradacji (hurt).
-const HURT_LEVEL_LABEL: Record<StandardTier, string> = {
-  maly: 'Mały hurt',
-  sredni: 'Średni hurt',
-  duzy: 'Duży hurt',
-}
-
-const PODGRUPA_LABEL: Record<string, string> = {
-  kiszonki: 'Kiszonki',
-  surowki: 'Surówki',
-  warzywa_gotowane: 'Warzywa gotowane',
-  kalmary: 'Kalmary',
-  filety_rybne: 'Filety rybne',
-  __inne__: 'Inne',
-}
-const PODGRUPA_ORDER = ['kiszonki', 'surowki', 'warzywa_gotowane', 'kalmary', 'filety_rybne']
+// Krok DAGOLD — stare etykiety poziomów/podgrup (HURT_LEVEL_LABEL, PODGRUPA_LABEL,
+// PODGRUPA_ORDER) usunięte: zakładki idą teraz per grupa oferty (supplier),
+// a wskaźnik pokazuje rabat wolumenowy zamiast tierów.
 
 const MARKETING_CONSENT_TEXT =
   'Zgadzam się na otrzymywanie ofert handlowych i informacji marketingowych od Ziomek Fish sp. z o.o. drogą elektroniczną (e-mail). Zgodę mogę wycofać w każdej chwili.'
@@ -383,7 +370,6 @@ export function OrderForm({
   const individualDiscount = initial.individual_discount ?? 0
   const isWielkiHurt = cennikTier === 'wielki_hurt'
   const isMinimum = priceMode === 'minimum'
-  const isAutoStandard = cennikTier === 'standard' && priceMode === 'auto'
   const isAutoWH = cennikTier === 'wielki_hurt' && priceMode === 'auto'
   const firstWord = (client?.title ?? '').split(' ')[0] || 'Kliencie'
 
@@ -452,7 +438,7 @@ export function OrderForm({
     return m
   }, [carts])
 
-  const { tier, cmTier, seafoodTier, seafoodSzt, cmTotal, seafoodTotal, totalNet, totalVat, totalBrutto } =
+  const { tier, cmTier, seafoodTier, totalNet, totalVat, totalBrutto } =
     useMemo(
       () =>
         computeOrderTotals(mergedCart, products, cennikTier, priceMode, individualDiscount),
@@ -481,34 +467,23 @@ export function OrderForm({
     return groupDiscounts(lines)
   }, [mergedCart, products])
 
-  // Krok 3 — widoczny wskaźnik rabatu per grupa (poziom + ile do następnego progu).
-  const GROUP_LABELS: Record<string, string> = {
-    'a75927f4-eb9b-426e-b901-4a106c33e7e6': 'Kiszonki i surówki',
-    '0f27ad77-a8be-431f-bb1a-1ca537424307': 'Ryby i owoce morza',
-    'd7a780ec-22cd-4013-960c-80884c342d5d': 'Kalmary i przekąski',
-  }
-  const groupSummary = useMemo(() => {
-    if (individualDiscount > 0) return []
+  // Krok DAGOLD — sumy netto per grupa (supplier) do wskaźnika rabatu NA GÓRZE
+  // (per aktywna zakładka). Ta sama baza co groupDisc.
+  const groupNets = useMemo(() => {
     const lines = Object.entries(mergedCart)
       .filter(([, q]) => q > 0)
       .map(([id, qty]) => {
         const p = products.find((pp) => pp.id === id)
         const b = p?.base_unit_price ?? null
-        if (!p || b == null || !p.supplier_id) return null
-        return { supplierId: p.supplier_id, baseUnitPrice: b, qty }
+        if (!p || b == null) return null
+        return { supplierId: p.supplier_id ?? null, baseUnitPrice: b, qty }
       })
       .filter(
-        (x): x is { supplierId: string; baseUnitPrice: number; qty: number } => x != null,
+        (x): x is { supplierId: string | null; baseUnitPrice: number; qty: number } =>
+          x != null,
       )
-    const nets = groupNetTotals(lines)
-    return Object.entries(nets)
-      .filter(([sid]) => GROUP_LABELS[sid])
-      .map(([sid, net]) => ({
-        label: GROUP_LABELS[sid],
-        pct: groupDisc[sid] ?? 0,
-        next: nextTierGap(sid, net),
-      }))
-  }, [mergedCart, products, groupDisc, individualDiscount])
+    return groupNetTotals(lines)
+  }, [mergedCart, products])
 
   // Cena jednostkowa per-produkt do WYŚWIETLANIA.
   // Krok 3 — new-path (base_unit_price) → cena A × (1 − rabat efektywny) live;
@@ -527,24 +502,38 @@ export function OrderForm({
     [mergedCart],
   )
 
+  // Krok DAGOLD — zakładki = grupy z OFERTY (po supplier), nie po podgrupie —
+  // żeby forma odpowiadała plikowi oferty (Kiszonki / Ryby / Kalmary), a nie
+  // mieszała pozycji. Rabaty wolumenowe liczą się per ta sama grupa.
   const podgrupy = useMemo(() => {
+    const GROUPS = [
+      { key: 'czm', sid: 'a75927f4-eb9b-426e-b901-4a106c33e7e6', label: 'Kiszonki i surówki' },
+      { key: 'ryby', sid: '0f27ad77-a8be-431f-bb1a-1ca537424307', label: 'Ryby i owoce morza' },
+      { key: 'kalmar', sid: 'd7a780ec-22cd-4013-960c-80884c342d5d', label: 'Kalmary i przekąski' },
+    ]
+    const groupOf = (sid: string | null | undefined) =>
+      GROUPS.find((g) => g.sid === sid) ?? { key: 'inne', sid: null, label: 'Pozostałe' }
     const map = new Map<string, Product[]>()
+    const meta = new Map<string, { sid: string | null; label: string }>()
     for (const p of products) {
-      // Przejście 2C-fix — buduj zakładki z WSZYSTKICH show_in_orders (CM + owoce morza).
-      // Podgrupy nie kolidują: kiszonki/surowki/warzywa_gotowane vs kalmary/filety_rybne.
-      const key = p.podgrupa ?? '__inne__'
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(p)
+      const g = groupOf(p.supplier_id)
+      if (!map.has(g.key)) {
+        map.set(g.key, [])
+        meta.set(g.key, { sid: g.sid, label: g.label })
+      }
+      map.get(g.key)!.push(p)
     }
     for (const arr of map.values()) {
       arr.sort((a, b) => (a.sort ?? 9999) - (b.sort ?? 9999) || a.name.localeCompare(b.name, 'pl'))
     }
-    const keys = [...map.keys()].sort((a, b) => {
-      const ia = PODGRUPA_ORDER.indexOf(a)
-      const ib = PODGRUPA_ORDER.indexOf(b)
-      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b)
-    })
-    return keys.map((k) => ({ key: k, items: map.get(k)! }))
+    const order = ['czm', 'ryby', 'kalmar', 'inne']
+    const keys = [...map.keys()].sort((a, b) => order.indexOf(a) - order.indexOf(b))
+    return keys.map((k) => ({
+      key: k,
+      sid: meta.get(k)!.sid,
+      label: meta.get(k)!.label,
+      items: map.get(k)!,
+    }))
   }, [products])
 
   // ─── Cart ops ────────────────────────────────────────────────────────────────
@@ -1587,94 +1576,58 @@ export function OrderForm({
                       }`}
                       style={activePodgrupa === pg.key ? {} : { borderLeft: '3px solid #1F3A5F' }}
                     >
-                      {PODGRUPA_LABEL[pg.key] ?? pg.key}
+                      {pg.label}
                       {cnt > 0 && <span className="ml-1.5 opacity-90">· {cnt}</span>}
                     </button>
                   )
                 })}
               </div>
-              <div className="px-5 pt-1 text-[11px] text-slate-400">
-                {podgrupy.find((g) => g.key === activePodgrupa)?.items[0]?.grupa === 'owoce_morza'
-                  ? 'Owoce morza — Ziomek Fish'
-                  : 'marka partnerska — Czudowa Marka'}
-              </div>
-
-              {/* Poprawka 3 — DWIE plansze gradacji (od startu, wg aktywnej grupy zakładki) */}
+              {/* Krok DAGOLD — wskaźnik rabatu wolumenowego dla AKTYWNEJ grupy (na górze). */}
               {(() => {
-                const activeGrupa = podgrupy.find((g) => g.key === activePodgrupa)?.items[0]?.grupa
-                const activeIsSeafood = activeGrupa === 'owoce_morza'
-
-                const cennikInfo = isMinimum
-                  ? isWielkiHurt
-                    ? 'Twój cennik: Wielki Hurt · cena zablokowana. Masz najniższe ceny niezależnie od ilości.'
-                    : 'Twój cennik: Standardowy · cena minimalna. Masz najniższe ceny niezależnie od ilości.'
-                  : isAutoWH
-                    ? 'Twój cennik: Wielki Hurt (Auto). Ceny zależą od wartości zamówienia — dodawaj produkty, ceny aktualizują się automatycznie.'
-                    : 'Twój cennik: Standardowy · 3 progi (Auto). Ceny zależą od ilości w całym zamówieniu — dodawaj produkty, ceny aktualizują się automatycznie.'
-
-                let headLine = ''
-                let subKind: 'need' | 'best' | 'minimum' = 'best'
-                let needAmount = ''
-                let needNext = ''
-                let bestText = '✓ Masz najlepsze ceny.'
-                if (activeIsSeafood) {
-                  const lvl = seafoodDisplayTier
-                  headLine = `Owoce morza: ${seafoodSzt} szt → poziom ${HURT_LEVEL_LABEL[lvl]}`
-                  if (isMinimum) subKind = 'minimum'
-                  else if (lvl === 'duzy') {
-                    subKind = 'best'
-                    bestText = '✓ Masz najlepsze ceny (Duży hurt).'
-                  } else {
-                    subKind = 'need'
-                    needAmount = `${lvl === 'maly' ? 100 - seafoodSzt : 301 - seafoodSzt} szt`
-                    needNext = lvl === 'maly' ? 'Średni hurt' : 'Duży hurt'
-                  }
-                } else {
-                  const isStd =
-                    cmTier === 'maly' || cmTier === 'sredni' || cmTier === 'duzy' || cmTier === null
-                  const lvl: StandardTier =
-                    cmTier === 'sredni' ? 'sredni' : cmTier === 'duzy' ? 'duzy' : isMinimum ? 'duzy' : 'maly'
-                  const lvlLabel = isStd ? HURT_LEVEL_LABEL[lvl] : TIER_LABEL[cmTier as Tier]
-                  headLine = `Wartość koszyka (Czudowa Marka): ${fmt(cmTotal)} zł → poziom ${lvlLabel}`
-                  if (isMinimum) subKind = 'minimum'
-                  else if (!isAutoStandard) {
-                    subKind = 'best'
-                    bestText = '✓ Najlepsze ceny w Twoim cenniku.'
-                  } else if (lvl === 'duzy') {
-                    subKind = 'best'
-                    bestText = '✓ Masz najlepsze ceny (Duży hurt).'
-                  } else {
-                    subKind = 'need'
-                    needAmount = `${fmt((lvl === 'maly' ? 2000 : 4000) - cmTotal)} zł`
-                    needNext = lvl === 'maly' ? 'Średni hurt' : 'Duży hurt'
-                  }
-                }
-
-                return (
-                  <div className="mx-4 mt-2 space-y-2">
-                    <div
-                      className="rounded-lg px-3 py-2 text-[11px] text-[#1F3A5F]"
-                      style={{ background: '#eef3f9', borderLeft: '3px solid #1F3A5F' }}
-                    >
-                      {cennikInfo}
+                const pg = podgrupy.find((g) => g.key === activePodgrupa)
+                if (!pg || !pg.sid) return null
+                if (individualDiscount > 0) {
+                  return (
+                    <div className="mx-4 mt-2">
+                      <div
+                        className="rounded-lg px-3 py-2.5"
+                        style={{ background: '#eef3f9', border: '1px solid #c7d5e6' }}
+                      >
+                        <div className="text-[13px] font-bold text-[#1F3A5F]">
+                          Rabat indywidualny: −{Math.round(individualDiscount * 100)}% na wszystko
+                        </div>
+                      </div>
                     </div>
+                  )
+                }
+                const net = groupNets[pg.sid] ?? 0
+                const pct = groupDisc[pg.sid] ?? 0
+                const gap = nextTierGap(pg.sid, net)
+                return (
+                  <div className="mx-4 mt-2">
                     <div
                       className="rounded-lg px-3 py-2.5"
                       style={{ background: '#FEF3C7', border: '1px solid #FCD34D' }}
                     >
-                      <div className="text-[11px] font-semibold text-amber-900/80">{headLine}</div>
-                      {subKind === 'need' ? (
+                      <div className="text-[11px] font-semibold text-amber-900/80">
+                        {pg.label}: {fmt(net)} zł ·{' '}
+                        {pct > 0 ? `rabat −${Math.round(pct * 100)}%` : 'bez rabatu'}
+                      </div>
+                      {gap ? (
                         <div className="mt-1 text-[13px] text-slate-700 leading-snug">
                           Jeszcze{' '}
-                          <span className="text-[19px] font-extrabold text-[#1F3A5F] align-middle">{needAmount}</span>{' '}
-                          do progu <span className="font-bold text-[#1F3A5F]">{needNext}</span> —{' '}
-                          <span className="font-bold text-emerald-700">ceny spadną</span>.
+                          <span className="text-[19px] font-extrabold text-[#1F3A5F] align-middle">
+                            {fmt(gap.gap)} zł
+                          </span>{' '}
+                          do rabatu{' '}
+                          <span className="font-bold text-[#1F3A5F]">
+                            −{Math.round(gap.toPct * 100)}%
+                          </span>{' '}
+                          — <span className="font-bold text-emerald-700">ceny spadną</span>.
                         </div>
-                      ) : subKind === 'best' ? (
-                        <div className="mt-1 text-[13px] font-bold text-emerald-700">{bestText}</div>
                       ) : (
-                        <div className="mt-1 text-[12px] font-semibold text-slate-600">
-                          Cena minimalna — masz najlepsze ceny.
+                        <div className="mt-1 text-[13px] font-bold text-emerald-700">
+                          ✓ Masz najwyższy rabat w tej grupie.
                         </div>
                       )}
                     </div>
@@ -1805,23 +1758,6 @@ export function OrderForm({
                 <div className="flex-1 min-w-0 text-[14px] font-bold leading-tight">
                   Koszyk: {totalItems} {totalItems === 1 ? 'pozycja' : 'pozycji'}
                   <span className="block text-[12px] font-medium text-white/80">Suma netto: {fmt(totalNet)} zł</span>
-                  {groupSummary.map((g) => (
-                    <span
-                      key={g.label}
-                      className="block text-[11px] font-medium text-white/90 mt-0.5"
-                    >
-                      {g.label}:{' '}
-                      {g.pct > 0 ? `rabat −${Math.round(g.pct * 100)}%` : 'bez rabatu'}
-                      {g.next
-                        ? ` · do −${Math.round(g.next.toPct * 100)}% brakuje ${fmt(g.next.gap)} zł`
-                        : ''}
-                    </span>
-                  ))}
-                  {individualDiscount > 0 && (
-                    <span className="block text-[11px] font-medium text-white/90 mt-0.5">
-                      Rabat indywidualny: −{Math.round(individualDiscount * 100)}%
-                    </span>
-                  )}
                 </div>
                 <button
                   type="button"
