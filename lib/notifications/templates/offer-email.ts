@@ -33,13 +33,10 @@ export function renderOfferEmail(data: OfferEmailData): {
 } {
   // Krok DAGOLD — załącznik + etykiety wg języka oferty (PL/UA).
   const ua = data.lang === 'ua'
-  const attachmentFilename =
-    data.attachment_filename || (ua ? 'DAGOLD_oferta_UA.xlsx' : 'DAGOLD_oferta_PL.xlsx')
   const L = ua
     ? {
         subject: 'Гуртова оферта — DAGOLD',
         h1: 'Гуртова оферта',
-        attach: 'Вкладення:',
         cta: 'ЗАМОВИТИ ТУТ',
         ctaHint: 'Натисніть кнопку, щоб оформити замовлення онлайн (2 хвилини)',
         ctaFallback: 'Якщо кнопка не працює — відкрийте посилання:',
@@ -47,7 +44,6 @@ export function renderOfferEmail(data: OfferEmailData): {
     : {
         subject: 'Oferta hurtowa — DAGOLD',
         h1: 'Oferta hurtowa',
-        attach: 'Załącznik:',
         cta: 'ZAMÓW TUTAJ',
         ctaHint: 'Kliknij przycisk, aby złożyć zamówienie online (2 minuty)',
         ctaFallback: 'Jeśli przycisk nie działa — otwórz link:',
@@ -99,9 +95,6 @@ export function renderOfferEmail(data: OfferEmailData): {
   </div>`
       : ''
   }
-  <div class="attachment-note">
-    <strong>${L.attach}</strong> ${attachmentFilename}
-  </div>
   <div class="footer">
     ${footer}
   </div>

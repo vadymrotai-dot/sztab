@@ -16,8 +16,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendNotification } from '@/lib/notifications/sender'
-import fs from 'fs/promises'
-import path from 'path'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -158,23 +156,8 @@ export async function POST(
     finalMessage = message.replace(/<<order_link>>/g, orderLink)
   }
 
-  // Krok DAGOLD — załącznik = oferta DAGOLD (ЧМ + ryby + kalmary z tabelą rabatów)
-  // w wybranym języku.
-  const xlsxFilename =
-    offerLang === 'ua' ? 'DAGOLD_oferta_UA.xlsx' : 'DAGOLD_oferta_PL.xlsx'
-  let xlsxBytes: Buffer
-  try {
-    const xlsxPath = path.join(process.cwd(), 'public', 'cennik', xlsxFilename)
-    xlsxBytes = await fs.readFile(xlsxPath)
-  } catch (e: any) {
-    console.error('[send-offer] failed to read xlsx', { tier: cennikTier, error: e?.message })
-    return NextResponse.json(
-      { ok: false, error: 'Cennik file not found' },
-      { status: 500 },
-    )
-  }
-
-  // Send notification
+  // Krok DAGOLD — BEZ załącznika: pełny asortyment, ceny netto i rabaty są w
+  // formularzu zamówienia (przycisk/link w mailu). Lżejszy mail, mniej spamu.
   const result = await sendNotification({
     channel: 'email',
     recipient: { email },
@@ -185,18 +168,9 @@ export async function POST(
       custom_message: finalMessage,
       order_link: orderLink,
       client_name: client.title,
-      attachment_filename: xlsxFilename,
       // Krok DAGOLD — język oferty (temat + etykiety maila).
       lang: offerLang,
     },
-    attachments: [
-      {
-        filename: xlsxFilename,
-        content: xlsxBytes,
-        contentType:
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      },
-    ],
   })
 
   return NextResponse.json({

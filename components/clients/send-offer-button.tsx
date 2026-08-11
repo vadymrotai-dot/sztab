@@ -29,7 +29,7 @@ function buildDefaultMessage(lang: 'pl' | 'ua') {
 
 Надсилаю актуальну гуртову оферту DAGOLD — квашені й салати (Czudowa Marka), риба та морепродукти (AVIS-D, Латвія), кальмари й сушені снеки.
 
-У вкладенні файл Excel з повним асортиментом, цінами нетто та таблицею знижок від суми замовлення.
+Повний асортимент, ціни нетто й знижки від суми замовлення — у формі за кнопкою нижче.
 
 Щоб оформити замовлення онлайн — натисніть велику кнопку «ЗАМОВИТИ ТУТ» нижче. Форма займає 2 хвилини, знижка рахується автоматично в міру набору товару.
 
@@ -44,7 +44,7 @@ vasin@dagold.com`
 
 Przesyłam aktualną ofertę hurtową DAGOLD — kiszonki i surówki (Czudowa Marka), ryby i owoce morza (AVIS-D, Łotwa) oraz kalmary i przekąski suszone.
 
-W załączeniu plik Excel z pełnym asortymentem, cenami netto i tabelą rabatów od wartości zamówienia.
+Pełny asortyment, ceny netto i rabaty od wartości zamówienia — w formularzu pod przyciskiem poniżej.
 
 Aby złożyć zamówienie online — kliknij duży przycisk „ZAMÓW TUTAJ" poniżej. Formularz zajmuje 2 minuty, rabat nalicza się automatycznie w miarę dodawania towaru.
 
@@ -247,10 +247,6 @@ export function SendOfferButton({
                 </p>
               </div>
 
-              <div className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                <strong>Załącznik:</strong>{' '}
-                {offerLang === 'ua' ? 'DAGOLD_oferta_UA.xlsx' : 'DAGOLD_oferta_PL.xlsx'}
-              </div>
 
               {result && (
                 <div
