@@ -29,7 +29,7 @@ function buildDefaultMessage(lang: 'pl' | 'ua') {
 
 Надсилаю актуальну гуртову оферту DAGOLD — квашені й салати (Czudowa Marka), риба та морепродукти (AVIS-D, Латвія), кальмари й сушені снеки.
 
-Повний асортимент, ціни нетто й знижки від суми замовлення — у формі за кнопкою нижче.
+Повний асортимент, ціни нетто та знижки будуть у формі замовлення — натисніть кнопку нижче.
 
 Щоб оформити замовлення онлайн — натисніть велику кнопку «ЗАМОВИТИ ТУТ» нижче. Форма займає 2 хвилини, знижка рахується автоматично в міру набору товару.
 
@@ -44,7 +44,7 @@ vasin@dagold.com`
 
 Przesyłam aktualną ofertę hurtową DAGOLD — kiszonki i surówki (Czudowa Marka), ryby i owoce morza (AVIS-D, Łotwa) oraz kalmary i przekąski suszone.
 
-Pełny asortyment, ceny netto i rabaty od wartości zamówienia — w formularzu pod przyciskiem poniżej.
+Pełny asortyment, ceny netto i rabaty będą w formularzu zamówienia — kliknij przycisk poniżej.
 
 Aby złożyć zamówienie online — kliknij duży przycisk „ZAMÓW TUTAJ" poniżej. Formularz zajmuje 2 minuty, rabat nalicza się automatycznie w miarę dodawania towaru.
 
