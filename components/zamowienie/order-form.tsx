@@ -525,6 +525,7 @@ export function OrderForm({
       { key: 'czm', sid: 'a75927f4-eb9b-426e-b901-4a106c33e7e6', label: 'Kiszonki i surówki' },
       { key: 'ryby', sid: '0f27ad77-a8be-431f-bb1a-1ca537424307', label: 'Ryby i owoce morza' },
       { key: 'kalmar', sid: 'd7a780ec-22cd-4013-960c-80884c342d5d', label: 'Kalmary i przekąski' },
+      { key: 'karol', sid: '7741f8dd-d957-474a-9b11-99d6d43e764b', label: 'Wędliny' },
     ]
     const groupOf = (sid: string | null | undefined) =>
       GROUPS.find((g) => g.sid === sid) ?? { key: 'inne', sid: null, label: 'Pozostałe' }

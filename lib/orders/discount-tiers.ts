@@ -42,6 +42,13 @@ export const VOLUME_TIERS: Record<string, VolumeTier> = {
     t2_amount: 8000,
     t2_pct: 0.08,
   },
+  // Karol (wędliny — segment PL)
+  '7741f8dd-d957-474a-9b11-99d6d43e764b': {
+    t1_amount: 1000,
+    t1_pct: 0.05,
+    t2_amount: 2000,
+    t2_pct: 0.08,
+  },
 }
 
 export interface CartLine {
