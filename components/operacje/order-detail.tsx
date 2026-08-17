@@ -61,6 +61,23 @@ type OrderDocument = {
   pdf_url: string | null
 }
 
+// 3C-3a — przesyłka Apaczka (order_shipments). Render w 3C-3b.
+type OrderShipment = {
+  id: string
+  delivery_point_id: string | null
+  apaczka_order_id: string | null
+  service_id: number | null
+  service_name: string | null
+  waybill_number: string | null
+  tracking_url: string | null
+  koszt_netto: number | null
+  koszt_brutto: number | null
+  weight: number | null
+  shipment_type: string | null
+  status: string | null
+  created_at: string
+}
+
 type AvailableProduct = {
   id: string
   name: string
@@ -207,11 +224,18 @@ export function OrderDetail({
   availableProducts,
   deliveryPoints,
   orderDocuments,
+  orderShipments = [],
+  shipmentWeightTotal = 0,
+  shipmentWeightByPoint = {},
 }: {
   order: Order
   availableProducts: AvailableProduct[]
   deliveryPoints: DeliveryPoint[]
   orderDocuments: OrderDocument[]
+  // 3C-3a — przesyłki Apaczka + podpowiedzi wagi (render w 3C-3b).
+  orderShipments?: OrderShipment[]
+  shipmentWeightTotal?: number
+  shipmentWeightByPoint?: Record<string, number>
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -535,9 +559,25 @@ export function OrderDetail({
                             >
                               −
                             </button>
-                            <span className="w-12 text-center font-mono text-sm font-semibold">
-                              {item.qty}
-                            </span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={9999}
+                              step="0.1"
+                              inputMode="decimal"
+                              key={item.qty}
+                              defaultValue={item.qty}
+                              disabled={busy}
+                              onBlur={(e) => {
+                                const v = Number(e.target.value.replace(',', '.'))
+                                if (Number.isFinite(v) && v > 0 && v !== Number(item.qty))
+                                  updateQty(item.id, v)
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') e.currentTarget.blur()
+                              }}
+                              className="w-14 text-center font-mono text-sm font-semibold border border-slate-300 rounded h-7 outline-none focus:border-[#1F3A5F]"
+                            />
                             <button
                               onClick={() => updateQty(item.id, item.qty + 1)}
                               disabled={busy}
@@ -1219,7 +1259,7 @@ function AddItemModal({
   }, [availableProducts, search])
 
   const submit = async () => {
-    if (!selectedId || qty < 1) return
+    if (!selectedId || qty <= 0) return
     setSubmitting(true)
     await onAdd(selectedId, qty)
     setSubmitting(false)
@@ -1300,10 +1340,15 @@ function AddItemModal({
           <label className="text-xs text-slate-600">Ilość:</label>
           <input
             type="number"
-            min={1}
+            min={0.1}
             max={9999}
+            step="0.1"
+            inputMode="decimal"
             value={qty}
-            onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
+            onChange={(e) => {
+              const v = Number(e.target.value.replace(',', '.'))
+              setQty(Number.isFinite(v) && v > 0 ? v : 1)
+            }}
             className="w-20 px-2 py-1 border border-slate-300 rounded text-sm text-center"
           />
           <button

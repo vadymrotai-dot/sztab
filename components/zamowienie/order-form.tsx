@@ -16,6 +16,8 @@ import {
   effectiveLineDiscount,
   nextTierGap,
   GLOBAL_FOOD_SUPPLIER_ID,
+  AVIS_D_SUPPLIER_ID,
+  normalizeQty,
 } from '@/lib/orders/discount-tiers'
 import {
   Minus,
@@ -554,10 +556,13 @@ export function OrderForm({
     return carts[pointId]?.[productId] ?? 0
   }
   function setQty(pointId: string, productId: string, qty: number) {
+    // Krok DAGOLD — ryby AVIS-D dziesiętne (0.1), reszta całkowite.
+    const prod = products.find((pp) => pp.id === productId)
+    const norm = normalizeQty(prod?.supplier_id ?? null, qty)
     setCarts((prev) => {
       const pc = { ...(prev[pointId] ?? {}) }
-      if (qty <= 0) delete pc[productId]
-      else pc[productId] = Math.min(9999, Math.max(1, Math.floor(qty)))
+      if (!(norm > 0)) delete pc[productId]
+      else pc[productId] = Math.min(9999, norm)
       return { ...prev, [pointId]: pc }
     })
   }
@@ -746,7 +751,8 @@ export function OrderForm({
         typeof it.delivery_point_index === 'number' && it.delivery_point_index < np.length
           ? it.delivery_point_index
           : 0
-      c[np[idx].localId][it.product_id] = Math.min(9999, Math.max(1, Math.floor(it.qty)))
+      const nq = normalizeQty(prod.supplier_id ?? null, it.qty)
+      if (nq > 0) c[np[idx].localId][it.product_id] = Math.min(9999, nq)
     }
     setCarts(c)
     setActivePointId(np[0].localId)
@@ -1729,13 +1735,17 @@ export function OrderForm({
                             type="number"
                             min={0}
                             max={9999}
+                            step={p.supplier_id === AVIS_D_SUPPLIER_ID ? 0.1 : 1}
+                            inputMode={
+                              p.supplier_id === AVIS_D_SUPPLIER_ID ? 'decimal' : 'numeric'
+                            }
                             value={qty === 0 ? '' : qty}
                             disabled={unavailable}
                             placeholder="0"
                             onFocus={(e) => e.currentTarget.select()}
                             onChange={(e) => {
                               const v = e.target.value
-                              setQty(apId, p.id, v === '' ? 0 : Number(v) || 0)
+                              setQty(apId, p.id, v === '' ? 0 : Number(v.replace(',', '.')) || 0)
                             }}
                             onBlur={(e) => {
                               if (e.target.value === '') setQty(apId, p.id, 0)

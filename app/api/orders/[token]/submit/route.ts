@@ -22,7 +22,11 @@ import {
 } from '@/lib/orders/pricing'
 // Krok 3 DAGOLD — rabaty wolumenowe per grupa (supplier). Serwerowa (autorytatywna)
 // wersja tej samej logiki co order-form → parity display==charge.
-import { groupDiscounts, effectiveLineDiscount } from '@/lib/orders/discount-tiers'
+import {
+  groupDiscounts,
+  effectiveLineDiscount,
+  normalizeQty,
+} from '@/lib/orders/discount-tiers'
 // Sprint T-ORDER.1 (30.05.2026) — usunięto `after()` + processProforma import.
 // Proforma teraz wysyłana ręcznie przez admina (przycisk "Potwierdź i wyślij
 // proformę" w panelu zamówienia → POST /api/orders/admin/[id]/send-proforma).
@@ -96,7 +100,7 @@ const SubmitSchema = z.object({
     .array(
       z.object({
         product_id: z.string().regex(UUID_RE, 'Niepoprawne ID produktu'),
-        qty: z.number().int().min(1).max(9999),
+        qty: z.number().min(0.1).max(9999),
         // Sprint T-ORDER.4b-API — indeks do delivery_points (UUID powstaje po INSERT).
         delivery_point_index: z.number().int().min(0).optional(),
       }),
@@ -284,6 +288,22 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   if (products.some((p) => !p.show_in_orders)) {
     return NextResponse.json(
       { ok: false, error: 'Produkt niedostępny w zamówieniu' },
+      { status: 400 },
+    )
+  }
+
+  // Krok DAGOLD — normalizacja ilości (autorytatywnie, niezależnie od frontu):
+  // ryby AVIS-D → dziesiętne (0.1 kg), pozostałe grupy → całkowite. qty <= 0 odrzuć.
+  for (const it of input.items) {
+    const p = products.find((pp) => pp.id === it.product_id)
+    it.qty = normalizeQty(
+      (p as { supplier_id?: string | null } | undefined)?.supplier_id ?? null,
+      it.qty,
+    )
+  }
+  if (input.items.some((it) => !(it.qty > 0))) {
+    return NextResponse.json(
+      { ok: false, error: 'Niepoprawna ilość produktu' },
       { status: 400 },
     )
   }

@@ -14,7 +14,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { computeNewUnitPrice, resolveClientDiscount } from '@/lib/orders/pricing'
-import { GLOBAL_FOOD_SUPPLIER_ID } from '@/lib/orders/discount-tiers'
+import { GLOBAL_FOOD_SUPPLIER_ID, normalizeQty } from '@/lib/orders/discount-tiers'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -78,7 +78,7 @@ async function authCheck(): Promise<boolean> {
 // ── POST ──────────────────────────────────────────────────────────────────
 const PostSchema = z.object({
   product_id: z.string().regex(UUID_RE),
-  qty: z.number().int().min(1).max(9999),
+  qty: z.number().min(0.1).max(9999),
 })
 
 export async function POST(req: NextRequest, ctx: RouteContext) {
@@ -183,7 +183,15 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     }
     unitPrice = Number(rawPrice)
   }
-  const lineTotal = parsed.data.qty * unitPrice
+  // Krok DAGOLD — normalizacja ilości: ryby AVIS-D dziesiętne, reszta całkowite.
+  const qty = normalizeQty((product as any).supplier_id ?? null, parsed.data.qty)
+  if (!(qty > 0)) {
+    return NextResponse.json(
+      { ok: false, error: 'Niepoprawna ilość' },
+      { status: 400 },
+    )
+  }
+  const lineTotal = qty * unitPrice
 
   const { data: inserted, error: insErr } = await admin
     .from('order_items')
@@ -192,7 +200,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       product_id: parsed.data.product_id,
       product_name_snapshot: (product as any).display_name || (product as any).name,
       gramatura_snapshot: (product as any).gramatura,
-      qty: parsed.data.qty,
+      qty,
       unit_price: unitPrice.toFixed(2),
       line_total: lineTotal.toFixed(2),
     })
@@ -214,7 +222,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 // ── PATCH ─────────────────────────────────────────────────────────────────
 const PatchSchema = z.object({
   item_id: z.string().regex(UUID_RE),
-  qty: z.number().int().min(1).max(9999),
+  qty: z.number().min(0.1).max(9999),
 })
 
 export async function PATCH(req: NextRequest, ctx: RouteContext) {
@@ -269,7 +277,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
 
   const { data: item } = await admin
     .from('order_items')
-    .select('id, order_id, unit_price')
+    .select('id, order_id, unit_price, product_id')
     .eq('id', parsed.data.item_id)
     .maybeSingle()
   if (!item || item.order_id !== id) {
@@ -279,12 +287,30 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     )
   }
 
-  const newLineTotal = parsed.data.qty * Number(item.unit_price)
+  // Krok DAGOLD — normalizacja ilości wg grupy produktu (ryby AVIS-D → dziesiętne).
+  let supplierId: string | null = null
+  const prodId = (item as { product_id?: string | null }).product_id
+  if (prodId) {
+    const { data: prod } = await admin
+      .from('products')
+      .select('supplier_id')
+      .eq('id', prodId)
+      .maybeSingle()
+    supplierId = (prod as { supplier_id?: string | null } | null)?.supplier_id ?? null
+  }
+  const newQty = normalizeQty(supplierId, parsed.data.qty)
+  if (!(newQty > 0)) {
+    return NextResponse.json(
+      { ok: false, error: 'Niepoprawna ilość' },
+      { status: 400 },
+    )
+  }
+  const newLineTotal = newQty * Number(item.unit_price)
 
   const { error: updErr } = await admin
     .from('order_items')
     .update({
-      qty: parsed.data.qty,
+      qty: newQty,
       line_total: newLineTotal.toFixed(2),
     })
     .eq('id', parsed.data.item_id)

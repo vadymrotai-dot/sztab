@@ -20,7 +20,7 @@ const UUID_RE = /^[0-9a-f-]{36}$/i
 
 const PozycjaSchema = z.object({
   product_id: z.string().regex(UUID_RE, 'Niepoprawne ID produktu'),
-  qty: z.number().int().min(1).max(9999),
+  qty: z.number().min(0.1).max(9999),
   // Przejście 1A — opcjonalny indeks do delivery_points (multipoint snapshot).
   delivery_point_index: z.number().int().min(0).optional(),
 })

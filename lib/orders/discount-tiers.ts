@@ -87,6 +87,21 @@ export function groupDiscounts(lines: CartLine[]): Record<string, number> {
 // Klucz grupy kalmarów/przekąsek (GLOBAL FOOD) — ma OSOBNĄ zniżkę indywidualną.
 export const GLOBAL_FOOD_SUPPLIER_ID = 'd7a780ec-22cd-4013-960c-80884c342d5d'
 
+// Ryby z Łotwy (AVIS-D) — JEDYNA grupa z ilościami ułamkowymi (kg, do dziesiętnych).
+// Pozostałe grupy (ЧМ, kalmary) — ilości całkowite.
+export const AVIS_D_SUPPLIER_ID = '0f27ad77-a8be-431f-bb1a-1ca537424307'
+
+// Normalizacja ilości: ryby AVIS-D → dziesiętne (0.1), reszta → całkowite.
+// Używane spójnie przez order-form, submit i admin (jedna reguła).
+export function normalizeQty(
+  supplierId: string | null | undefined,
+  qty: number,
+): number {
+  if (!Number.isFinite(qty)) return 0
+  if (supplierId === AVIS_D_SUPPLIER_ID) return Math.round(qty * 10) / 10
+  return Math.round(qty)
+}
+
 // Rozdzielona zniżka indywidualna klienta.
 export interface IndividualDiscounts {
   ogolna: number // ЧМ + ryby + reszta
