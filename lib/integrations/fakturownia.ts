@@ -7,9 +7,9 @@
  * Auth: api_token у kazdom request body (POST/PUT) або як query param (GET/DELETE).
  * Base URL: https://${SUBDOMAIN}.fakturownia.pl
  *
- * Ziomek Fish seller info HARDCODED, бо:
- * - Konfiguracja у Fakturownia може być змінена (хтось переименує firmu)
- * - Want gwarancję що на fakturze будe "Ziomek Fish Sp. z o.o." з NIP 5223239864
+ * Seller info: DAGOLD Sp. z o.o. (NIP 5214088667) — береться з дефолту акаунта
+ * Fakturownia (per-invoice override заблокований security). Акаунт DAGOLD задано
+ * через env FAKTUROWNIA_SUBDOMAIN + FAKTUROWNIA_API_TOKEN.
  * - KSeF wymagana czyste data
  *
  * Sprint S-ORDER.2.A.2 (19.05.2026).
@@ -31,8 +31,8 @@ const BASE_URL = SUBDOMAIN ? `https://${SUBDOMAIN}.fakturownia.pl` : ''
 // S-ORDER.2.A.2.1 (19.05.2026): seller_* fields removed.
 // Fakturownia security ("Poziom zabezpieczenia przed zmianą konta bankowego")
 // blocks per-invoice seller override → uses account-default seller automatically.
-// Seller config managed у Fakturownia dashboard (Ziomek Fish Sp. z o.o.,
-// NIP 5223239864, ul. Szczęsna 26, 02-454 Warszawa).
+// Seller config managed у Fakturownia dashboard (DAGOLD Sp. z o.o.,
+// NIP 5214088667, ul. Wyględowska 8/51, 02-654 Warszawa).
 
 export type FakturowniaPosition = {
   name: string

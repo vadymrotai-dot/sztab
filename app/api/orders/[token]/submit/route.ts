@@ -39,7 +39,7 @@ const UUID_RE = /^[0-9a-f-]{36}$/i
 
 // Poprawki 1B — kanoniczny tekst zgody marketingowej (snapshot zapisywany w clients).
 const MARKETING_CONSENT_TEXT =
-  'Zgadzam się na otrzymywanie ofert handlowych i informacji marketingowych od Ziomek Fish sp. z o.o. drogą elektroniczną (e-mail). Zgodę mogę wycofać w każdej chwili.'
+  'Zgadzam się na otrzymywanie ofert handlowych i informacji marketingowych od DAGOLD sp. z o.o. drogą elektroniczną (e-mail). Zgodę mogę wycofać w każdej chwili.'
 
 // Sprint T-ORDER.4b-API (30.05.2026) — rozszerzenie o wielopunktowość.
 // delivery_address + preferred_delivery_date zostają OPTIONAL (back-compat dla

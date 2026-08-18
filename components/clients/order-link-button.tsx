@@ -65,7 +65,7 @@ export function OrderLinkButton({ clientId, clientName, cohortId }: Props) {
 
   const whatsappUrl = linkData
     ? `https://wa.me/?text=${encodeURIComponent(
-        `Cennik Czudowa Marka — złóż zamówienie online: ${linkData.url}`,
+        `Oferta DAGOLD — złóż zamówienie online: ${linkData.url}`,
       )}`
     : ''
 

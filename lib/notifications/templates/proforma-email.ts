@@ -1,11 +1,11 @@
 /**
  * Email template для proforma faktura після order submit.
  *
- * Sent FROM: Ziomek Fish <zamowienia@sztabapp.com>
- * BCC: ziomekhurt@gmail.com (Vadym дістає копію всіх emailів)
+ * Sent FROM: DAGOLD <zamowienia@sztabapp.com>
+ * BCC: vasin@dagold.com (Vadym дістає копію всіх emailів)
  *
  * Content:
- * - Header з brand (Ziomek Fish + Czudowa Marka)
+ * - Header з brand (DAGOLD)
  * - Подяка за zamówienie
  * - Order number (ZIO-XXX)
  * - Total breakdown
@@ -32,7 +32,7 @@ export type ProformaEmailData = {
 }
 
 export function renderProformaEmail(data: ProformaEmailData) {
-  const subject = `Potwierdzenie zamówienia ${data.order_number} — Ziomek Fish`
+  const subject = `Potwierdzenie zamówienia ${data.order_number} — DAGOLD`
 
   const greeting = data.contact_person
     ? `Dzień dobry ${escapeHtml(data.contact_person)},`
@@ -69,7 +69,7 @@ export function renderProformaEmail(data: ProformaEmailData) {
 </head>
 <body>
   <div class="header">
-    <div class="brand">Ziomek Fish · Czudowa Marka</div>
+    <div class="brand">DAGOLD</div>
     <h1>Potwierdzenie zamówienia</h1>
   </div>
 
@@ -109,14 +109,14 @@ export function renderProformaEmail(data: ProformaEmailData) {
   <div class="contact">
     <strong>Kontakt:</strong><br>
     Vadym Rotai<br>
-    📞 +48 733 050 568<br>
-    ✉️ <a href="mailto:zamowienia@sztabapp.com">zamowienia@sztabapp.com</a>
+    📞 +48 510 924 301<br>
+    ✉️ <a href="mailto:vasin@dagold.com">vasin@dagold.com</a>
   </div>
 
   <div class="footer">
-    Ziomek Fish Sp. z o.o.<br>
-    ul. Szczęsna 26, 02-454 Warszawa<br>
-    NIP: 5223239864 · KRS: 0001000146
+    DAGOLD Sp. z o.o.<br>
+    ul. Wyględowska 8/51, 02-654 Warszawa<br>
+    NIP: 5214088667 · KRS: 0001130039
   </div>
 </body>
 </html>
@@ -145,13 +145,13 @@ Co dalej:
 
 Kontakt:
 Vadym Rotai
-+48 733 050 568
-zamowienia@sztabapp.com
++48 510 924 301
+vasin@dagold.com
 
 —
-Ziomek Fish Sp. z o.o.
-ul. Szczęsna 26, 02-454 Warszawa
-NIP: 5223239864 · KRS: 0001000146
+DAGOLD Sp. z o.o.
+ul. Wyględowska 8/51, 02-654 Warszawa
+NIP: 5214088667 · KRS: 0001130039
 `
 
   return { subject, html, text }

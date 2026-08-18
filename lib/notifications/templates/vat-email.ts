@@ -1,11 +1,11 @@
 /**
  * Email template для VAT faktura після status='shipped'.
  *
- * Sent FROM: Ziomek Fish <zamowienia@sztabapp.com>
- * BCC: ziomekhurt@gmail.com (Vadym дістає копію)
+ * Sent FROM: DAGOLD <zamowienia@sztabapp.com>
+ * BCC: vasin@dagold.com (Vadym дістає копію)
  *
  * Content:
- * - Header з brand (Ziomek Fish + Czudowa Marka)
+ * - Header з brand (DAGOLD)
  * - Greeting + info що VAT wystawiona po wysyłce
  * - Order number + VAT number
  * - Total breakdown (net / VAT / brutto)
@@ -68,7 +68,7 @@ export function renderVatEmail(data: VatEmailData) {
 </head>
 <body>
   <div class="header">
-    <div class="brand">Ziomek Fish · Czudowa Marka</div>
+    <div class="brand">DAGOLD</div>
     <h1>Faktura VAT — ${escapeHtml(data.vat_number)}</h1>
   </div>
 
@@ -105,14 +105,14 @@ export function renderVatEmail(data: VatEmailData) {
   <div class="contact">
     <strong>Kontakt:</strong><br>
     Vadym Rotai<br>
-    📞 +48 733 050 568<br>
-    ✉️ <a href="mailto:zamowienia@sztabapp.com">zamowienia@sztabapp.com</a>
+    📞 +48 510 924 301<br>
+    ✉️ <a href="mailto:vasin@dagold.com">vasin@dagold.com</a>
   </div>
 
   <div class="footer">
-    Ziomek Fish Sp. z o.o.<br>
-    ul. Szczęsna 26, 02-454 Warszawa<br>
-    NIP: 5223239864 · KRS: 0001000146
+    DAGOLD Sp. z o.o.<br>
+    ul. Wyględowska 8/51, 02-654 Warszawa<br>
+    NIP: 5214088667 · KRS: 0001130039
   </div>
 </body>
 </html>
@@ -137,13 +137,13 @@ zgodnie z obowiązującymi przepisami.
 
 Kontakt:
 Vadym Rotai
-+48 733 050 568
-zamowienia@sztabapp.com
++48 510 924 301
+vasin@dagold.com
 
 —
-Ziomek Fish Sp. z o.o.
-ul. Szczęsna 26, 02-454 Warszawa
-NIP: 5223239864 · KRS: 0001000146
+DAGOLD Sp. z o.o.
+ul. Wyględowska 8/51, 02-654 Warszawa
+NIP: 5214088667 · KRS: 0001130039
 `
 
   return { subject, html, text }

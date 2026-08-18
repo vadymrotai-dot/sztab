@@ -134,7 +134,7 @@ const TIER_LABEL: Record<Tier, string> = {
 // a wskaźnik pokazuje rabat wolumenowy zamiast tierów.
 
 const MARKETING_CONSENT_TEXT =
-  'Zgadzam się na otrzymywanie ofert handlowych i informacji marketingowych od Ziomek Fish sp. z o.o. drogą elektroniczną (e-mail). Zgodę mogę wycofać w każdej chwili.'
+  'Zgadzam się na otrzymywanie ofert handlowych i informacji marketingowych od DAGOLD sp. z o.o. drogą elektroniczną (e-mail). Zgodę mogę wycofać w każdej chwili.'
 
 function tierToPriceKey(t: Tier): keyof Product['prices'] {
   if (t === 'wielki_hurt_entry') return 'hurt_wh'
@@ -1968,8 +1968,8 @@ export function OrderForm({
               {/* Klauzula RODO (tekst, NIE checkbox) */}
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-[11px] text-slate-500 leading-relaxed">
                 Twoje dane (imię, telefon, adres dostawy odbiorcy) przetwarzamy w celu realizacji zamówienia —
-                podstawa: art. 6 ust. 1 lit. b RODO. Administrator: Ziomek Fish sp. z o.o., NIP 5223239864, ul.
-                Marywilska 26, Warszawa. Dane przechowujemy przez okres współpracy handlowej. Masz prawo dostępu,
+                podstawa: art. 6 ust. 1 lit. b RODO. Administrator: DAGOLD sp. z o.o., NIP 5214088667, ul.
+                Wyględowska 8/51, 02-654 Warszawa. Dane przechowujemy przez okres współpracy handlowej. Masz prawo dostępu,
                 sprostowania i usunięcia danych oraz wniesienia skargi do PUODO. Szczegóły:{' '}
                 <a href="/polityka-prywatnosci" className="underline text-[#1F3A5F]">
                   Polityka prywatności

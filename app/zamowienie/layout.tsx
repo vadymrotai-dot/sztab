@@ -6,8 +6,8 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Zamówienie Czudowa Marka · Ziomek Fish',
-  description: 'Złóż zamówienie hurtowe Czudowa Marka',
+  title: 'Zamówienie hurtowe · DAGOLD',
+  description: 'Złóż zamówienie hurtowe DAGOLD',
 }
 
 export default function ZamowienieLayout({
