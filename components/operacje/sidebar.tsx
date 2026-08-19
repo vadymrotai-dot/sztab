@@ -41,6 +41,7 @@ import {
   FileTextIcon,
   TruckIcon,
   CalendarIcon,
+  WarehouseIcon,
   ChevronUpIcon,
   SettingsIcon,
   LogOutIcon,
@@ -148,6 +149,7 @@ export function OperacjeSidebar({ user, counts = {} }: OperacjeSidebarProps) {
       // S-ORDER.1.C.1 (19.05.2026) — list view live, detail route у 1.C.2.
     },
     { name: 'Klienci', href: '/operacje/klienci', icon: UsersIcon },
+    { name: 'Magazyn', href: '/operacje/magazyn', icon: WarehouseIcon },
     {
       name: 'Faktury',
       href: '/operacje/faktury',

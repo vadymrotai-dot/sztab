@@ -111,7 +111,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     .select(
       // Przejście 2C — dodano vat_rate (front liczy VAT per-stawka jak serwer 2A).
       // Task #14 — dodano marza_bazowa_pct + cost_pln dla new-price-path (parity z submit).
-      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, order_form_sort, category, grupa, podgrupa, in_stock, unit, vat_rate, marza_bazowa_pct, cost_pln, supplier_id, dostepnosc',
+      'id, name, display_name, gramatura, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, order_form_sort, category, grupa, podgrupa, in_stock, unit, vat_rate, marza_bazowa_pct, cost_pln, supplier_id, dostepnosc, stock_level, reserved_qty',
     )
     .eq('show_in_orders', true)
     .order('order_form_sort', { ascending: true })
@@ -178,6 +178,12 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         | 'w_magazynie'
         | 'na_zamowienie',
       unit: p.unit,
+      // Ф1 magazyn — dostępna ilość = stock_level − reserved_qty.
+      // null → produkt nie jest zarządzany magazynowo (brak limitu, jak dotychczas).
+      available:
+        p.stock_level == null
+          ? null
+          : Math.max(0, Number(p.stock_level) - Number(p.reserved_qty || 0)),
       sort: p.order_form_sort,
       // Przejście 2C — vat_rate per produkt (CM 0.05, kalmary 0.23, putasu 0.05).
       vat_rate: p.vat_rate == null ? 0.05 : Number(p.vat_rate),

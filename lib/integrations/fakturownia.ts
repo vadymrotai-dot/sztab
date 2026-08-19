@@ -19,6 +19,8 @@ import 'server-only'
 
 const SUBDOMAIN = process.env.FAKTUROWNIA_SUBDOMAIN
 const API_TOKEN = process.env.FAKTUROWNIA_API_TOKEN
+// Ф1 — id складu Fakturownia (magazyn). Один склад, задається у env.
+export const WAREHOUSE_ID = process.env.FAKTUROWNIA_WAREHOUSE_ID || ''
 
 if (!SUBDOMAIN || !API_TOKEN) {
   console.warn(
@@ -282,4 +284,114 @@ export function mergeItemsByProduct<T extends OrderItemForDoc>(items: T[]): T[] 
     }
   }
   return [...byKey.values()]
+}
+
+// ─────────────────────── Magazyn (warehouse) — Ф1 ───────────────────────
+// Товар Fakturownia = складський запис (limited:1). code = Sztab product id
+// (стабільний ключ матчингу). Залишок веде Fakturownia; Sztab читає stock_level.
+
+export type FakturowniaWarehouse = { id: number; name: string; kind?: string | null }
+
+// Список складів (заодно перевірка, що модуль Magazyn активний).
+export async function listWarehouses(): Promise<FakturowniaWarehouse[]> {
+  if (!BASE_URL || !API_TOKEN) throw new Error('Fakturownia не сконфігуровано')
+  const res = await fetch(`${BASE_URL}/warehouses.json?api_token=${API_TOKEN}`, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(`Fakturownia warehouses ${res.status}: ${JSON.stringify(data)}`)
+  }
+  const arr = Array.isArray(data) ? data : []
+  return arr.map((w: any) => ({
+    id: Number(w.id),
+    name: String(w.name ?? ''),
+    kind: w.kind ?? null,
+  }))
+}
+
+export type FakturowniaProductInput = {
+  code: string // = Sztab product id
+  name: string
+  ean_code?: string | null
+  tax: number // % VAT (5 / 23)
+  unit?: string | null // quantity_unit
+  purchase_price_net?: number | null // cost_pln
+  price_net?: number | null // cena A (тільки при create)
+}
+
+function buildProductBody(input: FakturowniaProductInput, forCreate: boolean) {
+  const p: Record<string, unknown> = {
+    name: input.name,
+    code: input.code,
+    tax: input.tax,
+    limited: 1, // складський контроль (веде stock_level)
+  }
+  if (input.ean_code) p.ean_code = input.ean_code
+  if (input.unit) p.quantity_unit = input.unit
+  if (input.purchase_price_net != null) p.purchase_price_net = input.purchase_price_net
+  // price_net можна ставити лише при create — update забороняє редагувати net напряму.
+  if (forCreate && input.price_net != null) p.price_net = input.price_net
+  return p
+}
+
+// Створити складський товар. Повертає Fakturownia product id.
+export async function createFakturowniaProduct(
+  input: FakturowniaProductInput,
+): Promise<number> {
+  if (!BASE_URL || !API_TOKEN) throw new Error('Fakturownia не сконфігуровано')
+  const res = await fetch(`${BASE_URL}/products.json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ api_token: API_TOKEN, product: buildProductBody(input, true) }),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(`Fakturownia createProduct ${res.status}: ${JSON.stringify(data)}`)
+  }
+  return Number((data as any).id)
+}
+
+// Оновити існуючий складський товар (без прямого редагування net-ціни).
+export async function updateFakturowniaProduct(
+  id: number,
+  input: FakturowniaProductInput,
+): Promise<void> {
+  if (!BASE_URL || !API_TOKEN) throw new Error('Fakturownia не сконфігуровано')
+  const res = await fetch(`${BASE_URL}/products/${id}.json`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ api_token: API_TOKEN, product: buildProductBody(input, false) }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(`Fakturownia updateProduct ${res.status}: ${JSON.stringify(data)}`)
+  }
+}
+
+// Читання залишків складу: Map<code, stock_level>. code = Sztab product id.
+export async function getWarehouseStock(
+  warehouseId: string | number,
+): Promise<Map<string, number>> {
+  if (!BASE_URL || !API_TOKEN) throw new Error('Fakturownia не сконфігуровано')
+  const out = new Map<string, number>()
+  for (let page = 1; page <= 100; page++) {
+    const res = await fetch(
+      `${BASE_URL}/products.json?api_token=${API_TOKEN}&warehouse_id=${warehouseId}&page=${page}`,
+      { method: 'GET', headers: { Accept: 'application/json' } },
+    )
+    const data = await res.json()
+    if (!res.ok) {
+      throw new Error(`Fakturownia stock ${res.status}: ${JSON.stringify(data)}`)
+    }
+    const arr = Array.isArray(data) ? data : []
+    if (arr.length === 0) break
+    for (const p of arr as any[]) {
+      if (p.code != null && p.stock_level != null) {
+        out.set(String(p.code), Number(p.stock_level))
+      }
+    }
+  }
+  return out
 }

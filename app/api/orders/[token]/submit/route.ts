@@ -276,7 +276,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       // Sprint T-ORDER.4b-API — dodano `unit` dla snapshotu pozycji (unit_snapshot).
       // Przejście 2A — dodano `grupa` (podział CM/seafood) i `vat_rate` (VAT mieszany).
       // Faza 1 DAGOLD (089) — marza_bazowa_pct + cost_pln dla nowego price-path.
-      'id, name, display_name, gramatura, unit, grupa, vat_rate, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, marza_bazowa_pct, cost_pln, supplier_id, show_in_orders',
+      'id, name, display_name, gramatura, unit, grupa, vat_rate, price_maly_opt, price_sredni, price_duzy, price_duzi_gracze, price_hurt_wh, marza_bazowa_pct, cost_pln, supplier_id, show_in_orders, stock_level, reserved_qty',
     )
     .in('id', productIds)
   if (!products || products.length !== productIds.length) {
@@ -306,6 +306,36 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       { ok: false, error: 'Niepoprawna ilość produktu' },
       { status: 400 },
     )
+  }
+
+  // Ф1 magazyn — blok zamówienia ponad stan (autorytatywnie na serwerze).
+  // Tylko produkty zarządzane magazynowo (stock_level != null). available =
+  // stock_level − reserved_qty. Sumujemy qty per produkt (multipoint).
+  {
+    const qtyByProduct = new Map<string, number>()
+    for (const it of input.items) {
+      qtyByProduct.set(
+        it.product_id,
+        (qtyByProduct.get(it.product_id) ?? 0) + it.qty,
+      )
+    }
+    for (const p of products as any[]) {
+      if (p.stock_level == null) continue
+      const available = Math.max(
+        0,
+        Number(p.stock_level) - Number(p.reserved_qty || 0),
+      )
+      const wanted = qtyByProduct.get(p.id) ?? 0
+      if (wanted > available) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Niewystarczający stan magazynowy: ${p.display_name || p.name} — dostępne ${available} ${p.unit || 'szt'}, zamówiono ${wanted}`,
+          },
+          { status: 409 },
+        )
+      }
+    }
   }
 
   // Przejście 2A — ceny dla zamówienia MIESZANEGO (CM + owoce morza).

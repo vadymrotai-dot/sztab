@@ -50,6 +50,8 @@ type Product = {
   // Faza 1 DAGOLD — dostępność (display-only): badge „od ręki" / „na zamówienie".
   dostepnosc?: 'w_magazynie' | 'na_zamowienie'
   unit: string | null
+  // Ф1 magazyn — dostępna ilość (stock_level − reserved_qty). null = bez limitu.
+  available?: number | null
   sort: number | null
   vat_rate: number
   // Task #14 — new-price-path z serwera (marża bazowa). Gdy != null, to jest
@@ -1673,7 +1675,12 @@ export function OrderForm({
                     // Przejście 2C — seafood nigdy nie jest "Brak w Hurcie" (zawsze standard).
                     const whAutoUnavailable =
                       isAutoWH && p.grupa !== 'owoce_morza' && p.prices.hurt_wh == null
-                    const unavailable = !p.in_stock || whAutoUnavailable
+                    // Ф1 magazyn — dostępna ilość (null = bez limitu / niesync.).
+                    const available = p.available ?? null
+                    const outOfStock = available != null && available <= 0
+                    const capQty = (n: number) =>
+                      available != null ? Math.min(n, available) : n
+                    const unavailable = !p.in_stock || whAutoUnavailable || outOfStock
                     const unit = p.unit ?? 'szt'
                     return (
                       <div
@@ -1688,6 +1695,11 @@ export function OrderForm({
                             {!p.in_stock && (
                               <span className="shrink-0 text-[11px] bg-[#f3d6d6] text-[#9a3434] px-[7px] py-[2px] rounded font-bold">
                                 niedostępny
+                              </span>
+                            )}
+                            {p.in_stock && outOfStock && (
+                              <span className="shrink-0 text-[11px] bg-[#f3d6d6] text-[#9a3434] px-[7px] py-[2px] rounded font-bold">
+                                brak na stanie
                               </span>
                             )}
                             {isPomidor && p.in_stock && (
@@ -1708,6 +1720,11 @@ export function OrderForm({
                             )}
                           </div>
                           {p.gramatura && <div className="text-[13px] text-slate-500 mb-1">{p.gramatura}</div>}
+                          {available != null && available > 0 && (
+                            <div className="text-[12px] text-[#166534] font-semibold mb-1">
+                              Dostępne: {available} {unit}
+                            </div>
+                          )}
                           {unavailable ? (
                             <div className="text-[13px] text-slate-400 italic">—</div>
                           ) : (
@@ -1735,7 +1752,7 @@ export function OrderForm({
                           <input
                             type="number"
                             min={0}
-                            max={9999}
+                            max={available != null ? available : 9999}
                             step={p.supplier_id === AVIS_D_SUPPLIER_ID ? 0.1 : 1}
                             inputMode={
                               p.supplier_id === AVIS_D_SUPPLIER_ID ? 'decimal' : 'numeric'
@@ -1746,7 +1763,7 @@ export function OrderForm({
                             onFocus={(e) => e.currentTarget.select()}
                             onChange={(e) => {
                               const v = e.target.value
-                              setQty(apId, p.id, v === '' ? 0 : Number(v.replace(',', '.')) || 0)
+                              setQty(apId, p.id, capQty(v === '' ? 0 : Number(v.replace(',', '.')) || 0))
                             }}
                             onBlur={(e) => {
                               if (e.target.value === '') setQty(apId, p.id, 0)
@@ -1756,7 +1773,7 @@ export function OrderForm({
                           />
                           <button
                             type="button"
-                            onClick={() => setQty(apId, p.id, qty + 1)}
+                            onClick={() => setQty(apId, p.id, capQty(qty + 1))}
                             disabled={unavailable}
                             className="w-[38px] h-[38px] rounded-lg bg-white flex items-center justify-center text-[#1F3A5F] disabled:opacity-30 hover:bg-[#1F3A5F] hover:text-white transition"
                             style={{ border: '1.5px solid #1F3A5F' }}
