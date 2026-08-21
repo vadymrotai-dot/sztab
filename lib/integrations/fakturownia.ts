@@ -467,6 +467,54 @@ export async function createWarehousePZ(input: {
   return { id: Number((data as any).id), number: String((data as any).number ?? '') }
 }
 
+// Документ видачі WZ (wydanie zewnętrzne) — списує залишок (продаж клієнту).
+// Якщо clientId нема → RW (rozchód wewnętrzny, внутрішнє списання/корекція).
+export type WarehouseWZLine = {
+  product_id: number // Fakturownia product id
+  quantity: number
+  price_net?: number | null
+}
+
+export async function createWarehouseWZ(input: {
+  warehouseId: string | number
+  clientId?: number
+  issueDate?: string
+  description?: string
+  lines: WarehouseWZLine[]
+}): Promise<{ id: number; number: string; kind: string }> {
+  if (!BASE_URL || !API_TOKEN) throw new Error('Fakturownia не сконфігуровано')
+  const kind = input.clientId ? 'wz' : 'rw'
+  const body = {
+    api_token: API_TOKEN,
+    warehouse_document: {
+      kind,
+      warehouse_id: input.warehouseId,
+      ...(input.clientId ? { client_id: input.clientId } : {}),
+      issue_date: input.issueDate ?? new Date().toISOString().split('T')[0],
+      ...(input.description ? { description: input.description } : {}),
+      warehouse_actions: input.lines.map((l) => ({
+        product_id: l.product_id,
+        quantity: l.quantity,
+        ...(l.price_net != null ? { price_net: l.price_net } : {}),
+      })),
+    },
+  }
+  const res = await fetch(`${BASE_URL}/warehouse_documents.json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(`Fakturownia WZ ${res.status}: ${JSON.stringify(data)}`)
+  }
+  return {
+    id: Number((data as any).id),
+    number: String((data as any).number ?? ''),
+    kind,
+  }
+}
+
 // Створити контрагента (kontrahent) у Fakturownia — потрібен як dostawca для PZ.
 export async function createFakturowniaClient(input: {
   name: string

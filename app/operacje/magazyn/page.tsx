@@ -76,6 +76,12 @@ export default function MagazynPage() {
         >
           Import faktury zakupowej →
         </a>
+        <a
+          href="/operacje/magazyn/wydanie"
+          className={`${btn} bg-slate-700 hover:bg-slate-800 inline-flex items-center`}
+        >
+          Wydanie (WZ / RW) →
+        </a>
         <button
           onClick={syncStock}
           disabled={busy !== null}
