@@ -6,7 +6,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { parsePurchaseInvoice } from '@/lib/ai/parse-purchase-invoice'
-import { getAliasMap, getSupplierProducts } from '@/lib/orders/purchase-import'
+import {
+  getAliasMap,
+  getSupplierProducts,
+  aiMatchExternalNames,
+} from '@/lib/orders/purchase-import'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -65,9 +69,23 @@ export async function POST(req: NextRequest) {
     })
     const aliases = await getAliasMap(supplierId)
     const supplierProducts = await getSupplierProducts(supplierId)
+
+    // AI крос-мовний матч для позицій без аліаса (перший імпорт від постачальника).
+    const needAi = invoice.lines
+      .filter((l) => !l.is_service && !aliases.get(norm(l.name)))
+      .map((l) => l.name)
+    let aiMatches = new Map<string, string>()
+    if (needAi.length > 0) {
+      aiMatches = await aiMatchExternalNames(
+        apiKey,
+        needAi,
+        supplierProducts.map((p) => ({ id: p.id, name: p.name })),
+      )
+    }
+
     const lines = invoice.lines.map((l) => ({
       ...l,
-      suggested_product_id: aliases.get(norm(l.name)) ?? null,
+      suggested_product_id: aliases.get(norm(l.name)) ?? aiMatches.get(l.name) ?? null,
     }))
     return NextResponse.json({
       ok: true,

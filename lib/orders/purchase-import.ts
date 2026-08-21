@@ -17,6 +17,7 @@ import {
   createWarehousePZ,
   WAREHOUSE_ID,
 } from '@/lib/integrations/fakturownia'
+import { callAI, AI_MODELS, extractJSON } from '@/lib/ai-providers'
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
 
@@ -49,6 +50,54 @@ export async function getSupplierProducts(supplierId: string) {
     vat_rate: p.vat_rate,
     fakturownia_product_id: p.fakturownia_product_id,
   }))
+}
+
+// AI крос-мовний матчинг: назви з фактури (англ./łot.) → наш каталог (польські).
+// Повертає Map<external_name, product_id> лише для впевнених збігів.
+export async function aiMatchExternalNames(
+  apiKey: string,
+  externalNames: string[],
+  catalog: { id: string; name: string }[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  if (!apiKey || externalNames.length === 0 || catalog.length === 0) return out
+
+  const prompt = `Dopasuj pozycje z faktury zakupowej (nazwy w obcym języku — angielski/łotewski) do NASZEGO katalogu (nazwy polskie). To ten sam towar, tylko inny język/opis.
+
+POZYCJE Z FAKTURY:
+${externalNames.map((n, i) => `${i}: ${n}`).join('\n')}
+
+NASZ KATALOG (product_id => nazwa):
+${catalog.map((c) => `${c.id} => ${c.name}`).join('\n')}
+
+Reguły:
+- Dopasuj po znaczeniu: "Salted herring" → "Śledź ... solony"; "Mussels in oil" → "Mięso małży ..."; "GOLD SMOKED MACKEREL" → "Makrela ... wędzona".
+- Tylko PEWNE dopasowania. Jeśli brak odpowiednika w katalogu → product_id null.
+- Zwróć WYŁĄCZNIE JSON: {"matches":[{"i":0,"product_id":"<uuid>"|null}]}`
+
+  const res = await callAI({
+    apiKey,
+    provider: 'anthropic',
+    model: AI_MODELS.FAST,
+    userPrompt: prompt,
+    responseFormat: 'json',
+    maxTokens: 1024,
+  })
+  if (res.error || !res.text) return out
+
+  try {
+    const parsed = extractJSON<{ matches?: { i: number; product_id: string | null }[] }>(
+      res.text,
+    )
+    const valid = new Set(catalog.map((c) => c.id))
+    for (const m of parsed.matches ?? []) {
+      const nm = externalNames[m.i]
+      if (nm && m.product_id && valid.has(m.product_id)) out.set(nm, m.product_id)
+    }
+  } catch {
+    // AI не дав валідний JSON — повертаємо порожньо (fallback на ручний вибір)
+  }
+  return out
 }
 
 export type CommitLine = {
