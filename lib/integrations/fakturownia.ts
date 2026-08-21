@@ -28,7 +28,13 @@ if (!SUBDOMAIN || !API_TOKEN) {
   )
 }
 
-const BASE_URL = SUBDOMAIN ? `https://${SUBDOMAIN}.fakturownia.pl` : ''
+// Захист від кривого env: приймаємо як 'dagold', так і повний URL / зі слешем.
+const CLEAN_SUBDOMAIN = (SUBDOMAIN || '')
+  .trim()
+  .replace(/^https?:\/\//i, '')
+  .replace(/\/+$/, '')
+  .replace(/\.fakturownia\.pl.*$/i, '')
+const BASE_URL = CLEAN_SUBDOMAIN ? `https://${CLEAN_SUBDOMAIN}.fakturownia.pl` : ''
 
 // S-ORDER.2.A.2.1 (19.05.2026): seller_* fields removed.
 // Fakturownia security ("Poziom zabezpieczenia przed zmianą konta bankowego")
@@ -444,7 +450,6 @@ export async function createWarehousePZ(input: {
         ...(l.purchase_price_net != null
           ? { purchase_price_net: l.purchase_price_net }
           : {}),
-        ...(l.name ? { name: l.name } : {}),
       })),
     },
   }
