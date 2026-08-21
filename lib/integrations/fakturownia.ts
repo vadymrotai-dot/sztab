@@ -432,6 +432,7 @@ export type WarehousePZLine = {
 
 export async function createWarehousePZ(input: {
   warehouseId: string | number
+  clientId?: number // kontrahent-dostawca (wymagany przez Fakturownia dla PZ)
   issueDate?: string // YYYY-MM-DD
   description?: string
   lines: WarehousePZLine[]
@@ -442,6 +443,7 @@ export async function createWarehousePZ(input: {
     warehouse_document: {
       kind: 'pz',
       warehouse_id: input.warehouseId,
+      ...(input.clientId ? { client_id: input.clientId } : {}),
       issue_date: input.issueDate ?? new Date().toISOString().split('T')[0],
       ...(input.description ? { description: input.description } : {}),
       warehouse_actions: input.lines.map((l) => ({
@@ -463,4 +465,30 @@ export async function createWarehousePZ(input: {
     throw new Error(`Fakturownia PZ ${res.status}: ${JSON.stringify(data)}`)
   }
   return { id: Number((data as any).id), number: String((data as any).number ?? '') }
+}
+
+// Створити контрагента (kontrahent) у Fakturownia — потрібен як dostawca для PZ.
+export async function createFakturowniaClient(input: {
+  name: string
+  tax_no?: string | null
+  country?: string | null
+}): Promise<number> {
+  if (!BASE_URL || !API_TOKEN) throw new Error('Fakturownia не сконфігуровано')
+  const res = await fetch(`${BASE_URL}/clients.json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      api_token: API_TOKEN,
+      client: {
+        name: input.name,
+        ...(input.tax_no ? { tax_no: input.tax_no } : {}),
+        ...(input.country ? { country: input.country } : {}),
+      },
+    }),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(`Fakturownia createClient ${res.status}: ${JSON.stringify(data)}`)
+  }
+  return Number((data as any).id)
 }

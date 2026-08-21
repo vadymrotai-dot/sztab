@@ -15,6 +15,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   createFakturowniaProduct,
   createWarehousePZ,
+  createFakturowniaClient,
   WAREHOUSE_ID,
 } from '@/lib/integrations/fakturownia'
 import { callAI, AI_MODELS, extractJSON } from '@/lib/ai-providers'
@@ -295,11 +296,37 @@ export async function commitPurchaseImport(
 
   if (lineRows.length) await admin.from('purchase_import_lines').insert(lineRows)
 
+  // Ф3 — kontrahent-dostawca для PZ (Fakturownia вимагає client_id).
+  let supplierClientId: number | undefined
+  try {
+    const { data: sup } = await admin
+      .from('suppliers')
+      .select('name, nip, country, fakturownia_client_id')
+      .eq('id', input.supplierId)
+      .maybeSingle()
+    if ((sup as any)?.fakturownia_client_id) {
+      supplierClientId = Number((sup as any).fakturownia_client_id)
+    } else if ((sup as any)?.name) {
+      supplierClientId = await createFakturowniaClient({
+        name: (sup as any).name,
+        tax_no: (sup as any).nip ?? null,
+        country: (sup as any).country ?? null,
+      })
+      await admin
+        .from('suppliers')
+        .update({ fakturownia_client_id: supplierClientId })
+        .eq('id', input.supplierId)
+    }
+  } catch (e: any) {
+    res.errors.push(`kontrahent: ${e?.message ?? e}`.slice(0, 200))
+  }
+
   // 2. PZ у Fakturownia (додає залишок)
   if (pzLines.length) {
     try {
       const pz = await createWarehousePZ({
         warehouseId: WAREHOUSE_ID,
+        clientId: supplierClientId,
         issueDate: input.invoiceDate ?? undefined,
         description: `Import faktury ${input.invoiceNumber ?? ''}`.trim(),
         lines: pzLines,
