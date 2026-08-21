@@ -340,7 +340,10 @@ export async function commitPurchaseImport(
           .select('stock_level')
           .eq('id', row.product_id)
           .single()
-        const next = (cur?.stock_level == null ? 0 : Number(cur.stock_level)) + Number(row.qty)
+        const next =
+          Math.round(
+            ((cur?.stock_level == null ? 0 : Number(cur.stock_level)) + Number(row.qty)) * 1000,
+          ) / 1000
         await admin
           .from('products')
           .update({ stock_level: next, stock_synced_at: new Date().toISOString() })

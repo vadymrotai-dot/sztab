@@ -247,7 +247,8 @@ export async function processVatInvoice(
       .eq('id', it.product_id)
       .maybeSingle()
     if (cur?.stock_level == null) continue
-    const next = Math.max(0, Number(cur.stock_level) - Number(it.qty))
+    const next =
+      Math.round(Math.max(0, Number(cur.stock_level) - Number(it.qty)) * 1000) / 1000
     await admin
       .from('products')
       .update({ stock_level: next, stock_synced_at: new Date().toISOString() })

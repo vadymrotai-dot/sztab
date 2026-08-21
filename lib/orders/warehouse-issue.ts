@@ -121,7 +121,8 @@ export async function createManualIssue(input: IssueInput): Promise<{
   for (const l of wzLines) {
     const p = byId.get(l._sztab_id)
     if (p?.stock_level == null) continue
-    const next = Math.max(0, Number(p.stock_level) - Number(l.quantity))
+    const next =
+      Math.round(Math.max(0, Number(p.stock_level) - Number(l.quantity)) * 1000) / 1000
     const { error } = await admin
       .from('products')
       .update({ stock_level: next, stock_synced_at: new Date().toISOString() })

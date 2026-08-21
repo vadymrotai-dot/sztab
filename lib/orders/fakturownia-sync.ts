@@ -109,7 +109,7 @@ export async function syncStockFromFakturownia(): Promise<SyncStockResult> {
     // code = Sztab product id (UUID). Оновлюємо кеш залишку.
     const { error } = await admin
       .from('products')
-      .update({ stock_level: level, stock_synced_at: now })
+      .update({ stock_level: Math.round(Number(level) * 1000) / 1000, stock_synced_at: now })
       .eq('id', code)
     if (error) skipped++
     else updated++
