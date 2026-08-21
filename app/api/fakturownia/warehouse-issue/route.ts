@@ -30,8 +30,7 @@ export async function POST(req: NextRequest) {
   }
 
   const input: IssueInput = {
-    clientName: body.client_name ?? null,
-    clientNip: body.client_nip ?? null,
+    clientId: body.client_id ?? null,
     issueDate: body.issue_date ?? null,
     description: body.description ?? null,
     lines: body.lines.map((l: any) => ({

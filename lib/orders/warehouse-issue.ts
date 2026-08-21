@@ -11,7 +11,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   createWarehouseWZ,
-  createFakturowniaClient,
+  findOrCreateFakturowniaClient,
   WAREHOUSE_ID,
 } from '@/lib/integrations/fakturownia'
 
@@ -30,9 +30,18 @@ export async function getWarehouseManagedProducts() {
   }))
 }
 
+// Клієнти Sztab для дропдауна WZ.
+export async function getWarehouseClients() {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('clients')
+    .select('id, title, nip')
+    .order('title')
+  return (data ?? []).map((c: any) => ({ id: c.id, title: c.title, nip: c.nip }))
+}
+
 export type IssueInput = {
-  clientName?: string | null
-  clientNip?: string | null
+  clientId?: string | null // Sztab client uuid; порожньо → RW
   issueDate?: string | null
   description?: string | null
   lines: { product_id: string; qty: number; price_net?: number | null }[]
@@ -78,12 +87,26 @@ export async function createManualIssue(input: IssueInput): Promise<{
   }
   if (wzLines.length === 0) throw new Error('Brak pozycji do wydania')
 
+  // Клієнт: з обраного Sztab-клієнта → його контрагент у Fakturownia (find-or-create по NIP).
   let clientId: number | undefined
-  if (input.clientName && input.clientName.trim()) {
-    clientId = await createFakturowniaClient({
-      name: input.clientName.trim(),
-      tax_no: input.clientNip ?? null,
-    })
+  if (input.clientId) {
+    const { data: c } = await admin
+      .from('clients')
+      .select('title, nip, fakturownia_client_id')
+      .eq('id', input.clientId)
+      .maybeSingle()
+    if ((c as any)?.fakturownia_client_id) {
+      clientId = Number((c as any).fakturownia_client_id)
+    } else if (c) {
+      clientId = await findOrCreateFakturowniaClient({
+        name: (c as any).title || 'Klient',
+        tax_no: (c as any).nip ?? null,
+      })
+      await admin
+        .from('clients')
+        .update({ fakturownia_client_id: clientId })
+        .eq('id', input.clientId)
+    }
   }
 
   const doc = await createWarehouseWZ({

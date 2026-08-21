@@ -540,3 +540,33 @@ export async function createFakturowniaClient(input: {
   }
   return Number((data as any).id)
 }
+
+const onlyDigits = (s: string) => String(s || '').replace(/[^0-9]/g, '')
+
+// Знайти контрагента у Fakturownia по NIP (щоб не плодити дублі клієнтів).
+export async function findFakturowniaClientByNip(nip: string): Promise<number | null> {
+  if (!BASE_URL || !API_TOKEN || !nip) return null
+  const res = await fetch(
+    `${BASE_URL}/clients.json?api_token=${API_TOKEN}&tax_no=${encodeURIComponent(nip)}`,
+    { method: 'GET', headers: { Accept: 'application/json' } },
+  )
+  if (!res.ok) return null
+  const data = await res.json()
+  const arr = Array.isArray(data) ? data : []
+  const want = onlyDigits(nip)
+  const match = arr.find((c: any) => onlyDigits(c.tax_no) === want)
+  return match ? Number(match.id) : null
+}
+
+// Знайти по NIP, інакше створити.
+export async function findOrCreateFakturowniaClient(input: {
+  name: string
+  tax_no?: string | null
+  country?: string | null
+}): Promise<number> {
+  if (input.tax_no) {
+    const found = await findFakturowniaClientByNip(input.tax_no)
+    if (found) return found
+  }
+  return createFakturowniaClient(input)
+}

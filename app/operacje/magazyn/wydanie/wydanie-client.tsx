@@ -6,10 +6,10 @@
 import { useMemo, useState } from 'react'
 
 type P = { id: string; name: string; unit: string | null; stock_level: number | null }
+type Cl = { id: string; title: string; nip: string | null }
 
-export function WydanieClient({ products }: { products: P[] }) {
-  const [clientName, setClientName] = useState('')
-  const [clientNip, setClientNip] = useState('')
+export function WydanieClient({ products, clients }: { products: P[]; clients: Cl[] }) {
+  const [clientId, setClientId] = useState('')
   const [issueDate, setIssueDate] = useState('')
   const [description, setDescription] = useState('')
   const [qty, setQty] = useState<Record<string, string>>({})
@@ -38,8 +38,7 @@ export function WydanieClient({ products }: { products: P[] }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          client_name: clientName || null,
-          client_nip: clientNip || null,
+          client_id: clientId || null,
           issue_date: issueDate || null,
           description: description || null,
           lines,
@@ -64,13 +63,17 @@ export function WydanieClient({ products }: { products: P[] }) {
       </p>
 
       <div className="grid grid-cols-2 gap-3 mb-5">
-        <label className="flex flex-col text-xs text-slate-500 gap-1">
-          Odbiorca (klient) — puste = RW
-          <input className={inp} value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="np. WIXMART Sp. z o.o." />
-        </label>
-        <label className="flex flex-col text-xs text-slate-500 gap-1">
-          NIP odbiorcy
-          <input className={inp} value={clientNip} onChange={(e) => setClientNip(e.target.value)} placeholder="np. 5213984715" />
+        <label className="flex flex-col text-xs text-slate-500 gap-1 col-span-2">
+          Odbiorca (klient) — puste = RW (korekta)
+          <select className={inp} value={clientId} onChange={(e) => setClientId(e.target.value)}>
+            <option value="">— bez klienta (RW) —</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title}
+                {c.nip ? ` · ${c.nip}` : ''}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="flex flex-col text-xs text-slate-500 gap-1">
           Data

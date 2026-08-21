@@ -3,7 +3,10 @@
 
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getWarehouseManagedProducts } from '@/lib/orders/warehouse-issue'
+import {
+  getWarehouseManagedProducts,
+  getWarehouseClients,
+} from '@/lib/orders/warehouse-issue'
 import { WydanieClient } from './wydanie-client'
 
 export const dynamic = 'force-dynamic'
@@ -15,6 +18,9 @@ export default async function WydaniePage() {
   } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  const products = await getWarehouseManagedProducts()
-  return <WydanieClient products={products as any} />
+  const [products, clients] = await Promise.all([
+    getWarehouseManagedProducts(),
+    getWarehouseClients(),
+  ])
+  return <WydanieClient products={products as any} clients={clients as any} />
 }
