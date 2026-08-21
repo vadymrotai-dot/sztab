@@ -44,6 +44,7 @@ export type FakturowniaPosition = {
   total_price_net?: number
   tax: number // % VAT (5 для CzM, 23 для general)
   code?: string // PKWiU/EAN/product code
+  product_id?: number // Ф3 — Fakturownia product id (powiązanie magazynowe → списання stanu)
 }
 
 export type FakturowniaBuyer = {
@@ -65,6 +66,9 @@ export type CreateInvoiceInput = {
   description?: string // uwagi/notes
   external_order_id?: string // ZIO-2026-XXXX
   send_to_ksef?: boolean // дефолт true для VAT після Feb 2026
+  // Ф3 — magazyn: gdy podane, Fakturownia liczy fakturę do stanów (WZ, списання).
+  warehouse_id?: string | number
+  exclude_from_stock_level?: boolean // true → NIE zmniejsza stanu (np. proforma)
 }
 
 export type FakturowniaInvoice = {
@@ -113,6 +117,13 @@ export async function createInvoice(
     invoice: {
       kind: input.kind === 'vat' ? 'vat' : 'proforma',
 
+      // Ф3 magazyn — warehouse_id → списання stanu (WZ auto). exclude_from_stock_level
+      // dla dokumentów nie-sprzedażowych (proforma).
+      ...(input.warehouse_id ? { warehouse_id: input.warehouse_id } : {}),
+      ...(input.exclude_from_stock_level != null
+        ? { exclude_from_stock_level: input.exclude_from_stock_level }
+        : {}),
+
       // Seller: uses Fakturownia account default (security blocks per-invoice override)
 
       // Buyer
@@ -153,6 +164,7 @@ export async function createInvoice(
           tax: p.tax,
           total_price_gross: grossPrice,
           ...(p.code ? { code: p.code } : {}),
+          ...(p.product_id ? { product_id: p.product_id } : {}),
         }
       }),
     },
@@ -230,6 +242,8 @@ type OrderItemForDoc = {
   line_total: number | string
   // vat_rate ułamek (0.05 / 0.23). NULL → fallback 5% (Czudowa Marka).
   vat_rate?: number | string | null
+  // Ф3 — Fakturownia product id (dla powiązania magazynowego na fakturze).
+  fakturownia_product_id?: number | null
 }
 
 /**
@@ -255,6 +269,9 @@ export function orderItemsToPositions(
       unit: 'szt',
       total_price_net: Number(item.line_total), // line_total = net price для qty
       tax: ratePct,
+      ...(item.fakturownia_product_id
+        ? { product_id: Number(item.fakturownia_product_id) }
+        : {}),
     }
   })
 }

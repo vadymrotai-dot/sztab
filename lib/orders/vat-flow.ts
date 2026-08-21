@@ -38,6 +38,7 @@ import {
   orderItemsToPositions,
   mergeItemsByProduct,
   getInvoicePdf,
+  WAREHOUSE_ID,
 } from '@/lib/integrations/fakturownia'
 import { sendNotification } from '@/lib/notifications/sender'
 
@@ -83,7 +84,7 @@ export async function processVatInvoice(
       proforma_fakturownia_id, proforma_fakturownia_number,
       vat_fakturownia_id,
       client:clients!inner(id, title, nip, city, address, email, phone),
-      items:order_items(product_id, product_name_snapshot, gramatura_snapshot, qty, unit_price, line_total, product:products(vat_rate))
+      items:order_items(product_id, product_name_snapshot, gramatura_snapshot, qty, unit_price, line_total, product:products(vat_rate, fakturownia_product_id))
     `,
     )
     .eq('id', orderId)
@@ -134,8 +135,11 @@ export async function processVatInvoice(
     unit_price: it.unit_price,
     line_total: it.line_total,
     vat_rate: it.product?.vat_rate ?? null,
+    fakturownia_product_id: it.product?.fakturownia_product_id ?? null,
   }))
   const items = mergeItemsByProduct(rawItems)
+  // Ф3 magazyn — czy są pozycje zarządzane magazynowo (dla списання stanu).
+  const hasWarehouseItems = (items as any[]).some((it) => it.fakturownia_product_id)
   const emailAddr = o.contact_email || client.email
 
   if (!emailAddr) {
@@ -166,6 +170,9 @@ export async function processVatInvoice(
       payment_to_days: 14,
       external_order_id: o.order_number,
       description: `Faktura VAT do zamówienia ${o.order_number}`,
+      // Ф3 magazyn — warehouse_id → Fakturownia zdejmuje stan (WZ). Tylko gdy
+      // są pozycje magazynowe i skonfigurowany magazyn.
+      ...(WAREHOUSE_ID && hasWarehouseItems ? { warehouse_id: WAREHOUSE_ID } : {}),
       ...(isTestMode ? { send_to_ksef: false } : {}),
     })
   } catch (e: any) {
@@ -228,6 +235,23 @@ export async function processVatInvoice(
       `DB update failed after Fakturownia create (vat_id=${vat.id}): ${updErr.message}`,
       'DB_UPDATE_FAILED',
     )
+  }
+
+  // 5b. Ф3 magazyn — po sprzedaży zmniejsz lokalny cache stanu (Fakturownia już
+  // zdjęła stan przez warehouse_id/WZ). Tylko produkty zarządzane magazynowo.
+  for (const it of items as any[]) {
+    if (!it.fakturownia_product_id || !it.product_id) continue
+    const { data: cur } = await admin
+      .from('products')
+      .select('stock_level')
+      .eq('id', it.product_id)
+      .maybeSingle()
+    if (cur?.stock_level == null) continue
+    const next = Math.max(0, Number(cur.stock_level) - Number(it.qty))
+    await admin
+      .from('products')
+      .update({ stock_level: next, stock_synced_at: new Date().toISOString() })
+      .eq('id', it.product_id)
   }
 
   // 6. Send email through notification sender (sender пише до notification_log sam)
