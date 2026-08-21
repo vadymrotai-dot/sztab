@@ -395,3 +395,50 @@ export async function getWarehouseStock(
   }
   return out
 }
+
+// ─────────────────── Dokument magazynowy PZ (przyjęcie) — Ф3 ───────────────────
+// PZ dodaje stan magazynowy (goods receipt z faktury zakupowej). quantity > 0.
+// purchase_price_net — koszt jednostkowy w PLN (wycena magazynowa).
+
+export type WarehousePZLine = {
+  product_id: number // Fakturownia product id
+  quantity: number
+  purchase_price_net?: number | null // PLN
+  name?: string
+}
+
+export async function createWarehousePZ(input: {
+  warehouseId: string | number
+  issueDate?: string // YYYY-MM-DD
+  description?: string
+  lines: WarehousePZLine[]
+}): Promise<{ id: number; number: string }> {
+  if (!BASE_URL || !API_TOKEN) throw new Error('Fakturownia не сконфігуровано')
+  const body = {
+    api_token: API_TOKEN,
+    warehouse_document: {
+      kind: 'pz',
+      warehouse_id: input.warehouseId,
+      issue_date: input.issueDate ?? new Date().toISOString().split('T')[0],
+      ...(input.description ? { description: input.description } : {}),
+      warehouse_actions: input.lines.map((l) => ({
+        product_id: l.product_id,
+        quantity: l.quantity,
+        ...(l.purchase_price_net != null
+          ? { purchase_price_net: l.purchase_price_net }
+          : {}),
+        ...(l.name ? { name: l.name } : {}),
+      })),
+    },
+  }
+  const res = await fetch(`${BASE_URL}/warehouse_documents.json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(`Fakturownia PZ ${res.status}: ${JSON.stringify(data)}`)
+  }
+  return { id: Number((data as any).id), number: String((data as any).number ?? '') }
+}

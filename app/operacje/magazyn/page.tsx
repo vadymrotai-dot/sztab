@@ -42,17 +42,6 @@ export default function MagazynPage() {
     }
   }
 
-  async function syncProducts() {
-    const d = await call('/api/fakturownia/sync-products', 'POST', 'Sync produktów')
-    if (d) {
-      const r = d.result
-      push(
-        `✅ Sync produktów: utworzono ${r.created}, zaktualizowano ${r.updated}, błędów ${r.failed} (z ${r.total})` +
-          (r.errors?.length ? `\n   ${r.errors.slice(0, 5).join('\n   ')}` : ''),
-      )
-    }
-  }
-
   async function syncStock() {
     const d = await call('/api/fakturownia/sync-stock', 'POST', 'Aktualizacja stanów')
     if (d) {
@@ -81,13 +70,12 @@ export default function MagazynPage() {
         >
           {busy === 'Magazyny' ? '…' : 'Pobierz listę magazynów'}
         </button>
-        <button
-          onClick={syncProducts}
-          disabled={busy !== null}
-          className={`${btn} bg-[#1F3A5F] hover:bg-[#16293f]`}
+        <a
+          href="/operacje/magazyn/import"
+          className={`${btn} bg-[#1F3A5F] hover:bg-[#16293f] inline-flex items-center`}
         >
-          {busy === 'Sync produktów' ? '…' : 'Synchronizuj produkty → Fakturownia'}
-        </button>
+          Import faktury zakupowej →
+        </a>
         <button
           onClick={syncStock}
           disabled={busy !== null}
