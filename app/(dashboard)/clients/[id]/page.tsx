@@ -442,8 +442,22 @@ export default async function ClientDetailPage({
   const facebookField = fieldsByKey.get('facebook_url')
   const instagramField = fieldsByKey.get('instagram_url')
 
-  const emailValue = c.email_krs ?? emailField?.value_text ?? c.email
-  const emailSource = c.email_krs ? 'KRS' : emailField?.source ?? null
+  // Fix (24.08.2026) — priorytet email: ręczny ⭐ primary z client_contact_methods
+  // wygrywa nad auto-źródłami (KRS / website_scrape / clients.email). Operator
+  // wybiera właściwy adres gwiazdką — oferta/link muszą go użyć.
+  const starredEmail = contactMethods.find((m) => m.kind === 'email' && m.is_primary)
+  const anyEmailMethod = contactMethods.find((m) => m.kind === 'email')
+  const emailValue =
+    starredEmail?.value ??
+    c.email_krs ??
+    emailField?.value_text ??
+    anyEmailMethod?.value ??
+    c.email
+  const emailSource = starredEmail
+    ? starredEmail.source
+    : c.email_krs
+      ? 'KRS'
+      : emailField?.source ?? (anyEmailMethod ? anyEmailMethod.source : null)
   const websiteValue = c.website_krs ?? websiteField?.value_text ?? c.website
   const websiteSource = c.website_krs ? 'KRS' : websiteField?.source ?? null
   const phoneValue = phoneField?.value_text ?? c.phone
