@@ -21,6 +21,10 @@ type Props = {
   clientTitle: string
   clientEmail: string | null
   cohorts?: Cohort[]
+  // attachOffer=true → mail z plikiem oferty (przycisk "Wyślij ofertę").
+  // attachOffer=false → mail tylko z linkiem ("Wyślij link do zamówienia").
+  attachOffer?: boolean
+  label?: string
 }
 
 function buildDefaultMessage(lang: 'pl' | 'ua') {
@@ -61,6 +65,8 @@ export function SendOfferButton({
   clientTitle,
   clientEmail,
   cohorts,
+  attachOffer = true,
+  label = 'Wyślij ofertę',
 }: Props) {
   const [open, setOpen] = useState(false)
   const [email, setEmail] = useState(clientEmail || '')
@@ -99,6 +105,8 @@ export function SendOfferButton({
           cohort_id: cohortId || null,
           // Krok DAGOLD — język oferty (załącznik + treść maila PL/UA).
           offer_lang: offerLang,
+          // "Wyślij ofertę" → plik oferty; "Wyślij link" → bez pliku.
+          attach_offer: attachOffer,
         }),
       })
       const data = await res.json()
@@ -126,14 +134,12 @@ export function SendOfferButton({
         onClick={() => setOpen(true)}
         disabled={!hasEmail}
         title={
-          hasEmail
-            ? 'Wyślij ofertę z cennikiem'
-            : 'Brak email klienta — dodaj do profilu'
+          hasEmail ? label : 'Brak email klienta — dodaj do profilu'
         }
         className="inline-flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Mail className="h-4 w-4" />
-        Wyślij ofertę
+        {label}
       </button>
 
       {open && (
@@ -147,7 +153,7 @@ export function SendOfferButton({
           >
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold">
-                Wyślij ofertę — {clientTitle}
+                {label} — {clientTitle}
               </h3>
               <button
                 onClick={() => setOpen(false)}

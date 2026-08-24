@@ -35,7 +35,6 @@ import { ClientTimelineSection } from '@/components/clients/client-timeline-sect
 import { buildTimelineEvents } from '@/lib/timeline/build-events'
 import { OrdersSection } from '@/components/clients/orders-section'
 import { ClientDetailActions } from '@/components/clients/client-detail-actions'
-import { OrderLinkButton } from '@/components/clients/order-link-button'
 import { SendOfferButton } from '@/components/clients/send-offer-button'
 import { ClientTypeBadge } from '@/components/clients/client-type-badge'
 import { MenuSection, type MenuDish, type MenuCoverage, type MenuDishesSource } from '@/components/clients/menu-section'
@@ -246,7 +245,6 @@ export default async function ClientDetailPage({
       .eq('client_id', id)
       .order('created_at', { ascending: false }),
   ])
-  const orderCohortId = cohortMember?.cohort_id ?? null
   const clientOrders = (clientOrdersData ?? []) as Array<{
     id: string
     order_number: string
@@ -639,15 +637,19 @@ export default async function ClientDetailPage({
         }
         actions={
           <div className="flex items-center gap-2 flex-wrap">
-            <OrderLinkButton
+            <SendOfferButton
               clientId={id}
-              clientName={c.title}
-              cohortId={orderCohortId}
+              clientTitle={c.title}
+              clientEmail={emailValue ?? null}
+              attachOffer={false}
+              label="Wyślij link do zamówienia"
             />
             <SendOfferButton
               clientId={id}
               clientTitle={c.title}
               clientEmail={emailValue ?? null}
+              attachOffer={true}
+              label="Wyślij ofertę"
             />
             <ClientDetailActions
               clientId={id}

@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendNotification } from '@/lib/notifications/sender'
+import { buildClientOfferXlsx } from '@/lib/orders/client-offer'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -52,6 +53,8 @@ export async function POST(
   const priceMode = 'auto' as const
   // Język oferty (PL/UA) wybrany przez operatora przy wysyłce.
   const offerLang: 'pl' | 'ua' = body.offer_lang === 'ua' ? 'ua' : 'pl'
+  // "Wyślij ofertę" → attach_offer=true (plik oferty). "Wyślij link" → false.
+  const attachOffer = body.attach_offer === true
 
   if (!email || !email.includes('@')) {
     return NextResponse.json(
@@ -156,8 +159,28 @@ export async function POST(
     finalMessage = message.replace(/<<order_link>>/g, orderLink)
   }
 
-  // Krok DAGOLD — BEZ załącznika: pełny asortyment, ceny netto i rabaty są w
-  // formularzu zamówienia (przycisk/link w mailu). Lżejszy mail, mniej spamu.
+  // "Wyślij ofertę" → dynamiczny plik oferty z cenami TEGO klienta (jego rabaty +
+  // ceny detaliczne). "Wyślij link" (attach_offer=false) → tylko link, bez pliku.
+  let attachments:
+    | { filename: string; content: Buffer; contentType: string }[]
+    | undefined
+  if (attachOffer) {
+    try {
+      const offer = await buildClientOfferXlsx(client.id, offerLang)
+      attachments = [
+        {
+          filename: offer.filename,
+          content: offer.buffer,
+          contentType:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        },
+      ]
+    } catch (e: any) {
+      console.error('[send-offer] offer xlsx generation failed:', e?.message)
+      // soft-fail: wyślij mail bez pliku niż blokuj wysyłkę
+    }
+  }
+
   const result = await sendNotification({
     channel: 'email',
     recipient: { email },
@@ -171,6 +194,7 @@ export async function POST(
       // Krok DAGOLD — język oferty (temat + etykiety maila).
       lang: offerLang,
     },
+    attachments,
   })
 
   return NextResponse.json({
