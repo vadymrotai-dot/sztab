@@ -173,9 +173,10 @@ export async function buildClientOfferXlsx(
         rows: [],
       })
     }
+    const gram = (p.gramatura && String(p.gramatura).trim()) || (lang === 'ua' ? 'на вагу' : 'na wagę')
     groups[g].rows.push([
       p.display_name || p.name,
-      p.gramatura || '',
+      gram,
       p.unit || 'szt',
       price,
     ])
