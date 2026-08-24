@@ -27,13 +27,15 @@ type Props = {
   label?: string
 }
 
-function buildDefaultMessage(lang: 'pl' | 'ua') {
+function buildDefaultMessage(lang: 'pl' | 'ua', attachOffer: boolean) {
   if (lang === 'ua') {
+    // "Wyślij ofertę" — акцент на прайс у вкладенні (ціни цього клієнта).
+    const introUa = attachOffer
+      ? `Надсилаю актуальну гуртову оферту DAGOLD — прайс із Вашими цінами у вкладенні (файл .xlsx): квашені й салати (Czudowa Marka), риба та морепродукти (AVIS-D, Латвія), кальмари й снеки.`
+      : `Надсилаю посилання на онлайн-замовлення DAGOLD — квашені й салати (Czudowa Marka), риба та морепродукти (AVIS-D, Латвія), кальмари й сушені снеки.`
     return `Доброго дня,
 
-Надсилаю актуальну гуртову оферту DAGOLD — квашені й салати (Czudowa Marka), риба та морепродукти (AVIS-D, Латвія), кальмари й сушені снеки.
-
-Повний асортимент, ціни нетто та знижки будуть у формі замовлення — натисніть кнопку нижче.
+${introUa}
 
 Щоб оформити замовлення онлайн — натисніть велику кнопку «ЗАМОВИТИ ТУТ» нижче. Форма займає 2 хвилини, знижка рахується автоматично в міру набору товару.
 
@@ -44,11 +46,12 @@ function buildDefaultMessage(lang: 'pl' | 'ua') {
 +48 510 924 301
 vasin@dagold.com`
   }
+  const introPl = attachOffer
+    ? `Przesyłam aktualną ofertę hurtową DAGOLD — cennik z Państwa cenami w załączniku (plik .xlsx): kiszonki i surówki (Czudowa Marka), ryby i owoce morza (AVIS-D, Łotwa) oraz kalmary i przekąski.`
+    : `Przesyłam link do zamówienia online DAGOLD — kiszonki i surówki (Czudowa Marka), ryby i owoce morza (AVIS-D, Łotwa) oraz kalmary i przekąski suszone.`
   return `Dzień dobry,
 
-Przesyłam aktualną ofertę hurtową DAGOLD — kiszonki i surówki (Czudowa Marka), ryby i owoce morza (AVIS-D, Łotwa) oraz kalmary i przekąski suszone.
-
-Pełny asortyment, ceny netto i rabaty będą w formularzu zamówienia — kliknij przycisk poniżej.
+${introPl}
 
 Aby złożyć zamówienie online — kliknij duży przycisk „ZAMÓW TUTAJ" poniżej. Formularz zajmuje 2 minuty, rabat nalicza się automatycznie w miarę dodawania towaru.
 
@@ -84,7 +87,7 @@ export function SendOfferButton({
   useEffect(() => {
     if (open) {
       setEmail(clientEmail || '')
-      setMessage(buildDefaultMessage(offerLang))
+      setMessage(buildDefaultMessage(offerLang, attachOffer))
       setResult(null)
     }
   }, [open, clientEmail, offerLang])
@@ -232,9 +235,30 @@ export function SendOfferButton({
                   </label>
                 </div>
                 <p className="mt-1 text-[11px] text-slate-500">
-                  Zmienia załącznik i język wiadomości. Ceny liczą się automatycznie
-                  przez rabaty wolumenowe w formularzu.
+                  Zmienia język wiadomości{attachOffer ? ' i języka pliku oferty' : ''}.
                 </p>
+              </div>
+
+              {/* Widoczne rozróżnienie trybu: oferta z plikiem vs sam link */}
+              <div
+                className={`rounded-md border px-3 py-2 text-[12px] ${
+                  attachOffer
+                    ? 'border-amber-300 bg-amber-50 text-amber-900'
+                    : 'border-slate-200 bg-slate-50 text-slate-600'
+                }`}
+              >
+                {attachOffer ? (
+                  <>
+                    <strong>📎 Załącznik:</strong> plik oferty (.xlsx) z cenami TEGO
+                    klienta — jego rabaty i ceny detaliczne. Ten sam cennik, co w
+                    formularzu zamówienia. + przycisk zamówienia w treści.
+                  </>
+                ) : (
+                  <>
+                    <strong>Bez pliku.</strong> Mail zawiera tylko przycisk „ZAMÓW
+                    TUTAJ" — klient widzi ceny w formularzu online.
+                  </>
+                )}
               </div>
 
               <div>
