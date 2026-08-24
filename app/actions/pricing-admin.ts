@@ -147,6 +147,8 @@ const ClientPricingSchema = z.object({
   znizka_indywidualna_pct: z.number().min(0).max(0.95).nullable(),
   // Krok DAGOLD — osobna zniżka indywidualna na kalmary/przekąski (null → progi wolumenowe).
   znizka_indywidualna_kalmar_pct: z.number().min(0).max(0.95).nullable(),
+  // Narzut restauracyjny (+п.п. do marży) dla AVIS-D/ЧМ/Karol. null/puste → 0.
+  restaurant_markup_pct: z.number().min(0).max(0.95).nullable(),
 })
 
 export async function updateClientPricing(input: {
@@ -154,6 +156,7 @@ export async function updateClientPricing(input: {
   price_segment_code: string | null
   znizka_indywidualna_pct: number | null
   znizka_indywidualna_kalmar_pct: number | null
+  restaurant_markup_pct: number | null
 }): Promise<ActionResult> {
   const parsed = ClientPricingSchema.safeParse(input)
   if (!parsed.success) {
@@ -170,6 +173,7 @@ export async function updateClientPricing(input: {
       price_segment_code: parsed.data.price_segment_code || null,
       znizka_indywidualna_pct: parsed.data.znizka_indywidualna_pct,
       znizka_indywidualna_kalmar_pct: parsed.data.znizka_indywidualna_kalmar_pct,
+      restaurant_markup_pct: parsed.data.restaurant_markup_pct ?? 0,
     })
     .eq('id', parsed.data.clientId)
   if (error) return { ok: false, error: error.message }

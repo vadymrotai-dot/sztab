@@ -48,6 +48,7 @@ export function ClientPricingPanel({
   initialSegmentCode,
   initialZnizka,
   initialZnizkaKalmar,
+  initialRestaurantMarkup,
   segments,
   example,
 }: {
@@ -55,6 +56,7 @@ export function ClientPricingPanel({
   initialSegmentCode: string | null
   initialZnizka: number | null // ułamek (ogólna)
   initialZnizkaKalmar: number | null // ułamek (kalmary/przekąski)
+  initialRestaurantMarkup: number | null // ułamek (narzut restauracyjny +п.п.)
   segments: PricingSegmentOption[]
   example: PricingExample | null
 }) {
@@ -64,11 +66,16 @@ export function ClientPricingPanel({
   const [znizkaKalmarDraft, setZnizkaKalmarDraft] = useState<string>(
     fracToStr(initialZnizkaKalmar),
   )
+  const [markupDraft, setMarkupDraft] = useState<string>(
+    fracToStr(initialRestaurantMarkup),
+  )
   const [saving, setSaving] = useState(false)
 
   const znizkaFrac = strToFrac(znizkaDraft)
   const znizkaKalmarFrac = strToFrac(znizkaKalmarDraft)
-  const invalid = Number.isNaN(znizkaFrac) || Number.isNaN(znizkaKalmarFrac)
+  const markupFrac = strToFrac(markupDraft)
+  const invalid =
+    Number.isNaN(znizkaFrac) || Number.isNaN(znizkaKalmarFrac) || Number.isNaN(markupFrac)
 
   const selectedSegment = useMemo(
     () => segments.find((s) => s.code === segCode) ?? null,
@@ -97,7 +104,9 @@ export function ClientPricingPanel({
       (initialZnizka ?? null) ||
     (znizkaKalmarFrac === null || Number.isNaN(znizkaKalmarFrac)
       ? null
-      : (znizkaKalmarFrac as number)) !== (initialZnizkaKalmar ?? null)
+      : (znizkaKalmarFrac as number)) !== (initialZnizkaKalmar ?? null) ||
+    (markupFrac === null || Number.isNaN(markupFrac) ? null : (markupFrac as number)) !==
+      (initialRestaurantMarkup ?? null)
 
   async function save() {
     if (invalid) {
@@ -110,6 +119,7 @@ export function ClientPricingPanel({
       price_segment_code: segCode === NONE ? null : segCode,
       znizka_indywidualna_pct: znizkaFrac as number | null,
       znizka_indywidualna_kalmar_pct: znizkaKalmarFrac as number | null,
+      restaurant_markup_pct: markupFrac as number | null,
     })
     setSaving(false)
     if (!res.ok) {
@@ -177,6 +187,19 @@ export function ClientPricingPanel({
             placeholder="—"
             inputMode="decimal"
             className={`h-9 w-28 text-right font-mono ${Number.isNaN(znizkaKalmarFrac) ? 'border-red-400' : ''}`}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[11px] uppercase tracking-wider text-[#888]">
+            Restauracja — narzut marży (p.p.)
+          </label>
+          <Input
+            value={markupDraft}
+            onChange={(e) => setMarkupDraft(e.target.value)}
+            placeholder="—"
+            inputMode="decimal"
+            className={`h-9 w-28 text-right font-mono ${Number.isNaN(markupFrac) ? 'border-red-400' : ''}`}
           />
         </div>
       </div>

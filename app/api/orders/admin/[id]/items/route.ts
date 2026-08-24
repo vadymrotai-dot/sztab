@@ -13,7 +13,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { computeNewUnitPrice, resolveClientDiscount } from '@/lib/orders/pricing'
+import {
+  computeNewUnitPrice,
+  resolveClientDiscount,
+  markupForSupplier,
+} from '@/lib/orders/pricing'
 import { GLOBAL_FOOD_SUPPLIER_ID, normalizeQty } from '@/lib/orders/discount-tiers'
 
 export const runtime = 'nodejs'
@@ -168,7 +172,11 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     (product as any).supplier_id === GLOBAL_FOOD_SUPPLIER_ID
       ? discounts.kalmar
       : discounts.ogolna
-  const np = computeNewUnitPrice(product as any, ind)
+  const np = computeNewUnitPrice(
+    product as any,
+    ind,
+    markupForSupplier((product as any).supplier_id, discounts.restaurantMarkup),
+  )
   let unitPrice: number
   if (np != null && !Number.isNaN(np)) {
     unitPrice = np

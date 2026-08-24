@@ -20,9 +20,11 @@ export interface NewPriceProduct {
 export function computeNewUnitPrice(
   p: NewPriceProduct,
   clientDiscount: number,
+  marginBump = 0,
 ): number | null {
   if (p.marza_bazowa_pct == null) return null
-  const marza = Math.min(Number(p.marza_bazowa_pct), 0.95)
+  // marginBump — ресторанна націнка (+п.п. до маржі), 0 для звичайних клієнтів.
+  const marza = Math.min(Number(p.marza_bazowa_pct) + (Number(marginBump) || 0), 0.95)
   const cost = Number(p.cost_pln ?? 0)
   if (!(cost > 0) || !(marza < 1)) return NaN
   return Math.round((cost / (1 - marza)) * (1 - clientDiscount) * 100) / 100
@@ -39,6 +41,25 @@ export const hasNewPrice = (p: NewPriceProduct): boolean =>
 export interface ClientDiscounts {
   ogolna: number
   kalmar: number
+  // Ресторанна націнка (+п.п. до маржі) для AVIS-D/ЧМ/Karol. 0 = звичайний клієнт.
+  restaurantMarkup: number
+}
+
+// Постачальники, до яких застосовується ресторанна націнка.
+// Karol виключено: його база вже на рівні крафт-роздробу (~50/кг), +15 п.п.
+// перевищила б роздріб → ресторан платить базу (яка вже роздрібна).
+export const RESTAURANT_MARKUP_SUPPLIERS = new Set<string>([
+  '0f27ad77-a8be-431f-bb1a-1ca537424307', // AVIS-D (риба Латвія) — база нижче роздробу
+  'a75927f4-eb9b-426e-b901-4a106c33e7e6', // Czudowa Marka — база нижче роздробу
+])
+
+// Націнка для конкретного товару: тільки для scoped-постачальників.
+export function markupForSupplier(
+  supplierId: string | null | undefined,
+  markup: number,
+): number {
+  if (!supplierId || !(markup > 0)) return 0
+  return RESTAURANT_MARKUP_SUPPLIERS.has(supplierId) ? markup : 0
 }
 
 const clampFrac = (d: number): number => {
@@ -51,15 +72,15 @@ export async function resolveClientDiscount(
   supabase: SupabaseClient,
   clientId: string | null | undefined,
 ): Promise<ClientDiscounts> {
-  if (!clientId) return { ogolna: 0, kalmar: 0 }
+  if (!clientId) return { ogolna: 0, kalmar: 0, restaurantMarkup: 0 }
   const { data: cli } = await supabase
     .from('clients')
     .select(
-      'price_segment_code, znizka_indywidualna_pct, znizka_indywidualna_kalmar_pct',
+      'price_segment_code, znizka_indywidualna_pct, znizka_indywidualna_kalmar_pct, restaurant_markup_pct',
     )
     .eq('id', clientId)
     .maybeSingle()
-  if (!cli) return { ogolna: 0, kalmar: 0 }
+  if (!cli) return { ogolna: 0, kalmar: 0, restaurantMarkup: 0 }
 
   let ogolna = 0
   if (cli.znizka_indywidualna_pct != null) {
@@ -76,5 +97,11 @@ export async function resolveClientDiscount(
     cli.znizka_indywidualna_kalmar_pct != null
       ? Number(cli.znizka_indywidualna_kalmar_pct)
       : 0
-  return { ogolna: clampFrac(ogolna), kalmar: clampFrac(kalmar) }
+  const restaurantMarkup =
+    cli.restaurant_markup_pct != null ? Number(cli.restaurant_markup_pct) : 0
+  return {
+    ogolna: clampFrac(ogolna),
+    kalmar: clampFrac(kalmar),
+    restaurantMarkup: restaurantMarkup > 0 ? restaurantMarkup : 0,
+  }
 }

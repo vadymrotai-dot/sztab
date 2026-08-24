@@ -14,7 +14,11 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { computeNewUnitPrice, resolveClientDiscount } from '@/lib/orders/pricing'
+import {
+  computeNewUnitPrice,
+  resolveClientDiscount,
+  markupForSupplier,
+} from '@/lib/orders/pricing'
 import { GLOBAL_FOOD_SUPPLIER_ID } from '@/lib/orders/discount-tiers'
 
 export const runtime = 'nodejs'
@@ -196,6 +200,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         const np = computeNewUnitPrice(
           { marza_bazowa_pct: p.marza_bazowa_pct, cost_pln: p.cost_pln },
           ind,
+          markupForSupplier(p.supplier_id, discounts.restaurantMarkup),
         )
         return np != null && !Number.isNaN(np) ? np : null
       })(),
@@ -206,6 +211,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         const b = computeNewUnitPrice(
           { marza_bazowa_pct: p.marza_bazowa_pct, cost_pln: p.cost_pln },
           0,
+          markupForSupplier(p.supplier_id, discounts.restaurantMarkup),
         )
         return b != null && !Number.isNaN(b) ? b : null
       })(),

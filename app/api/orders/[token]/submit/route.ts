@@ -19,6 +19,7 @@ import {
   computeNewUnitPrice,
   hasNewPrice as hasNewPriceFn,
   resolveClientDiscount,
+  markupForSupplier,
 } from '@/lib/orders/pricing'
 // Krok 3 DAGOLD — rabaty wolumenowe per grupa (supplier). Serwerowa (autorytatywna)
 // wersja tej samej logiki co order-form → parity display==charge.
@@ -374,6 +375,10 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     computeNewUnitPrice(
       p as { marza_bazowa_pct?: number | string | null; cost_pln?: number | string | null },
       0,
+      markupForSupplier(
+        (p as { supplier_id?: string | null }).supplier_id ?? null,
+        znizkaKlienta.restaurantMarkup,
+      ),
     )
   const volLines = input.items
     .map((it) => {
@@ -403,6 +408,10 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         (p as { supplier_id?: string | null }).supplier_id ?? null,
         znizkaKlienta,
         grpDisc,
+      ),
+      markupForSupplier(
+        (p as { supplier_id?: string | null }).supplier_id ?? null,
+        znizkaKlienta.restaurantMarkup,
       ),
     )
 
