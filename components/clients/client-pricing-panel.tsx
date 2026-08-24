@@ -48,7 +48,7 @@ export function ClientPricingPanel({
   initialSegmentCode,
   initialZnizka,
   initialZnizkaKalmar,
-  initialRestaurantMarkup,
+  initialRetail,
   segments,
   example,
 }: {
@@ -56,7 +56,7 @@ export function ClientPricingPanel({
   initialSegmentCode: string | null
   initialZnizka: number | null // ułamek (ogólna)
   initialZnizkaKalmar: number | null // ułamek (kalmary/przekąski)
-  initialRestaurantMarkup: number | null // ułamek (narzut restauracyjny +п.п.)
+  initialRetail: boolean // ceny detaliczne (retail) → narzut +15 п.п. AVIS/ЧМ
   segments: PricingSegmentOption[]
   example: PricingExample | null
 }) {
@@ -66,16 +66,12 @@ export function ClientPricingPanel({
   const [znizkaKalmarDraft, setZnizkaKalmarDraft] = useState<string>(
     fracToStr(initialZnizkaKalmar),
   )
-  const [markupDraft, setMarkupDraft] = useState<string>(
-    fracToStr(initialRestaurantMarkup),
-  )
+  const [retailChecked, setRetailChecked] = useState<boolean>(initialRetail)
   const [saving, setSaving] = useState(false)
 
   const znizkaFrac = strToFrac(znizkaDraft)
   const znizkaKalmarFrac = strToFrac(znizkaKalmarDraft)
-  const markupFrac = strToFrac(markupDraft)
-  const invalid =
-    Number.isNaN(znizkaFrac) || Number.isNaN(znizkaKalmarFrac) || Number.isNaN(markupFrac)
+  const invalid = Number.isNaN(znizkaFrac) || Number.isNaN(znizkaKalmarFrac)
 
   const selectedSegment = useMemo(
     () => segments.find((s) => s.code === segCode) ?? null,
@@ -105,8 +101,7 @@ export function ClientPricingPanel({
     (znizkaKalmarFrac === null || Number.isNaN(znizkaKalmarFrac)
       ? null
       : (znizkaKalmarFrac as number)) !== (initialZnizkaKalmar ?? null) ||
-    (markupFrac === null || Number.isNaN(markupFrac) ? null : (markupFrac as number)) !==
-      (initialRestaurantMarkup ?? null)
+    retailChecked !== initialRetail
 
   async function save() {
     if (invalid) {
@@ -119,7 +114,7 @@ export function ClientPricingPanel({
       price_segment_code: segCode === NONE ? null : segCode,
       znizka_indywidualna_pct: znizkaFrac as number | null,
       znizka_indywidualna_kalmar_pct: znizkaKalmarFrac as number | null,
-      restaurant_markup_pct: markupFrac as number | null,
+      retail_pricing: retailChecked,
     })
     setSaving(false)
     if (!res.ok) {
@@ -192,15 +187,17 @@ export function ClientPricingPanel({
 
         <div className="space-y-1">
           <label className="text-[11px] uppercase tracking-wider text-[#888]">
-            Restauracja — narzut marży (p.p.)
+            Ceny detaliczne
           </label>
-          <Input
-            value={markupDraft}
-            onChange={(e) => setMarkupDraft(e.target.value)}
-            placeholder="—"
-            inputMode="decimal"
-            className={`h-9 w-28 text-right font-mono ${Number.isNaN(markupFrac) ? 'border-red-400' : ''}`}
-          />
+          <label className="flex h-9 items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={retailChecked}
+              onChange={(e) => setRetailChecked(e.target.checked)}
+              className="h-4 w-4 accent-[#1F3A5F]"
+            />
+            <span className="text-sm text-slate-700">+15 p.p. (AVIS/ЧМ)</span>
+          </label>
         </div>
       </div>
 

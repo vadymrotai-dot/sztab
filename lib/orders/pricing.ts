@@ -53,6 +53,9 @@ export const RESTAURANT_MARKUP_SUPPLIERS = new Set<string>([
   'a75927f4-eb9b-426e-b901-4a106c33e7e6', // Czudowa Marka — база нижче роздробу
 ])
 
+// Фіксована роздрібна націнка (+п.п. до маржі) для клієнтів з retail_pricing=true.
+export const RETAIL_MARKUP = 0.15
+
 // Націнка для конкретного товару: тільки для scoped-постачальників.
 export function markupForSupplier(
   supplierId: string | null | undefined,
@@ -76,7 +79,7 @@ export async function resolveClientDiscount(
   const { data: cli } = await supabase
     .from('clients')
     .select(
-      'price_segment_code, znizka_indywidualna_pct, znizka_indywidualna_kalmar_pct, restaurant_markup_pct',
+      'price_segment_code, znizka_indywidualna_pct, znizka_indywidualna_kalmar_pct, retail_pricing',
     )
     .eq('id', clientId)
     .maybeSingle()
@@ -97,11 +100,10 @@ export async function resolveClientDiscount(
     cli.znizka_indywidualna_kalmar_pct != null
       ? Number(cli.znizka_indywidualna_kalmar_pct)
       : 0
-  const restaurantMarkup =
-    cli.restaurant_markup_pct != null ? Number(cli.restaurant_markup_pct) : 0
   return {
     ogolna: clampFrac(ogolna),
     kalmar: clampFrac(kalmar),
-    restaurantMarkup: restaurantMarkup > 0 ? restaurantMarkup : 0,
+    // Роздрібна ціна: позначка retail_pricing → фіксована націнка +15 п.п.
+    restaurantMarkup: cli.retail_pricing ? RETAIL_MARKUP : 0,
   }
 }

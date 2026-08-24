@@ -716,15 +716,7 @@ export default async function ClientDetailPage({
               ? Number(c.znizka_indywidualna_kalmar_pct)
               : null
           }
-          initialRestaurantMarkup={
-            (c as { restaurant_markup_pct?: number | string | null })
-              .restaurant_markup_pct != null
-              ? Number(
-                  (c as { restaurant_markup_pct?: number | string | null })
-                    .restaurant_markup_pct,
-                )
-              : null
-          }
+          initialRetail={(c as { retail_pricing?: boolean }).retail_pricing === true}
           segments={pricingSegments}
           example={pricingExample}
         />
