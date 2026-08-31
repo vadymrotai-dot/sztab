@@ -4,19 +4,15 @@
 // Granicą dostępu jest sesja logowania, nie sekret w URL. Cena z pricing.ts
 // (liczy GET), zero nowej logiki.
 
-import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getPortalUser, getPortalAccount } from '@/lib/portal/session'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { loadOrderInitial } from '@/lib/orders/load-order-initial'
 import { OrderForm, type OrderInitial } from '@/components/zamowienie/order-form'
 import { ErrorScreen } from '@/components/zamowienie/error-screen'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-
-type ApiResponse =
-  | ({ ok: true } & OrderInitial)
-  | { ok: false; error: string }
 
 export default async function PortalOrderPage() {
   const user = await getPortalUser()
@@ -60,19 +56,12 @@ export default async function PortalOrderPage() {
     token = created.access_token as string
   }
 
-  // Ten sam loader co /zamowienie/[token] — cena liczona przez pricing.ts w GET.
-  const h = await headers()
-  const host = h.get('host') ?? 'localhost:3000'
-  const proto =
-    h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
-  const res = await fetch(`${proto}://${host}/api/orders/${token}`, {
-    cache: 'no-store',
-    headers: { 'x-internal-call': '1' },
-  })
-  const data = (await res.json()) as ApiResponse
-  if (!data.ok) {
-    return <ErrorScreen variant="error" message={data.error} />
+  // Ten sam loader co /api/orders/[token] — wołany BEZPOŚREDNIO (bez self-HTTP,
+  // który na Preview łapie SSO). Cena liczona przez pricing.ts w loaderze.
+  const { body } = await loadOrderInitial(token)
+  if (!body.ok) {
+    return <ErrorScreen variant="error" message={body.error} />
   }
 
-  return <OrderForm token={token} initial={data} />
+  return <OrderForm token={token} initial={body as OrderInitial} />
 }
