@@ -36,6 +36,7 @@ import { buildTimelineEvents } from '@/lib/timeline/build-events'
 import { OrdersSection } from '@/components/clients/orders-section'
 import { ClientDetailActions } from '@/components/clients/client-detail-actions'
 import { SendOfferButton } from '@/components/clients/send-offer-button'
+import { SentMessagesSection } from '@/components/clients/sent-messages-section'
 import { ClientTypeBadge } from '@/components/clients/client-type-badge'
 import { MenuSection, type MenuDish, type MenuCoverage, type MenuDishesSource } from '@/components/clients/menu-section'
 import { PredictionsSectionAsync } from '@/components/clients/predictions-section-async'
@@ -210,6 +211,7 @@ export default async function ClientDetailPage({
     { data: clientOrdersData },
     { data: contactMethodsData },
     { data: clientNotesData },
+    { data: sentMessagesData },
   ] = await Promise.all([
     // S-ORDER.1.D — resolve cohort_id для tracking order leads
     supabase
@@ -244,6 +246,16 @@ export default async function ClientDetailPage({
       .select('id, body, kind, occurred_at, created_at, updated_at')
       .eq('client_id', id)
       .order('created_at', { ascending: false }),
+    // Fix (31.08.2026) — historia wysłanych e-maili z notification_log.
+    // Wcześniej wysyłki (oferta/link) nigdzie nie były widoczne w UI —
+    // Historia buduje się tylko z orders+notes. adminSupabase bo tabela
+    // pisana service-rolem. Pokazujemy każdą wysyłkę osobno (data/status).
+    adminSupabase
+      .from('notification_log')
+      .select('id, channel, template, recipient, status, error_message, created_at, sent_at')
+      .eq('client_id', id)
+      .order('created_at', { ascending: false })
+      .limit(30),
   ])
   const clientOrders = (clientOrdersData ?? []) as Array<{
     id: string
@@ -310,6 +322,17 @@ export default async function ClientDetailPage({
     occurred_at: string | null
     created_at: string
     updated_at: string
+  }>
+
+  const sentMessages = (sentMessagesData ?? []) as Array<{
+    id: string
+    channel: string
+    template: string
+    recipient: string | null
+    status: string
+    error_message: string | null
+    created_at: string
+    sent_at: string | null
   }>
 
   // Sprint TYDZIEN2.T2.6 (29.05.2026) — Historia interakcji.
@@ -836,6 +859,22 @@ export default async function ClientDetailPage({
           defaultOpen={timelineEvents.length > 0}
         >
           <ClientTimelineSection clientId={id} events={timelineEvents} />
+        </AccordionSection>
+
+        {/* Fix (31.08.2026) — Wysłane wiadomości (notification_log). Każda
+            wysyłka oferty/linku osobno: data, odbiorca, status. Wcześniej
+            wysyłki nie były widoczne nigdzie w UI. */}
+        <AccordionSection
+          id="wyslane-wiadomosci"
+          title="Wysłane wiadomości"
+          meta={
+            sentMessages.length === 0
+              ? 'brak'
+              : `${sentMessages.length} ${sentMessages.length === 1 ? 'wysyłka' : 'wysyłek'}`
+          }
+          defaultOpen={sentMessages.length > 0}
+        >
+          <SentMessagesSection messages={sentMessages} />
         </AccordionSection>
 
         {/* Sprint S-MENU Day 3 (15.05.2026) — Manual website override.
