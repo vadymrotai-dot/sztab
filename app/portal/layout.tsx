@@ -1,5 +1,7 @@
-// app/portal/layout.tsx — Portal klienta Faza 0. Minimalny shell.
-// Auth-guard per strona (login jest publiczny). Tu tylko wrapper wizualny.
+// app/portal/layout.tsx — Portal klienta. Shell + nawigacja sekcji (Faza 1).
+// PortalNav sam ukrywa się na /portal/login i /portal/onboard.
+
+import { PortalNav } from '@/components/portal/portal-nav'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,5 +10,10 @@ export default function PortalLayout({
 }: {
   children: React.ReactNode
 }) {
-  return <div className="min-h-screen bg-[#FAFAF7]">{children}</div>
+  return (
+    <div className="min-h-screen bg-[#FAFAF7]">
+      <PortalNav />
+      {children}
+    </div>
+  )
 }
