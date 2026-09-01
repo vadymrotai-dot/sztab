@@ -16,7 +16,7 @@ export default async function PortalIndex() {
 
   const admin = createAdminClient()
 
-  const [{ data: cli }, { data: ordersData }] = await Promise.all([
+  const [{ data: cli }, { data: ordersData }, { data: draftRow }] = await Promise.all([
     admin.from('clients').select('title').eq('id', acc.client_id).maybeSingle(),
     admin
       .from('orders')
@@ -24,7 +24,19 @@ export default async function PortalIndex() {
       .eq('client_id', acc.client_id)
       .neq('status', 'draft')
       .order('submitted_at', { ascending: false, nullsFirst: false }),
+    // Niedokończony koszyk — draft z zapisanymi pozycjami.
+    admin
+      .from('orders')
+      .select('draft_cart')
+      .eq('client_id', acc.client_id)
+      .eq('status', 'draft')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ])
+
+  const dc = (draftRow?.draft_cart ?? null) as { pozycje?: unknown[] } | null
+  const hasUnfinishedDraft = Array.isArray(dc?.pozycje) && dc!.pozycje!.length > 0
 
   const orders = (ordersData ?? []) as Array<{
     id: string
@@ -43,6 +55,7 @@ export default async function PortalIndex() {
   return (
     <PulpitDashboard
       firma={cli?.title ?? 'Kliencie'}
+      hasUnfinishedDraft={hasUnfinishedDraft}
       inRealization={inRealization}
       totalCount={orders.length}
       last={

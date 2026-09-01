@@ -633,6 +633,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       total_brutto: totalBrutto.toFixed(2),
       submitted_at: now,
       updated_at: now,
+      // Zapamiętany koszyk — czyścimy po udanym submit (nowy draft startuje pusty).
+      draft_cart: null,
     })
     .eq('id', order.id)
   if (updErr) {
