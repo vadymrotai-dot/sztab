@@ -2,11 +2,12 @@
 
 // components/portal/portal-accounts-table.tsx — admin: zatwierdzanie kont portalu.
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   approvePortalAccount,
   rejectPortalAccount,
+  searchClientsForApproval,
 } from '@/app/actions/portal-admin'
 
 export interface PortalAccountRow {
@@ -35,15 +36,47 @@ function StatusBadge({ status }: { status: string }) {
 
 function Row({ acc }: { acc: PortalAccountRow }) {
   const router = useRouter()
-  const [cid, setCid] = useState(acc.matched_client_id ?? '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [q, setQ] = useState('')
+  const [results, setResults] = useState<
+    { id: string; title: string; nip: string | null }[]
+  >([])
+  const [searching, setSearching] = useState(false)
 
-  const approve = async () => {
-    setBusy(true); setErr(null)
-    const r = await approvePortalAccount(acc.id, cid)
+  // Debounce — szukaj klienta po nazwie/NIP zamiast wpisywać UUID.
+  useEffect(() => {
+    if (acc.status !== 'pending') return
+    const term = q.trim()
+    if (term.length < 2) {
+      setResults([])
+      return
+    }
+    let active = true
+    setSearching(true)
+    const t = setTimeout(async () => {
+      const r = await searchClientsForApproval(term)
+      if (!active) return
+      setSearching(false)
+      if (r.ok) setResults(r.clients)
+      else {
+        setResults([])
+        setErr(r.error)
+      }
+    }, 300)
+    return () => {
+      active = false
+      clearTimeout(t)
+    }
+  }, [q, acc.status])
+
+  const approveWith = async (clientId: string) => {
+    setBusy(true)
+    setErr(null)
+    const r = await approvePortalAccount(acc.id, clientId)
     setBusy(false)
-    if (r.ok) router.refresh(); else setErr(r.error)
+    if (r.ok) router.refresh()
+    else setErr(r.error)
   }
   const reject = async () => {
     if (!confirm('Odrzucić to konto?')) return
@@ -73,20 +106,38 @@ function Row({ acc }: { acc: PortalAccountRow }) {
       <td className="py-2">
         {acc.status === 'pending' ? (
           <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <input
-                value={cid}
-                onChange={(e) => setCid(e.target.value)}
-                placeholder="client_id (uuid)"
-                className="w-64 rounded border border-slate-300 px-2 py-1 font-mono text-[11px]"
-              />
-              <button
-                onClick={approve}
-                disabled={busy || !cid}
-                className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
-              >
-                Zatwierdź
-              </button>
+            <div className="flex items-start gap-2">
+              <div className="relative">
+                <input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Szukaj klienta — nazwa lub NIP…"
+                  className="w-72 rounded border border-slate-300 px-2 py-1 text-xs"
+                />
+                {(results.length > 0 || searching) && (
+                  <ul className="absolute z-20 mt-1 max-h-64 w-72 overflow-auto rounded border border-slate-200 bg-white shadow-lg">
+                    {searching && (
+                      <li className="px-2 py-1 text-[11px] text-slate-400">Szukam…</li>
+                    )}
+                    {results.map((c) => (
+                      <li key={c.id}>
+                        <button
+                          disabled={busy}
+                          onClick={() => approveWith(c.id)}
+                          className="block w-full px-2 py-1.5 text-left text-xs hover:bg-green-50 disabled:opacity-50"
+                          title="Zatwierdź i przypisz tego klienta"
+                        >
+                          <span className="font-medium text-slate-800">{c.title}</span>
+                          <span className="text-slate-400"> · NIP {c.nip ?? '—'}</span>
+                        </button>
+                      </li>
+                    ))}
+                    {!searching && results.length === 0 && q.trim().length >= 2 && (
+                      <li className="px-2 py-1 text-[11px] text-slate-400">Brak wyników</li>
+                    )}
+                  </ul>
+                )}
+              </div>
               <button
                 onClick={reject}
                 disabled={busy}
@@ -95,6 +146,9 @@ function Row({ acc }: { acc: PortalAccountRow }) {
                 Odrzuć
               </button>
             </div>
+            <span className="text-[11px] text-slate-400">
+              Wpisz nazwę firmy lub NIP i kliknij klienta z listy, aby zatwierdzić.
+            </span>
             {err && <div className="text-[11px] text-red-600">{err}</div>}
           </div>
         ) : (

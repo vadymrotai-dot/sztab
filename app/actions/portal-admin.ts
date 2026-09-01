@@ -53,6 +53,30 @@ export async function approvePortalAccount(
   return { ok: true }
 }
 
+// Wyszukiwarka klientów do przypisania przy zatwierdzaniu (po nazwie lub NIP).
+// Admin-only. Zwraca max 10 dopasowań — bez wpisywania UUID ręcznie.
+export async function searchClientsForApproval(
+  query: string,
+): Promise<
+  | { ok: true; clients: { id: string; title: string; nip: string | null }[] }
+  | { ok: false; error: string }
+> {
+  const { user } = await requireAdmin()
+  if (!user) return { ok: false, error: 'Nieautoryzowany' }
+  const q = (query || '').trim()
+  if (q.length < 2) return { ok: true, clients: [] }
+  const admin = createAdminClient()
+  const digits = q.replace(/\D/g, '')
+  const like = (s: string) => `%${s.replace(/[%,()]/g, '')}%`
+  const builder =
+    digits.length >= 5
+      ? admin.from('clients').select('id, title, nip').ilike('nip', like(digits))
+      : admin.from('clients').select('id, title, nip').ilike('title', like(q))
+  const { data, error } = await builder.order('title', { ascending: true }).limit(10)
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, clients: (data ?? []) as { id: string; title: string; nip: string | null }[] }
+}
+
 export async function rejectPortalAccount(id: string): Promise<Result> {
   const { user } = await requireAdmin()
   if (!user) return { ok: false, error: 'Nieautoryzowany' }
