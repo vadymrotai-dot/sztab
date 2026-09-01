@@ -50,13 +50,18 @@ export async function updateSession(request: NextRequest) {
   const isPortalPath = path.startsWith('/portal')
   const isAuthPath = path.startsWith('/auth')
   const isPublicOrder = path.startsWith('/zamowienie')
+  // KRYTYCZNE: NIGDY nie przekierowuj żądań /api na /portal — fetch dostałby
+  // HTML zamiast JSON ("Unexpected token '<'"). API ma własną autoryzację
+  // (token/route-level + RLS). Dotyczy /api/orders/[token]/{cart,submit,last}.
+  const isApi = path.startsWith('/api')
 
   if (
     user &&
     role === 'portal' &&
     !isPortalPath &&
     !isAuthPath &&
-    !isPublicOrder
+    !isPublicOrder &&
+    !isApi
   ) {
     const url = request.nextUrl.clone()
     url.pathname = '/portal'
