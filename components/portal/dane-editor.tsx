@@ -5,6 +5,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import {
   portalUpsertContact,
   portalDeleteContact,
@@ -58,6 +59,37 @@ export function DaneEditor({
   const [ncVal, setNcVal] = useState('')
   // add/edit-point form
   const [pForm, setPForm] = useState<Partial<Point> | null>(null)
+
+  // Bezpieczeństwo — hasło (updateUser z aktywnej sesji, min 8 w UI)
+  const [pwd1, setPwd1] = useState('')
+  const [pwd2, setPwd2] = useState('')
+  const [pwdBusy, setPwdBusy] = useState(false)
+  const [pwdMsg, setPwdMsg] = useState<string | null>(null)
+  const [pwdErr, setPwdErr] = useState<string | null>(null)
+
+  const savePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPwdErr(null)
+    setPwdMsg(null)
+    if (pwd1.length < 8) {
+      setPwdErr('Hasło musi mieć co najmniej 8 znaków')
+      return
+    }
+    if (pwd1 !== pwd2) {
+      setPwdErr('Hasła nie są takie same')
+      return
+    }
+    setPwdBusy(true)
+    const { error } = await createClient().auth.updateUser({ password: pwd1 })
+    setPwdBusy(false)
+    if (error) {
+      setPwdErr(error.message)
+      return
+    }
+    setPwd1('')
+    setPwd2('')
+    setPwdMsg('Hasło zapisane. Następnym razem możesz zalogować się hasłem.')
+  }
 
   return (
     <div className="space-y-6">
@@ -265,6 +297,40 @@ export function DaneEditor({
             </div>
           </div>
         )}
+      </section>
+
+      <section className="rounded-lg border border-[#E5E1D8] bg-white p-4">
+        <h2 className="mb-1 text-sm font-semibold text-slate-700">Bezpieczeństwo — hasło logowania</h2>
+        <p className="mb-3 text-[12px] text-slate-500">
+          Ustaw hasło, aby logować się bez czekania na link e-mail. Link e-mail
+          pozostaje dostępny (także gdy zapomnisz hasła).
+        </p>
+        <form onSubmit={savePassword} className="flex flex-wrap items-end gap-2">
+          <input
+            type="password"
+            value={pwd1}
+            onChange={(e) => setPwd1(e.target.value)}
+            placeholder="Nowe hasło (min. 8)"
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+          />
+          <input
+            type="password"
+            value={pwd2}
+            onChange={(e) => setPwd2(e.target.value)}
+            placeholder="Powtórz hasło"
+            className="rounded border border-slate-300 px-2 py-1 text-sm"
+          />
+          <button
+            type="submit"
+            disabled={pwdBusy || !pwd1 || !pwd2}
+            className="rounded px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: '#1F3A5F' }}
+          >
+            {pwdBusy ? 'Zapisuję…' : 'Zapisz hasło'}
+          </button>
+        </form>
+        {pwdErr && <div className="mt-2 text-[12px] text-red-600">{pwdErr}</div>}
+        {pwdMsg && <div className="mt-2 text-[12px] text-green-700">{pwdMsg}</div>}
       </section>
     </div>
   )
