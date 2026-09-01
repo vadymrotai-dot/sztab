@@ -24,6 +24,9 @@ type RouteContext = { params: Promise<{ token: string }> }
 
 export async function GET(_req: NextRequest, ctx: RouteContext) {
   const { token } = await ctx.params
+  // Faza 1 portal — opcjonalny order_id: reorder KONKRETNEGO zamówienia z historii
+  // (zamiast ostatniego). Scoped do client_id bieżącego order (izolacja).
+  const reorderId = _req.nextUrl.searchParams.get('order_id')
   if (!UUID_RE.test(token)) {
     return NextResponse.json(
       { ok: false, error: 'Niepoprawny token' },
@@ -65,17 +68,27 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
   // 2. Find ostatnie SUBMITTED zamówienie tego client_id (NOT cancelled / draft).
   // Przejście 1A — also fetch delivery_mode/documents_mode + legacy adres/data,
   // żeby "Powtórz" odtwarzał całość dostawy, nie tylko produkty.
-  const { data: lastOrder, error: lastErr } = await admin
-    .from('orders')
-    .select(
-      'id, order_number, submitted_at, delivery_mode, documents_mode, delivery_address, preferred_delivery_date',
-    )
-    .eq('client_id', currentOrder.client_id)
-    .not('submitted_at', 'is', null)
-    .neq('status', 'cancelled')
-    .order('submitted_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const lastCols =
+    'id, order_number, submitted_at, delivery_mode, documents_mode, delivery_address, preferred_delivery_date'
+  // Portal reorder: konkretne zamówienie (scoped do client_id) albo ostatnie submitted.
+  const lastQuery =
+    reorderId && UUID_RE.test(reorderId)
+      ? admin
+          .from('orders')
+          .select(lastCols)
+          .eq('id', reorderId)
+          .eq('client_id', currentOrder.client_id) // izolacja — cudze nie przejdzie
+          .maybeSingle()
+      : admin
+          .from('orders')
+          .select(lastCols)
+          .eq('client_id', currentOrder.client_id)
+          .not('submitted_at', 'is', null)
+          .neq('status', 'cancelled')
+          .order('submitted_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+  const { data: lastOrder, error: lastErr } = await lastQuery
   if (lastErr) {
     console.error('[orders][token][last] last order query failed:', lastErr.message)
     return NextResponse.json(

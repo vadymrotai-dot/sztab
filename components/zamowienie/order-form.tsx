@@ -422,14 +422,27 @@ export function OrderForm({
   const [submitResult, setSubmitResult] = useState<SubmitOk | null>(null)
 
   // /last fetch on mount — żeby wiedzieć czy pokazać "Powtórz".
+  // Faza 1 portal — jeśli w URL jest ?reorder=<orderId>, pobieramy TO zamówienie
+  // (scoped w /last) i automatycznie wypełniamy koszyk (doRepeat). Ceny liczy
+  // loader live — NIE zamrożone historycznie.
   useEffect(() => {
     let active = true
-    fetch(`/api/orders/${token}/last`, { method: 'GET' })
+    const reorderId =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('reorder')
+        : null
+    const url = reorderId
+      ? `/api/orders/${token}/last?order_id=${encodeURIComponent(reorderId)}`
+      : `/api/orders/${token}/last`
+    fetch(url, { method: 'GET' })
       .then((r) => r.json())
       .then((d) => {
         if (!active) return
         lastDataRef.current = d
-        if (d && d.ok && d.has_history) setLastHasHistory(true)
+        if (d && d.ok && d.has_history) {
+          setLastHasHistory(true)
+          if (reorderId) doRepeat() // auto-wypełnienie koszyka z historii
+        }
       })
       .catch(() => {})
     return () => {

@@ -41,6 +41,34 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
+  // ── Portal klienta Faza 0 — role-gating (E) ────────────────────────────
+  // Portal-user (app_metadata.role='portal') ma dostęp WYŁĄCZNIE do /portal
+  // i /auth (+ publiczny /zamowienie). Wszystko inne = admin → redirect /portal.
+  // Warstwa autorytatywna (DB) jest w admin-layoutach, na wypadek lagu JWT.
+  const path = request.nextUrl.pathname
+  const role = (user?.app_metadata as { role?: string } | undefined)?.role
+  const isPortalPath = path.startsWith('/portal')
+  const isAuthPath = path.startsWith('/auth')
+  const isPublicOrder = path.startsWith('/zamowienie')
+
+  if (
+    user &&
+    role === 'portal' &&
+    !isPortalPath &&
+    !isAuthPath &&
+    !isPublicOrder
+  ) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/portal'
+    return NextResponse.redirect(url)
+  }
+
+  if (!user && isPortalPath && !path.startsWith('/portal/login')) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/portal/login'
+    return NextResponse.redirect(url)
+  }
+
   if (
     // if the user is not logged in and the app path, in this case, /protected, is accessed, redirect to the login page
     request.nextUrl.pathname.startsWith('/protected') &&

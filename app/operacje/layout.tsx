@@ -9,6 +9,7 @@
 
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { isPortalUser } from '@/lib/portal/session'
 import { OperacjeSidebar } from '@/components/operacje/sidebar'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 
@@ -24,6 +25,11 @@ export default async function OperacjeLayout({
 
   if (!user) {
     redirect('/auth/login')
+  }
+
+  // Portal klienta Faza 0 (E) — portal-user nie wchodzi do operacji admina.
+  if (await isPortalUser(user.id)) {
+    redirect('/portal')
   }
 
   // Phase 1 — empty counts (placeholder workspace). Phase 2 wire-up:
