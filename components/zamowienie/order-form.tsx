@@ -112,6 +112,23 @@ export type OrderInitial = {
   // Krok DAGOLD — rozdzielony rabat indywidualny: ogólny + osobny na kalmary/przekąski.
   individual_discount?: number
   individual_discount_kalmar?: number
+  // Zapamiętany koszyk (autosave draftu) — serializowalny stan formularza.
+  // Ceny NIE są tu; liczone na żywo z products. null → brak zapamiętanego.
+  draft_cart?: DraftCart | null
+}
+
+export type DraftCart = {
+  pozycje: Array<{ product_id: string; qty: number; delivery_point_index?: number }>
+  delivery_points: TemplatePoint[]
+  delivery_mode?: 'jeden' | 'kilka'
+  documents_mode?: 'wspolna' | 'osobne'
+  wspolna_data?: boolean
+  wspolny_termin_typ?: 'najblizszy' | 'data' | null
+  wspolny_preferred_date?: string | null
+  contact_person?: string | null
+  contact_phone?: string | null
+  contact_email?: string | null
+  customer_notes?: string | null
 }
 
 type SubmitOk = {
@@ -445,10 +462,86 @@ export function OrderForm({
         }
       })
       .catch(() => {})
+
+    // Zapamiętany koszyk — regidracja przy powrocie do draftu (gdy NIE reorder).
+    // Reuse hydrateFromDelivery (jak template/repeat). Ceny liczy loader na żywo.
+    const dc = initial.draft_cart
+    if (!reorderId && dc && Array.isArray(dc.pozycje) && dc.pozycje.length > 0) {
+      hydrateFromDelivery(
+        Array.isArray(dc.delivery_points) ? dc.delivery_points : [],
+        dc.delivery_mode,
+        dc.documents_mode,
+        null,
+        null,
+        dc.pozycje,
+      )
+      setWspolnaData(Boolean(dc.wspolna_data))
+      setWspolnyTerminTyp(dc.wspolny_termin_typ === 'data' ? 'data' : 'najblizszy')
+      setWspolnyPreferredDate(dc.wspolny_preferred_date ?? '')
+      if (dc.contact_person != null) setContactPerson(dc.contact_person)
+      if (dc.contact_phone != null) setContactPhone(dc.contact_phone)
+      if (dc.contact_email != null) setContactEmail(dc.contact_email)
+      if (dc.customer_notes != null) setNotes(dc.customer_notes)
+      setScreen('form')
+      setStep(1)
+      setActionNotice('Wczytano zapamiętany koszyk. Sprawdź i dokończ.')
+    }
+
     return () => {
       active = false
     }
   }, [token])
+
+  // Autosave koszyka do draftu (debounce 800ms). Guard: nie zapisuj podczas
+  // submit; pierwszy run pomijany (żeby nie re-zapisywać świeżo wczytanego).
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const skipFirstAutosave = useRef(true)
+  useEffect(() => {
+    if (submitting) return
+    if (skipFirstAutosave.current) {
+      skipFirstAutosave.current = false
+      return
+    }
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+    autosaveTimer.current = setTimeout(() => {
+      const payload: DraftCart = {
+        pozycje: buildItemsPayload(),
+        delivery_points: buildPointsPayload(),
+        delivery_mode: deliveryMode,
+        documents_mode: documentsMode,
+        wspolna_data: wspolnaData,
+        wspolny_termin_typ: wspolnyTerminTyp,
+        wspolny_preferred_date: wspolnyPreferredDate || null,
+        contact_person: contactPerson || null,
+        contact_phone: contactPhone || null,
+        contact_email: contactEmail || null,
+        customer_notes: notes || null,
+      }
+      fetch(`/api/orders/${token}/cart`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ draft_cart: payload }),
+      }).catch(() => {})
+    }, 800)
+    return () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    carts,
+    points,
+    deliveryMode,
+    documentsMode,
+    wspolnaData,
+    wspolnyTerminTyp,
+    wspolnyPreferredDate,
+    contactPerson,
+    contactPhone,
+    contactEmail,
+    notes,
+    submitting,
+    token,
+  ])
 
   // ─── Pochodne ───────────────────────────────────────────────────────────────
   const mergedCart = useMemo(() => {

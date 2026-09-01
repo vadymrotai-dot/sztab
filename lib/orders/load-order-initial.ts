@@ -33,7 +33,7 @@ export async function loadOrderInitial(
   const { data: order, error: orderErr } = await supabase
     .from('orders')
     .select(
-      'id, status, order_number, contact_person, contact_phone, contact_email, delivery_address, preferred_delivery_date, customer_notes, client_id, cohort_id, link_opened_at, submitted_at, cennik_tier, price_mode',
+      'id, status, order_number, contact_person, contact_phone, contact_email, delivery_address, preferred_delivery_date, customer_notes, client_id, cohort_id, link_opened_at, submitted_at, cennik_tier, price_mode, draft_cart',
     )
     .eq('access_token', token)
     .maybeSingle()
@@ -115,6 +115,9 @@ export async function loadOrderInitial(
           | 'auto'
           | 'minimum',
       },
+      // Zapamiętany koszyk (autosave) — pełny serializowalny stan OrderForm.
+      // Ceny NIE są tu — liczą się na żywo z products (poniżej). null → pusty.
+      draft_cart: order.draft_cart ?? null,
       client: client
         ? {
             title: client.title,

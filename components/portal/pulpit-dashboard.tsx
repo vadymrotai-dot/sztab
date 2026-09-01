@@ -33,12 +33,14 @@ interface RecentOrder {
 
 export function PulpitDashboard({
   firma,
+  hasUnfinishedDraft,
   inRealization,
   totalCount,
   last,
   recent,
 }: {
   firma: string
+  hasUnfinishedDraft?: boolean
   inRealization: number
   totalCount: number
   last: { id: string; total_brutto: number | null; date: string } | null
@@ -51,6 +53,18 @@ export function PulpitDashboard({
       <h1 className="mb-4 text-xl font-semibold text-slate-800">
         Dzień dobry, {firstWord}
       </h1>
+
+      {hasUnfinishedDraft && (
+        <Link
+          href="/portal/zamowienie"
+          className="mb-4 flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 hover:bg-amber-100"
+        >
+          <span className="text-sm font-medium text-amber-900">
+            Masz niedokończone zamówienie — wróć i dokończ.
+          </span>
+          <span className="text-sm font-medium text-amber-900">Wznów →</span>
+        </Link>
+      )}
 
       {totalCount === 0 ? (
         <div className="rounded-xl border border-[#E5E1D8] bg-white p-8 text-center">
