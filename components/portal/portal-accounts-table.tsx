@@ -8,6 +8,7 @@ import {
   approvePortalAccount,
   rejectPortalAccount,
   searchClientsForApproval,
+  createClientFromNipAndApprove,
 } from '@/app/actions/portal-admin'
 
 export interface PortalAccountRow {
@@ -78,6 +79,15 @@ function Row({ acc }: { acc: PortalAccountRow }) {
     if (r.ok) router.refresh()
     else setErr(r.error)
   }
+
+  const createFromNip = async () => {
+    setBusy(true)
+    setErr(null)
+    const r = await createClientFromNipAndApprove(acc.id)
+    setBusy(false)
+    if (r.ok) router.refresh()
+    else setErr(r.error)
+  }
   const reject = async () => {
     if (!confirm('Odrzucić to konto?')) return
     setBusy(true); setErr(null)
@@ -106,6 +116,16 @@ function Row({ acc }: { acc: PortalAccountRow }) {
       <td className="py-2">
         {acc.status === 'pending' ? (
           <div className="flex flex-col gap-1">
+            {!acc.matched_client_id && acc.nip_submitted && (
+              <button
+                disabled={busy}
+                onClick={createFromNip}
+                className="mb-1 self-start rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                title="Pobierz dane z rejestru MF, utwórz klienta i zatwierdź"
+              >
+                {busy ? 'Tworzę…' : `Utwórz klienta z NIP ${acc.nip_submitted} i zatwierdź`}
+              </button>
+            )}
             <div className="flex items-start gap-2">
               <div className="relative">
                 <input
