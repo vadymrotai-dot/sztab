@@ -1254,30 +1254,44 @@ export function OrderForm({
               ].map((s, i) => {
                 const reachable =
                   s.n === 1 || (s.n === 2 && canGoStep2) || (s.n === 3 && canGoStep2 && itemsValid)
+                // Presentational-only: krok osiągalny, ale NIE bieżący → można w niego
+                // skoczyć. Steruje WYŁĄCZNIE stylem (cursor/hover/strzałka), nie logiką.
+                const isJump = reachable && s.n !== step
                 return (
                   <div key={s.n} className="flex items-center gap-2 flex-1">
                     <button
                       type="button"
                       disabled={!reachable && s.n > step}
                       onClick={() => reachable && setStep(s.n)}
-                      className={`flex items-center gap-2 ${reachable ? '' : 'opacity-40 cursor-not-allowed'}`}
+                      className={`flex items-center gap-2 ${
+                        reachable
+                          ? isJump
+                            ? 'group cursor-pointer'
+                            : ''
+                          : 'opacity-40 cursor-not-allowed'
+                      }`}
                     >
                       <span
-                        className={`w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-bold ${
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-bold transition ${
                           step === s.n
                             ? 'bg-[#1F3A5F] text-white'
                             : step > s.n
                               ? 'bg-emerald-500 text-white'
                               : 'bg-slate-200 text-slate-600'
-                        }`}
+                        } ${isJump ? 'group-hover:ring-2 group-hover:ring-[#1F3A5F]/40' : ''}`}
                       >
                         {step > s.n ? '✓' : s.n}
                       </span>
                       <span
-                        className={`text-[13px] font-semibold ${step === s.n ? 'text-[#1F3A5F]' : 'text-slate-500'}`}
+                        className={`text-[13px] font-semibold transition ${
+                          step === s.n ? 'text-[#1F3A5F]' : 'text-slate-500'
+                        } ${isJump ? 'group-hover:text-[#1F3A5F] group-hover:underline' : ''}`}
                       >
                         {s.label}
                       </span>
+                      {isJump && s.n > step && (
+                        <ChevronRight className="w-3.5 h-3.5 text-[#1F3A5F] opacity-0 group-hover:opacity-70 transition" />
+                      )}
                     </button>
                     {i < 2 && <div className="flex-1 h-px bg-slate-200" />}
                   </div>
