@@ -18,6 +18,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import type { Client } from '@/lib/types'
 import { CLIENT_SEGMENTS } from '@/lib/types'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 interface ClientFormProps {
   client?: Client
@@ -178,7 +179,7 @@ export function ClientForm({ client }: ClientFormProps) {
     } else {
       const { data, error } = await supabase
         .from('clients')
-        .insert({ ...persistPayload, owner_id: user.id })
+        .insert({ ...persistPayload, owner_id: WORKSPACE_OWNER_ID })
         .select()
         .single()
 

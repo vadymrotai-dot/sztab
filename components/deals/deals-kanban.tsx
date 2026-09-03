@@ -47,6 +47,7 @@ import {
   TrashIcon,
   UserIcon,
 } from 'lucide-react'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 type DealRow = Deal & {
   client?: {
@@ -440,7 +441,7 @@ export function DealsKanban({ deals: initialDeals }: DealsKanbanProps) {
       event_type: 'stage_change',
       from_stage: fromStage,
       to_stage: newStage,
-      owner_id: user.id,
+      owner_id: WORKSPACE_OWNER_ID,
     })
     if (eventError) {
       console.warn('deal_events insert failed:', eventError.message)

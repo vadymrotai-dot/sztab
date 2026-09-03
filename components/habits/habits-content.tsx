@@ -25,6 +25,7 @@ import { Spinner } from '@/components/ui/spinner'
 import type { Habit } from '@/lib/types'
 import { PlusIcon, MoreHorizontalIcon, TrashIcon, CalendarCheckIcon, FlameIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 interface HabitsContentProps {
   habits: Habit[]
@@ -83,7 +84,7 @@ export function HabitsContent({ habits: initialHabits }: HabitsContentProps) {
 
     const { data, error } = await supabase
       .from('habits')
-      .insert({ name: newHabitName.trim(), owner_id: user.id })
+      .insert({ name: newHabitName.trim(), owner_id: WORKSPACE_OWNER_ID })
       .select()
       .single()
 

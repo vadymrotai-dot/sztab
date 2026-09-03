@@ -57,6 +57,7 @@ import type { Deal, DealStage } from '@/lib/types'
 import { DEAL_STAGES } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { revalidateDealRoutes } from '@/app/actions/revalidate'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 const stageLabel: Record<DealStage, string> = Object.fromEntries(
   DEAL_STAGES.map((s) => [s.value, s.label]),
@@ -401,7 +402,7 @@ export function DealModal({
           event_type: 'stage_change',
           from_stage: deal.stage,
           to_stage: data.stage,
-          owner_id: user.id,
+          owner_id: WORKSPACE_OWNER_ID,
         })
       }
 
@@ -417,7 +418,7 @@ export function DealModal({
     // Create — leaves user on /deals/[id] so they can add Pozycje there.
     const { data: created, error } = await supabase
       .from('deals')
-      .insert({ ...payload, owner_id: user.id, amount: 0 })
+      .insert({ ...payload, owner_id: WORKSPACE_OWNER_ID, amount: 0 })
       .select('id')
       .single()
 
@@ -433,7 +434,7 @@ export function DealModal({
       deal_id: created.id,
       event_type: 'created',
       to_stage: data.stage,
-      owner_id: user.id,
+      owner_id: WORKSPACE_OWNER_ID,
     })
 
     await revalidateDealRoutes()
