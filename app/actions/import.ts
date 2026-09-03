@@ -24,11 +24,12 @@ export async function getSupplierImportPreset(
     .from('suppliers')
     .select('import_preset')
     .eq('id', supplierId)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
     .maybeSingle()
   return (data?.import_preset as ImportPreset | null) ?? null
 }
 import type { ImportedProductDraft } from '@/lib/importers/supplier-price-list'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 // Reads `kurs_eur_pln` and `overhead_multiplier` from the settings table.
 // Falls back to safe defaults if a key is missing.
@@ -68,7 +69,7 @@ export async function findProductsByEans(
   const { data } = await supabase
     .from('products')
     .select('id, ean')
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
     .eq('supplier_id', supplierId)
     .in('ean', dedup)
 
@@ -97,7 +98,7 @@ export async function findProductsByNameSupplier(
   const { data } = await supabase
     .from('products')
     .select('id, name')
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
     .eq('supplier_id', supplierId)
 
   const map: Record<string, string[]> = {}
@@ -195,7 +196,7 @@ export async function batchCommitProducts(
           : 0
 
     const payload = {
-      owner_id: user.id,
+      owner_id: WORKSPACE_OWNER_ID,
       supplier_id: options.supplierId,
       name: r.draft.name ?? '',
       gramatura: r.draft.gramatura ?? null,
@@ -236,7 +237,7 @@ export async function batchCommitProducts(
           tags: payload.tags,
         })
         .eq('id', existingId)
-        .eq('owner_id', user.id)
+        .eq('owner_id', WORKSPACE_OWNER_ID)
       if (error) {
         failed++
         errors.push({ row: i + 1, message: error.message })
@@ -276,7 +277,7 @@ export async function saveImportPreset(
     .from('suppliers')
     .update({ import_preset: preset })
     .eq('id', supplierId)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
 
   if (error) return { ok: false, error: error.message }
   revalidatePath('/suppliers')

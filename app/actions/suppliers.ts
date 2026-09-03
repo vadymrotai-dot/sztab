@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 const supplierTypeEnum = z.enum([
   'producent',
@@ -85,7 +86,7 @@ export async function createSupplier(
 
   const { data: created, error } = await supabase
     .from('suppliers')
-    .insert({ ...payload, owner_id: user.id })
+    .insert({ ...payload, owner_id: WORKSPACE_OWNER_ID })
     .select('id')
     .single()
 
@@ -127,7 +128,7 @@ export async function updateSupplier(
     .from('suppliers')
     .update(payload)
     .eq('id', id)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
 
   if (error) return { ok: false, error: error.message }
 
@@ -149,7 +150,7 @@ export async function deleteSupplier(
     .from('suppliers')
     .delete()
     .eq('id', id)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
 
   if (error) return { ok: false, error: error.message }
 

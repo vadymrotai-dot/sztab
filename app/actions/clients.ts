@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 const clientTypeEnum = z.enum(['standard', 'strategic_partner'])
 
@@ -87,7 +88,7 @@ export async function createClientRecord(
     client_type: parsed.data.client_type ?? 'standard',
     segment: parsed.data.segment ?? 'niesklasyfikowany',
     status: parsed.data.status ?? 'nowy',
-    owner_id: user.id,
+    owner_id: WORKSPACE_OWNER_ID,
   }
 
   const { data: created, error } = await supabase
@@ -128,7 +129,7 @@ export async function updateClientRecord(
     .from('clients')
     .update(parsed.data)
     .eq('id', id)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
 
   if (error) return { ok: false, error: error.message }
 
@@ -151,7 +152,7 @@ export async function deleteClientRecord(
     .from('clients')
     .delete()
     .eq('id', id)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
 
   if (error) return { ok: false, error: error.message }
   revalidatePath('/clients')
@@ -201,7 +202,7 @@ export async function toggleClientType(
     .from('clients')
     .update(payload)
     .eq('id', id)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
 
   if (error) return { ok: false, error: error.message }
   revalidatePath('/clients')

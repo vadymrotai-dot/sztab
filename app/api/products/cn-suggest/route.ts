@@ -19,6 +19,7 @@ import {
   CnCodeSuggesterError,
   type ProductInfo,
 } from '@/lib/ai/cn-code-suggester'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -136,7 +137,7 @@ export async function POST(req: Request) {
         cn_code_review_pending: true,
       })
       .eq('id', body.product_id)
-      .eq('owner_id', user.id)
+      .eq('owner_id', WORKSPACE_OWNER_ID)
 
     if (updateErr) {
       // Non-fatal — повертаємо suggestion навіть якщо write failed
