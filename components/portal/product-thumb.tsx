@@ -28,7 +28,20 @@ function ImgIcon({ className }: { className?: string }) {
 
 const LABEL = 'Zdjęcie tymczasowo niedostępne'
 
-export function ProductThumb({ size = 'sm' }: { size?: 'sm' | 'card' }) {
+export function ProductThumb({ size = 'sm' }: { size?: 'sm' | 'card' | 'lg' }) {
+  if (size === 'lg') {
+    // Powiększona miniatura (card-style rzędu produktu) — 76×76, icon-only.
+    return (
+      <div
+        className="flex h-[76px] w-[76px] shrink-0 items-center justify-center rounded-lg border border-[#e4e9ef] bg-[#f5f7fa] text-slate-400"
+        role="img"
+        aria-label={LABEL}
+        title={LABEL}
+      >
+        <ImgIcon className="h-7 w-7" />
+      </div>
+    )
+  }
   if (size === 'card') {
     return (
       <div

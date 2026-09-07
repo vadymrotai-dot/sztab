@@ -1832,11 +1832,11 @@ export function OrderForm({
                     return (
                       <div
                         key={p.id}
-                        className={`bg-white px-3 py-3 border border-[#e4e9ef] rounded-lg flex items-start gap-3 ${
+                        className={`bg-white p-3.5 border border-[#e4e9ef] rounded-xl shadow-sm flex items-start gap-3.5 ${
                           unavailable ? 'opacity-50' : ''
                         }`}
                       >
-                        <ProductThumb size="sm" />
+                        <ProductThumb size="lg" />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start gap-2 mb-1 flex-wrap">
                             <div className="text-[15px] font-semibold text-[#15202e] leading-snug">{p.name}</div>
