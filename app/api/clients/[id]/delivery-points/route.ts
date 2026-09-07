@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -64,7 +65,7 @@ async function resolveClientContext(clientId: string) {
     return { error: { code: 404, message: 'Klient nie znaleziony' } }
   }
   // Owner check — punkty są owner-scoped (client_delivery_points RLS).
-  if (client.owner_id !== user.id) {
+  if (client.owner_id !== WORKSPACE_OWNER_ID) {
     return { error: { code: 403, message: 'Brak dostępu do tego klienta' } }
   }
 

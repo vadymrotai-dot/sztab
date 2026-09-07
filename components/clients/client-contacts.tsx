@@ -24,6 +24,7 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
 import type { Contact } from '@/lib/types'
 import { PlusIcon, MoreHorizontalIcon, PencilIcon, TrashIcon, MailIcon, PhoneIcon } from 'lucide-react'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 interface ClientContactsProps {
   clientId: string
@@ -73,7 +74,7 @@ export function ClientContacts({ clientId, contacts: initialContacts }: ClientCo
     } else {
       const { data, error } = await supabase
         .from('contacts')
-        .insert({ ...formData, client_id: clientId, owner_id: user.id })
+        .insert({ ...formData, client_id: clientId, owner_id: WORKSPACE_OWNER_ID })
         .select()
         .single()
 

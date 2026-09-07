@@ -60,6 +60,7 @@ import { rescoreClientTop10 } from '@/lib/matching/ai-rescore'
 // першому "Pełna re-analiza" run-i; cached для subsequent runs.
 import { CeidgClient } from '@/lib/ceidg/client'
 import { extractBrandAliasesFromKoncesje } from '@/lib/intelligence/extract-koncesje'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -197,7 +198,7 @@ export async function POST(req: Request) {
 
   let clientId = (existingClient as { id: string } | null)?.id ?? null
   let ownerId =
-    (existingClient as { owner_id: string } | null)?.owner_id ?? user.id
+    (existingClient as { owner_id: string } | null)?.owner_id ?? WORKSPACE_OWNER_ID
 
   // ─── Sprint TYDZIEN1.A.2.1 (27.05.2026) — Cleanup stuck 'running' rows ────
   // Vercel function timeout / kill leaves enrichment_log rows stuck na

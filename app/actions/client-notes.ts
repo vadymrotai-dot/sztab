@@ -28,6 +28,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 // ─── Schemas ─────────────────────────────────────────────────────────
 
@@ -110,7 +111,7 @@ export async function addClientNote(
   // wysłane (DB DEFAULT 'note' i NULL pokryją reszta).
   const payload: Record<string, unknown> = {
     client_id: parsed.data.clientId,
-    owner_id: user.id,
+    owner_id: WORKSPACE_OWNER_ID,
     body: parsed.data.body,
     // created_at + updated_at fill via DEFAULT NOW() (migration 076).
   }
@@ -157,7 +158,7 @@ export async function updateClientNote(
     .from('client_notes')
     .select('client_id')
     .eq('id', parsed.data.noteId)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
     .maybeSingle()
   if (readErr) return { ok: false, error: readErr.message }
   if (!row) return { ok: false, error: 'Notatka nie znaleziona albo brak dostępu' }
@@ -172,7 +173,7 @@ export async function updateClientNote(
       updated_at: new Date().toISOString(),
     })
     .eq('id', parsed.data.noteId)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
   if (updErr) return { ok: false, error: updErr.message }
 
   revalidatePath(`/clients/${clientId}`)
@@ -204,7 +205,7 @@ export async function deleteClientNote(
     .from('client_notes')
     .select('client_id')
     .eq('id', parsed.data.noteId)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
     .maybeSingle()
   if (readErr) return { ok: false, error: readErr.message }
   if (!row) return { ok: false, error: 'Notatka nie znaleziona albo brak dostępu' }
@@ -214,7 +215,7 @@ export async function deleteClientNote(
     .from('client_notes')
     .delete()
     .eq('id', parsed.data.noteId)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
   if (delErr) return { ok: false, error: delErr.message }
 
   revalidatePath(`/clients/${clientId}`)

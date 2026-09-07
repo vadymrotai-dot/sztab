@@ -20,6 +20,7 @@ import {
   type DiscoveredEntity as PipelineEntity,
 } from '@/lib/ai/intelligence'
 import type { AIProvider } from '@/lib/ai-providers'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 export interface IntelligenceRunSummary {
   id: string
@@ -63,7 +64,7 @@ export async function startFastLookupForProduct(productId: string): Promise<{
   const { data: recentRuns } = await supabase
     .from('intelligence_runs')
     .select('id, status, created_at')
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
     .gte(
       'created_at',
       new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString(),
@@ -144,7 +145,7 @@ export async function startFastLookupForProduct(productId: string): Promise<{
   const { data: run, error: insertError } = await supabase
     .from('intelligence_runs')
     .insert({
-      owner_id: user.id,
+      owner_id: WORKSPACE_OWNER_ID,
       run_type: 'fast_lookup',
       target_type: 'product',
       target_id: productId,
@@ -320,7 +321,7 @@ export async function startDeepDiscoveryForProduct(
   const { data: recentRuns } = await supabase
     .from('intelligence_runs')
     .select('id, status')
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
     .eq('run_type', 'deep_discovery')
     .gte(
       'created_at',
@@ -377,7 +378,7 @@ export async function startDeepDiscoveryForProduct(
   const { data: run, error: insertError } = await supabase
     .from('intelligence_runs')
     .insert({
-      owner_id: user.id,
+      owner_id: WORKSPACE_OWNER_ID,
       run_type: 'deep_discovery',
       target_type: 'product',
       target_id: productId,
@@ -419,7 +420,7 @@ export async function startDeepDiscoveryForProduct(
 
       const rows = finalEntities.map((e) => ({
         run_id: run.id,
-        owner_id: user.id,
+        owner_id: WORKSPACE_OWNER_ID,
         name: e.name,
         nip: e.nip,
         krs: e.krs,
@@ -576,7 +577,7 @@ export async function exportEntityToClient(entityId: string): Promise<{
       .from('clients')
       .select('id')
       .eq('nip', cleanNip)
-      .eq('owner_id', user.id)
+      .eq('owner_id', WORKSPACE_OWNER_ID)
       .maybeSingle()
     if (existing) existingClientId = existing.id as string
   }
@@ -616,7 +617,7 @@ export async function exportEntityToClient(entityId: string): Promise<{
       website: entity.website ?? null,
       email: entity.email ?? null,
       phone: entity.phone ?? null,
-      owner_id: user.id,
+      owner_id: WORKSPACE_OWNER_ID,
       client_type: 'standard',
       status: 'nowy',
       segment: 'niesklasyfikowany',

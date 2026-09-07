@@ -9,6 +9,7 @@ import {
   computePriceTiers,
   settingsRowsToPricing,
 } from '@/lib/pricing'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 const baseSchema = z.object({
   lp: z.number().int().nullable().optional(),
@@ -132,7 +133,7 @@ export async function createProduct(
   const filled = await applyPricing(parsed.data)
   const payload = {
     ...filled,
-    owner_id: user.id,
+    owner_id: WORKSPACE_OWNER_ID,
     push_tier: parsed.data.push_tier ?? 2,
     is_hero: parsed.data.is_hero ?? false,
     tags: parsed.data.tags ?? [],
@@ -192,7 +193,7 @@ export async function updateProduct(
     .from('products')
     .update(payload)
     .eq('id', id)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
 
   if (error) return { ok: false, error: error.message }
 
@@ -214,7 +215,7 @@ export async function deleteProduct(
     .from('products')
     .delete()
     .eq('id', id)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
 
   if (error) return { ok: false, error: error.message }
 
@@ -232,7 +233,7 @@ export async function getCategorySuggestions(): Promise<string[]> {
   const { data } = await supabase
     .from('products')
     .select('category')
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
     .not('category', 'is', null)
 
   const set = new Set<string>()

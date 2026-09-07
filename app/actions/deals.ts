@@ -9,6 +9,7 @@ import {
   settingsRowsToPricing,
   type PricingSettings,
 } from '@/lib/pricing'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 const dealStageEnum = z.enum([
   'lead',
@@ -106,7 +107,7 @@ export async function createDeal(
     title: parsed.data.title ?? 'Nowa szansa',
     currency: parsed.data.currency ?? 'PLN',
     probability: parsed.data.probability ?? 30,
-    owner_id: user.id,
+    owner_id: WORKSPACE_OWNER_ID,
   }
 
   const { data: created, error } = await supabase
@@ -145,7 +146,7 @@ export async function updateDeal(
     .from('deals')
     .update({ ...parsed.data, updated_at: new Date().toISOString() })
     .eq('id', id)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
 
   if (error) return { ok: false, error: error.message }
 
@@ -165,7 +166,7 @@ export async function deleteDeal(id: string): Promise<DealActionResult> {
     .from('deals')
     .delete()
     .eq('id', id)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
 
   if (error) return { ok: false, error: error.message }
   revalidatePath('/deals')
@@ -212,7 +213,7 @@ export async function createDealItem(
     .select('id, owner_id')
     .eq('id', dealId)
     .single()
-  if (!deal || deal.owner_id !== user.id) {
+  if (!deal || deal.owner_id !== WORKSPACE_OWNER_ID) {
     return { ok: false, error: 'Brak dostępu do tej szansy' }
   }
 

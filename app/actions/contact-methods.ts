@@ -25,6 +25,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { createClient } from '@/lib/supabase/server'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 // ─── Schemas ─────────────────────────────────────────────────────────
 
@@ -142,7 +143,7 @@ export async function addContactMethod(
     .from('client_contact_methods')
     .insert({
       client_id: parsed.data.clientId,
-      owner_id: user.id,
+      owner_id: WORKSPACE_OWNER_ID,
       kind: parsed.data.kind,
       value: normalizedValue,
       label: parsed.data.label && parsed.data.label.length > 0 ? parsed.data.label : null,
@@ -188,7 +189,7 @@ export async function deleteContactMethod(
     .from('client_contact_methods')
     .select('client_id')
     .eq('id', parsed.data.methodId)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
     .maybeSingle()
   if (readErr) return { ok: false, error: readErr.message }
   if (!row) return { ok: false, error: 'Metoda nie znaleziona albo brak dostępu' }
@@ -198,7 +199,7 @@ export async function deleteContactMethod(
     .from('client_contact_methods')
     .delete()
     .eq('id', parsed.data.methodId)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
   if (delErr) return { ok: false, error: delErr.message }
 
   // Decision 8: NIE торкаємо clients.* — orphan stays. ⭐ toggle na pozostałym
@@ -243,7 +244,7 @@ export async function setPrimaryContactMethod(
   // RPC returns { client_id, kind, value, ok, error } — caller robi clients sync.
   const { data: rpcData, error: rpcErr } = await supabase.rpc(
     'set_primary_contact_method',
-    { p_method_id: parsed.data.methodId, p_owner_id: user.id },
+    { p_method_id: parsed.data.methodId, p_owner_id: WORKSPACE_OWNER_ID },
   )
   if (rpcErr) return { ok: false, error: `RPC error: ${rpcErr.message}` }
 
@@ -280,7 +281,7 @@ export async function setPrimaryContactMethod(
       .from('clients')
       .update({ [kind]: value, updated_at: new Date().toISOString() })
       .eq('id', clientId)
-      .eq('owner_id', user.id)
+      .eq('owner_id', WORKSPACE_OWNER_ID)
     if (syncErr) {
       // Non-fatal: ccm уже updated, тільки list cache stale do reload.
       console.error('[setPrimary] clients sync failed:', syncErr.message)
@@ -319,7 +320,7 @@ export async function updateContactMethod(
     .from('client_contact_methods')
     .select('client_id, kind, value, is_primary')
     .eq('id', parsed.data.methodId)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
     .maybeSingle()
   if (readErr) return { ok: false, error: readErr.message }
   if (!row) return { ok: false, error: 'Metoda nie znaleziona albo brak dostępu' }
@@ -363,7 +364,7 @@ export async function updateContactMethod(
       label: trimmedLabel,
     })
     .eq('id', parsed.data.methodId)
-    .eq('owner_id', user.id)
+    .eq('owner_id', WORKSPACE_OWNER_ID)
   if (updErr) {
     if (updErr.code === '23505') {
       return { ok: false, error: 'Taka wartość już istnieje na liście' }
@@ -385,7 +386,7 @@ export async function updateContactMethod(
       .from('clients')
       .update({ [kind]: normalizedValue, updated_at: new Date().toISOString() })
       .eq('id', clientId)
-      .eq('owner_id', user.id)
+      .eq('owner_id', WORKSPACE_OWNER_ID)
     if (syncErr) {
       console.error('[updateContactMethod] clients sync failed:', syncErr.message)
     }

@@ -4,6 +4,7 @@
 
 import { NextResponse, after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -82,7 +83,7 @@ export async function POST(req: Request) {
         entity_type: 'prospect',
         status: 'nowy',
         segment: 'niesklasyfikowany',
-        owner_id: user.id,
+        owner_id: WORKSPACE_OWNER_ID,
         city: c.payload.city ?? null,
         region: c.payload.region ?? null,
         krs_legal_form: c.payload.legal_form ?? null,
@@ -133,7 +134,7 @@ export async function POST(req: Request) {
         entity_type: 'client',
         status: 'nowy',
         segment: 'niesklasyfikowany',
-        owner_id: user.id,
+        owner_id: WORKSPACE_OWNER_ID,
       })
       .select('id')
       .single()
