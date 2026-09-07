@@ -797,7 +797,29 @@ export function OrderForm({
 
   // ─── Akcje ekranu startowego ──────────────────────────────────────────────────
   function startNew() {
-    const p = emptyPoint()
+    // Auto-skip Kroku 1: klient z DOKŁADNIE jednym zapisanym punktem z poprawnym
+    // adresem → wypełniamy punkt automatycznie (ten sam fill co applySavedPoint)
+    // i lądujemy od razu na Kroku 2 (Produkty). Krok 1 dalej osiągalny (klikalny
+    // nagłówek). 0 / ≥2 / punkt bez adresu → bez zmian, Krok 1 jak dziś.
+    // Zero dotyku do carts/buildItemsPayload/multipoint — czysto init-flow.
+    const sole = savedPoints.length === 1 ? savedPoints[0] : null
+    const soleValid =
+      sole != null &&
+      (sole.ulica ?? '').trim().length >= 2 &&
+      (sole.miasto ?? '').trim().length >= 2
+    const p =
+      sole && soleValid
+        ? emptyPoint({
+            label: sole.nazwa ?? '',
+            ulica: sole.ulica ?? '',
+            miasto: sole.miasto ?? '',
+            kod_pocztowy: sole.kod_pocztowy ?? '',
+            odbiorca_imie: sole.odbiorca_imie ?? '',
+            odbiorca_telefon: sole.odbiorca_telefon ?? '',
+            prefilled: true,
+            sourceSavedId: sole.id,
+          })
+        : emptyPoint()
     setDeliveryMode('jeden')
     setDocumentsMode('wspolna')
     setPoints([p])
@@ -807,10 +829,14 @@ export function OrderForm({
     setContactPrefilled(Boolean(client && (client.phone || client.email)))
     if (podgrupy[0]) setActivePodgrupa(podgrupy[0].key)
     setSource('new')
-    setActionNotice(null)
+    setActionNotice(
+      sole && soleValid
+        ? `Adres z profilu: ${sole.nazwa || sole.miasto || 'zapisany punkt'} — możesz go zmienić w kroku „Dostawa".`
+        : null,
+    )
     setActionError(null)
     setScreen('form')
-    setStep(1)
+    setStep(soleValid ? 2 : 1)
   }
 
   function hydrateFromDelivery(
