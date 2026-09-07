@@ -10,6 +10,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { isPortalUser } from '@/lib/portal/session'
+import { hasAdminAccess } from '@/lib/staff/session'
 import { OperacjeSidebar } from '@/components/operacje/sidebar'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 
@@ -30,6 +31,12 @@ export default async function OperacjeLayout({
   // Portal klienta Faza 0 (E) — portal-user nie wchodzi do operacji admina.
   if (await isPortalUser(user.id)) {
     redirect('/portal')
+  }
+
+  // DB-authoritative gate (backup middleware): tylko właściciel lub zatwierdzony
+  // pracownik. Świeży/niezatwierdzony staff → kolejka /staff/onboard.
+  if (!(await hasAdminAccess(user.id))) {
+    redirect('/staff/onboard')
   }
 
   // Phase 1 — empty counts (placeholder workspace). Phase 2 wire-up:
