@@ -12,6 +12,7 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 import {
   createFakturowniaProduct,
   createWarehousePZ,
@@ -200,6 +201,11 @@ export async function commitPurchaseImport(
         const { data: np, error: npErr } = await admin
           .from('products')
           .insert({
+            // owner_id OBOWIĄZKOWE (NOT NULL). Ścieżka PZ przez service-role
+            // (admin), bez user-kontekstu → kanoniczny właściciel workspace.
+            // Bez tego insert nowego SKU łamał constraint (create product: null
+            // value in owner_id). Dotyczy WSZYSTKICH przyszłych PZ z nowym SKU.
+            owner_id: WORKSPACE_OWNER_ID,
             name,
             supplier_id: input.supplierId,
             unit,
