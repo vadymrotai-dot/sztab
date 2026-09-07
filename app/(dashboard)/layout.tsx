@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { isPortalUser } from '@/lib/portal/session'
+import { hasAdminAccess } from '@/lib/staff/session'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { CommandBar } from '@/components/command-bar'
@@ -21,6 +22,12 @@ export default async function DashboardLayout({
   // do admina, nawet gdyby JWT-role jeszcze się nie zpropagowała.
   if (await isPortalUser(user.id)) {
     redirect('/portal')
+  }
+
+  // DB-authoritative gate (backup middleware + gasi lag JWT po zatwierdzeniu):
+  // tylko właściciel (Vadym) LUB zatwierdzony pracownik. Reszta → kolejka.
+  if (!(await hasAdminAccess(user.id))) {
+    redirect('/staff/onboard')
   }
 
   // Sprint S2B Phase 1B — counter badges на sidebar nav.

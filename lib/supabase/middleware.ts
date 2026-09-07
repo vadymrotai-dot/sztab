@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -54,6 +55,7 @@ export async function updateSession(request: NextRequest) {
   // HTML zamiast JSON ("Unexpected token '<'"). API ma własną autoryzację
   // (token/route-level + RLS). Dotyczy /api/orders/[token]/{cart,submit,last}.
   const isApi = path.startsWith('/api')
+  const isStaffPath = path.startsWith('/staff')
 
   if (
     user &&
@@ -68,9 +70,39 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // ── Staff-registration gate (RDZEŃ BEZPIECZEŃSTWA) ─────────────────────────
+  // Każdy authenticated, kto NIE jest: portalem, ZATWIERDZONYM staffem
+  // (role==='staff'), ani właścicielem (Vadym po uid) → trzymany na
+  // /staff/onboard. Łapie: świeży roleless signup, status pending/rejected ORAZ
+  // okno wyścigu po /auth/callback (sesja jest, roli jeszcze nie).
+  // Działa na WSZYSTKICH grupach tras (dashboard/operacje/fba/intelligence/api),
+  // bo middleware biegnie przed każdą. Wyjątki: /staff/* i /auth/* (dojście do
+  // onboard/login/callback) + publiczny /zamowienie (token, nie-admin).
+  // role='staff' nadawana DOPIERO przy zatwierdzeniu; lag JWT po zatwierdzeniu
+  // gasi /staff/onboard (refreshSession, bez relogowania).
+  if (
+    user &&
+    role !== 'portal' &&
+    role !== 'staff' &&
+    user.id !== WORKSPACE_OWNER_ID &&
+    !isStaffPath &&
+    !isAuthPath &&
+    !isPublicOrder
+  ) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/staff/onboard'
+    return NextResponse.redirect(url)
+  }
+
   if (!user && isPortalPath && !path.startsWith('/portal/login')) {
     const url = request.nextUrl.clone()
     url.pathname = '/portal/login'
+    return NextResponse.redirect(url)
+  }
+
+  if (!user && isStaffPath && !path.startsWith('/staff/login')) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/staff/login'
     return NextResponse.redirect(url)
   }
 

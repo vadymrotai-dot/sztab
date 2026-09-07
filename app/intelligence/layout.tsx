@@ -16,6 +16,7 @@
 
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { hasAdminAccess } from '@/lib/staff/session'
 import { IntelligenceSidebar } from '@/components/intelligence/sidebar'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 
@@ -31,6 +32,12 @@ export default async function IntelligenceLayout({
 
   if (!user) {
     redirect('/auth/login')
+  }
+
+  // DB-authoritative gate (backup middleware): tylko właściciel lub zatwierdzony
+  // pracownik. Świeży/niezatwierdzony staff → kolejka /staff/onboard.
+  if (!(await hasAdminAccess(user.id))) {
+    redirect('/staff/onboard')
   }
 
   return (
