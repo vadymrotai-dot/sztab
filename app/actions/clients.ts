@@ -202,7 +202,9 @@ export async function toggleClientType(
     .from('clients')
     .update(payload)
     .eq('id', id)
-    .eq('owner_id', WORKSPACE_OWNER_ID)
+    // ŚWIADOMY gate marży kontraktowej klienta — TYLKO właściciel (Vadym).
+    // Staff nie ustawia contracted_margin_*. NIE zmieniać na WORKSPACE_OWNER_ID.
+    .eq('owner_id', user.id)
 
   if (error) return { ok: false, error: error.message }
   revalidatePath('/clients')

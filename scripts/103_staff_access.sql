@@ -51,9 +51,13 @@ grant execute on function public.is_staff_member() to authenticated, anon, servi
 -- owner-polityki zostają — OR łączy je z tą.
 do $$
 declare t text;
+  -- UWAGA: deal_items CELOWO wykluczone — zawiera unit_price_buy/line_margin_*
+  -- (wewnętrzna marża per transakcja). Ten sam standard co products.cost/settings:
+  -- staff NIE czyta deal_items (RLS owner-only, bez staff_all). Strona
+  -- /deals/[id]/margin ma dodatkowy hard-gate owner (user.id).
   tables text[] := array[
     'clients','products','suppliers','contacts','deals','deal_events',
-    'deal_items','client_contact_methods','client_delivery_points',
+    'client_contact_methods','client_delivery_points',
     'client_notes','order_templates','discovered_entities','intelligence_runs',
     'knowledge_base','people','habits'
   ];
@@ -67,6 +71,9 @@ begin
     );
   end loop;
 end $$;
+
+-- deal_items — jawny DROP na wypadek wcześniejszego zastosowania z tą polityką.
+drop policy if exists staff_all_deal_items on public.deal_items;
 
 -- ── 4. settings — WYKLUCZENIE staff (marże/kurs/progi) ───────────────────────
 -- Dziś: read+write USING(true) dla authenticated. Zmiana: dostęp tylko dla

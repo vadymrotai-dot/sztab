@@ -196,7 +196,9 @@ export async function batchCommitProducts(
           : 0
 
     const payload = {
-      owner_id: WORKSPACE_OWNER_ID,
+      // ŚWIADOMY gate — import zapisuje cost_pln (koszt zakupu). Staff nie
+      // importuje/nie ustawia kosztów. NIE zmieniać na WORKSPACE_OWNER_ID.
+      owner_id: user.id,
       supplier_id: options.supplierId,
       name: r.draft.name ?? '',
       gramatura: r.draft.gramatura ?? null,
@@ -237,7 +239,9 @@ export async function batchCommitProducts(
           tags: payload.tags,
         })
         .eq('id', existingId)
-        .eq('owner_id', WORKSPACE_OWNER_ID)
+        // ŚWIADOMY gate — update kosztu (cost_pln) tylko dla właściciela (Vadym).
+        // NIE zmieniać na WORKSPACE_OWNER_ID.
+        .eq('owner_id', user.id)
       if (error) {
         failed++
         errors.push({ row: i + 1, message: error.message })
