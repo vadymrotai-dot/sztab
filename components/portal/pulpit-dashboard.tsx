@@ -3,6 +3,8 @@
 // Zamówień łącznie. Szybkie akcje + ostatnie zamówienia. Empty-state dla 0.
 
 import Link from 'next/link'
+import { FrequentPurchases } from './frequent-purchases'
+import type { FrequentProduct } from '@/lib/portal/frequent'
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   submitted: { label: 'Złożone', cls: 'bg-blue-100 text-blue-800' },
@@ -38,6 +40,7 @@ export function PulpitDashboard({
   totalCount,
   last,
   recent,
+  frequent = [],
 }: {
   firma: string
   hasUnfinishedDraft?: boolean
@@ -45,6 +48,7 @@ export function PulpitDashboard({
   totalCount: number
   last: { id: string; total_brutto: number | null; date: string } | null
   recent: RecentOrder[]
+  frequent?: FrequentProduct[]
 }) {
   const firstWord = firma.split(' ')[0] || 'Kliencie'
 
@@ -118,6 +122,8 @@ export function PulpitDashboard({
               Nowe zamówienie
             </Link>
           </div>
+
+          <FrequentPurchases items={frequent} />
 
           <div className="mb-2 text-[13px] font-medium text-slate-500">
             Ostatnie zamówienia

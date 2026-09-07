@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { getPortalUser, getPortalAccount } from '@/lib/portal/session'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PulpitDashboard } from '@/components/portal/pulpit-dashboard'
+import { getFrequentProducts } from '@/lib/portal/frequent'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,24 +17,27 @@ export default async function PortalIndex() {
 
   const admin = createAdminClient()
 
-  const [{ data: cli }, { data: ordersData }, { data: draftRow }] = await Promise.all([
-    admin.from('clients').select('title').eq('id', acc.client_id).maybeSingle(),
-    admin
-      .from('orders')
-      .select('id, order_number, status, total_brutto, submitted_at, created_at')
-      .eq('client_id', acc.client_id)
-      .neq('status', 'draft')
-      .order('submitted_at', { ascending: false, nullsFirst: false }),
-    // Niedokończony koszyk — draft z zapisanymi pozycjami.
-    admin
-      .from('orders')
-      .select('draft_cart')
-      .eq('client_id', acc.client_id)
-      .eq('status', 'draft')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ])
+  const [{ data: cli }, { data: ordersData }, { data: draftRow }, frequent] =
+    await Promise.all([
+      admin.from('clients').select('title').eq('id', acc.client_id).maybeSingle(),
+      admin
+        .from('orders')
+        .select('id, order_number, status, total_brutto, submitted_at, created_at')
+        .eq('client_id', acc.client_id)
+        .neq('status', 'draft')
+        .order('submitted_at', { ascending: false, nullsFirst: false }),
+      // Niedokończony koszyk — draft z zapisanymi pozycjami.
+      admin
+        .from('orders')
+        .select('draft_cart')
+        .eq('client_id', acc.client_id)
+        .eq('status', 'draft')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      // "Twoje częste zakupy" — agregacja order_items, cena żywa (pricing.ts).
+      getFrequentProducts(acc.client_id, 8),
+    ])
 
   const dc = (draftRow?.draft_cart ?? null) as { pozycje?: unknown[] } | null
   const hasUnfinishedDraft = Array.isArray(dc?.pozycje) && dc!.pozycje!.length > 0
@@ -68,6 +72,7 @@ export default async function PortalIndex() {
           : null
       }
       recent={orders.slice(0, 5)}
+      frequent={frequent}
     />
   )
 }

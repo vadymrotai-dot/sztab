@@ -31,6 +31,7 @@ import {
   RotateCcw,
   FilePlus,
 } from 'lucide-react'
+import { ProductThumb } from '@/components/portal/product-thumb'
 
 type StandardTier = 'maly' | 'sredni' | 'duzy'
 type Tier = StandardTier | 'wielki_hurt' | 'wielki_hurt_entry'
@@ -1809,6 +1810,7 @@ export function OrderForm({
                           unavailable ? 'opacity-50' : ''
                         }`}
                       >
+                        <ProductThumb size="sm" />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start gap-2 mb-1 flex-wrap">
                             <div className="text-[15px] font-semibold text-[#15202e] leading-snug">{p.name}</div>
