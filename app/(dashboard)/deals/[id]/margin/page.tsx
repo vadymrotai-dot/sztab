@@ -7,7 +7,6 @@ import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { listDealItems } from '@/app/actions/deals'
 import { InternalMarginView } from '@/components/deals/internal-margin-view'
-import { WORKSPACE_OWNER_ID } from '@/lib/staff/owner'
 
 export const metadata = {
   title: 'Marża — widok wewnętrzny',
@@ -36,7 +35,7 @@ export default async function DealMarginPage({
         '*, client:clients(id, title, client_type, contracted_margin_katalog_pct, contracted_margin_docel_pct)',
       )
       .eq('id', id)
-      .eq('owner_id', WORKSPACE_OWNER_ID)
+      .eq('owner_id', user.id)
       .single(),
     listDealItems(id),
   ])
