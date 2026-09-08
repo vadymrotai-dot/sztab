@@ -32,7 +32,7 @@ export function PortalNav() {
     t.exact ? pathname === t.href : pathname.startsWith(t.href)
 
   return (
-    <header style={{ backgroundColor: '#1F3A5F' }} className="text-white">
+    <header style={{ backgroundColor: 'var(--brand-primary)' }} className="text-white">
       <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
         <div className="flex items-center gap-4">
           <span className="text-lg font-bold">DAGOLD</span>

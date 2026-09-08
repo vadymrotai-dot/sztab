@@ -4,6 +4,18 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* ── Portal klienta — rebranding (Faza 1: tokeny + nav). ────────────────
+     Czerwień primary jako dominująca, biel baza, zieleń WYŁĄCZNIE jako
+     sygnał "świeże/aktywne/potwierdzone" (nigdy duży blok obok czerwieni).
+     --brand-primary-dark zdefiniowany na przyszłość (dwutonowy header),
+     w Fazie 1 nieużywany. Złoty rabat-banner ma własną paletę (nie tu). */
+  --brand-primary: #c41e2a;
+  --brand-primary-dark: #a31822;
+  --brand-bg: #fafaf9;
+  --brand-text: #1a1a1a;
+  --accent-fresh: #2e7d46;
+  --accent-fresh-bg: #e1f0e4;
+
   --background: oklch(0.98 0.005 250);
   --foreground: oklch(0.15 0.02 250);
   --card: oklch(1 0 0);
