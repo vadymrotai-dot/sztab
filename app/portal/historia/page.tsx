@@ -11,8 +11,13 @@ export const dynamic = 'force-dynamic'
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   submitted: { label: 'Złożone', cls: 'bg-blue-100 text-blue-800' },
-  confirmed: { label: 'Potwierdzone', cls: 'bg-indigo-100 text-indigo-800' },
-  invoiced: { label: 'Zafakturowane', cls: 'bg-green-100 text-green-800' },
+  // Rebrand F3 (spójne z F2): zielony (accent-fresh) = wyłącznie "potwierdzone".
+  confirmed: {
+    label: 'Potwierdzone',
+    cls: 'bg-[var(--accent-fresh-bg)] text-[var(--accent-fresh)]',
+  },
+  // Zafakturowane = etap administracyjny → neutralny slate (nie "świeżość").
+  invoiced: { label: 'Zafakturowane', cls: 'bg-slate-100 text-slate-700' },
   cancelled: { label: 'Anulowane', cls: 'bg-slate-100 text-slate-500' },
 }
 
@@ -73,7 +78,7 @@ export default async function HistoriaPage() {
       {orders.length === 0 ? (
         <p className="text-sm text-slate-500">
           Brak złożonych zamówień.{' '}
-          <Link href="/portal/zamowienie" className="text-[#1F3A5F] underline">
+          <Link href="/portal/zamowienie" className="text-[var(--brand-primary)] underline">
             Złóż pierwsze zamówienie
           </Link>
           .
@@ -104,7 +109,7 @@ export default async function HistoriaPage() {
                     {o.status !== 'cancelled' && (
                       <Link
                         href={`/portal/zamowienie?reorder=${o.id}`}
-                        className="rounded-md bg-amber-500 px-3 py-1 text-xs font-medium text-white hover:bg-amber-600"
+                        className="rounded-md bg-[var(--brand-primary)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--brand-primary-dark)]"
                       >
                         Zamów ponownie
                       </Link>

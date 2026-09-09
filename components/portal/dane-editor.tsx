@@ -121,7 +121,7 @@ export function DaneEditor({
             checked={marketingConsent}
             disabled={pending}
             onChange={(e) => run(() => portalSetMarketingConsent(e.target.checked))}
-            className="h-4 w-4 accent-[#1F3A5F]"
+            className="h-4 w-4 accent-slate-600"
           />
           <span className="font-medium text-slate-700">
             Zgoda na kontakt marketingowy (oferty, nowości)
@@ -190,7 +190,7 @@ export function DaneEditor({
                 return r
               })
             }
-            className="rounded bg-[#1F3A5F] px-3 py-1 text-sm text-white disabled:opacity-50"
+            className="rounded bg-[var(--brand-primary)] px-3 py-1 text-sm text-white disabled:opacity-50"
           >
             Dodaj
           </button>
@@ -284,7 +284,7 @@ export function DaneEditor({
                     return r
                   })
                 }
-                className="rounded bg-[#1F3A5F] px-3 py-1 text-sm text-white disabled:opacity-50"
+                className="rounded bg-[var(--brand-primary)] px-3 py-1 text-sm text-white disabled:opacity-50"
               >
                 Zapisz
               </button>
@@ -324,7 +324,7 @@ export function DaneEditor({
             type="submit"
             disabled={pwdBusy || !pwd1 || !pwd2}
             className="rounded px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-            style={{ backgroundColor: '#1F3A5F' }}
+            style={{ backgroundColor: 'var(--brand-primary)' }}
           >
             {pwdBusy ? 'Zapisuję…' : 'Zapisz hasło'}
           </button>
