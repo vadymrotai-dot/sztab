@@ -24,7 +24,7 @@ export function FrequentPurchases({ items }: { items: FrequentProduct[] }) {
           <Link
             key={p.id}
             href="/portal/zamowienie"
-            className="w-[150px] shrink-0 rounded-lg border border-[#E5E1D8] bg-white p-2 transition hover:border-[#1F3A5F]/40 hover:shadow-sm"
+            className="w-[150px] shrink-0 rounded-lg border border-[#E5E1D8] bg-white p-2 transition hover:border-[var(--brand-primary)]/40 hover:shadow-sm"
           >
             <ProductThumb size="card" />
             <div className="mt-2 line-clamp-2 min-h-[34px] text-[13px] font-medium leading-tight text-slate-800">
@@ -33,7 +33,7 @@ export function FrequentPurchases({ items }: { items: FrequentProduct[] }) {
             {p.gramatura && (
               <div className="text-[11px] text-slate-400">{p.gramatura}</div>
             )}
-            <div className="mt-1 text-[13px] font-bold text-[#1F3A5F]">
+            <div className="mt-1 text-[13px] font-bold text-[var(--brand-primary)]">
               {pln(p.price)}
               {p.price != null && (
                 <span className="text-[11px] font-normal text-slate-400">

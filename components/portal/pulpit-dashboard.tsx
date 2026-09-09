@@ -8,8 +8,13 @@ import type { FrequentProduct } from '@/lib/portal/frequent'
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   submitted: { label: 'Złożone', cls: 'bg-blue-100 text-blue-800' },
-  confirmed: { label: 'Potwierdzone', cls: 'bg-indigo-100 text-indigo-800' },
-  invoiced: { label: 'Zafakturowane', cls: 'bg-green-100 text-green-800' },
+  // Rebrand F2: zielony (accent-fresh) = wyłącznie "świeże/aktywne/potwierdzone".
+  confirmed: {
+    label: 'Potwierdzone',
+    cls: 'bg-[var(--accent-fresh-bg)] text-[var(--accent-fresh)]',
+  },
+  // Zafakturowane = etap administracyjny → neutralny slate (nie "świeżość").
+  invoiced: { label: 'Zafakturowane', cls: 'bg-slate-100 text-slate-700' },
   cancelled: { label: 'Anulowane', cls: 'bg-slate-100 text-slate-500' },
 }
 
@@ -81,7 +86,7 @@ export function PulpitDashboard({
           <Link
             href="/portal/zamowienie"
             className="inline-block rounded-md px-5 py-2.5 text-sm font-medium text-white"
-            style={{ backgroundColor: '#1F3A5F' }}
+            style={{ backgroundColor: 'var(--brand-primary)' }}
           >
             Złóż pierwsze zamówienie
           </Link>
@@ -91,17 +96,17 @@ export function PulpitDashboard({
           <div className="mb-4 grid grid-cols-3 gap-3">
             <div className="rounded-lg bg-[#F5F5F0] p-4">
               <div className="text-[13px] text-slate-500">W realizacji</div>
-              <div className="text-2xl font-medium">{inRealization}</div>
+              <div className="text-2xl font-medium text-[var(--brand-text)]">{inRealization}</div>
             </div>
             <div className="rounded-lg bg-[#F5F5F0] p-4">
               <div className="text-[13px] text-slate-500">Ostatnie zamówienie</div>
-              <div className="text-2xl font-medium">
+              <div className="text-2xl font-medium text-[var(--brand-text)]">
                 {last ? pln(last.total_brutto) : '—'}
               </div>
             </div>
             <div className="rounded-lg bg-[#F5F5F0] p-4">
               <div className="text-[13px] text-slate-500">Zamówień łącznie</div>
-              <div className="text-2xl font-medium">{totalCount}</div>
+              <div className="text-2xl font-medium text-[var(--brand-text)]">{totalCount}</div>
             </div>
           </div>
 
@@ -110,7 +115,7 @@ export function PulpitDashboard({
               <Link
                 href={`/portal/zamowienie?reorder=${last.id}`}
                 className="rounded-md px-4 py-2 text-sm font-medium text-white"
-                style={{ backgroundColor: '#1F3A5F' }}
+                style={{ backgroundColor: 'var(--brand-primary)' }}
               >
                 Powtórz ostatnie
               </Link>
@@ -155,7 +160,7 @@ export function PulpitDashboard({
                     {o.status !== 'cancelled' && (
                       <Link
                         href={`/portal/zamowienie?reorder=${o.id}`}
-                        className="text-sm text-[#1F3A5F] hover:underline"
+                        className="text-sm text-[var(--brand-primary)] hover:underline"
                       >
                         Powtórz
                       </Link>
