@@ -48,7 +48,7 @@ export function ErrorScreen({
 
   return (
     <div className="mx-auto max-w-md bg-white rounded-2xl shadow-lg overflow-hidden">
-      <div className="bg-[#1F2B4A] text-white px-5 py-4">
+      <div className="bg-[#1e293b] text-white px-5 py-4">
         <div className="text-xs tracking-widest opacity-70">ZAMÓWIENIA HURTOWE</div>
         <div className="text-lg font-bold">DAGOLD</div>
       </div>
