@@ -1096,7 +1096,7 @@ export function OrderForm({
 
   // ─── Style helpers ─────────────────────────────────────────────────────────────
   const inputCls = (prefilled: boolean) =>
-    `w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-[#1F3A5F] ${
+    `w-full px-3 py-2 border rounded-lg text-sm outline-none focus:border-[var(--brand-primary)] ${
       prefilled ? 'bg-emerald-50 border-emerald-300' : 'border-slate-300'
     }`
   const anyPrefilled = points.some((p) => p.prefilled) || contactPrefilled
@@ -1107,7 +1107,7 @@ export function OrderForm({
   return (
     <div className="mx-auto max-w-3xl bg-white shadow-sm min-h-screen">
       {/* Nagłówek */}
-      <div className="bg-[#1F3A5F] text-white px-6 py-5">
+      <div className="bg-[var(--brand-primary)] text-white px-6 py-5">
         <h1 className="text-[22px] font-bold leading-tight">Zamówienie — {client?.title ?? 'klient'}</h1>
         {initial.order.order_number && (
           <div className="text-[12px] text-white/70 mt-1 font-mono">{initial.order.order_number}</div>
@@ -1164,7 +1164,7 @@ export function OrderForm({
               <li>3. Faktura VAT z terminem 14 dni</li>
             </ul>
           </div>
-          <div className="bg-[#1F2B4A] text-white rounded-lg p-3">
+          <div className="bg-[var(--accent-fresh)] text-white rounded-lg p-3">
             <div className="text-xs opacity-80">Razem brutto</div>
             <div className="text-2xl font-bold">{fmt(submitResult.total_brutto)} zł</div>
           </div>
@@ -1187,9 +1187,9 @@ export function OrderForm({
               <button
                 type="button"
                 onClick={doRepeat}
-                className="w-full flex items-center gap-3 px-4 py-4 rounded-xl border-2 border-[#1F3A5F] text-left hover:bg-[#1F3A5F] hover:text-white transition group"
+                className="w-full flex items-center gap-3 px-4 py-4 rounded-xl border-2 border-[var(--brand-primary)] text-left hover:bg-[var(--brand-primary)] hover:text-white transition group"
               >
-                <RotateCcw className="w-6 h-6 shrink-0 text-[#1F3A5F] group-hover:text-white" />
+                <RotateCcw className="w-6 h-6 shrink-0 text-[var(--brand-primary)] group-hover:text-white" />
                 <div>
                   <div className="font-bold text-[15px]">Powtórz ostatnie zamówienie</div>
                   <div className="text-xs opacity-70">Wczytaj produkty i dostawę z poprzedniego zamówienia</div>
@@ -1201,12 +1201,12 @@ export function OrderForm({
               type="button"
               onClick={loadTemplates}
               disabled={templatesLoading}
-              className="w-full flex items-center gap-3 px-4 py-4 rounded-xl border-2 border-[#1F3A5F] text-left hover:bg-[#1F3A5F] hover:text-white transition group disabled:opacity-50"
+              className="w-full flex items-center gap-3 px-4 py-4 rounded-xl border-2 border-[var(--brand-primary)] text-left hover:bg-[var(--brand-primary)] hover:text-white transition group disabled:opacity-50"
             >
               {templatesLoading ? (
-                <Loader2 className="w-6 h-6 shrink-0 animate-spin text-[#1F3A5F] group-hover:text-white" />
+                <Loader2 className="w-6 h-6 shrink-0 animate-spin text-[var(--brand-primary)] group-hover:text-white" />
               ) : (
-                <Star className="w-6 h-6 shrink-0 text-[#1F3A5F] group-hover:text-white" />
+                <Star className="w-6 h-6 shrink-0 text-[var(--brand-primary)] group-hover:text-white" />
               )}
               <div>
                 <div className="font-bold text-[15px]">Użyj szablonu</div>
@@ -1237,9 +1237,9 @@ export function OrderForm({
                         key={t.id}
                         type="button"
                         onClick={() => applyTemplate(t)}
-                        className="w-full text-left px-3 py-2 rounded border border-slate-200 hover:border-[#1F3A5F] hover:bg-slate-50 transition"
+                        className="w-full text-left px-3 py-2 rounded border border-slate-200 hover:border-[var(--brand-primary)] hover:bg-slate-50 transition"
                       >
-                        <div className="text-[14px] font-semibold text-[#15202e]">{t.nazwa}</div>
+                        <div className="text-[14px] font-semibold text-[var(--brand-text)]">{t.nazwa}</div>
                         <div className="text-[11px] text-slate-500">
                           {(t.pozycje?.length ?? 0)} {(t.pozycje?.length ?? 0) === 1 ? 'pozycja' : 'pozycji'}
                           {t.delivery_mode === 'kilka' && t.delivery_points
@@ -1258,7 +1258,7 @@ export function OrderForm({
             <button
               type="button"
               onClick={startNew}
-              className="w-full flex items-center gap-3 px-4 py-4 rounded-xl bg-[#1F3A5F] text-white text-left hover:bg-[#264a76] transition"
+              className="w-full flex items-center gap-3 px-4 py-4 rounded-xl bg-[var(--brand-primary)] text-white text-left hover:bg-[var(--brand-primary-dark)] transition"
             >
               <FilePlus className="w-6 h-6 shrink-0" />
               <div>
@@ -1301,23 +1301,23 @@ export function OrderForm({
                       <span
                         className={`w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-bold transition ${
                           step === s.n
-                            ? 'bg-[#1F3A5F] text-white'
+                            ? 'bg-[var(--brand-primary)] text-white'
                             : step > s.n
-                              ? 'bg-emerald-500 text-white'
+                              ? 'bg-[var(--accent-fresh)] text-white'
                               : 'bg-slate-200 text-slate-600'
-                        } ${isJump ? 'group-hover:ring-2 group-hover:ring-[#1F3A5F]/40' : ''}`}
+                        } ${isJump ? 'group-hover:ring-2 group-hover:ring-[var(--brand-primary)]/40' : ''}`}
                       >
                         {step > s.n ? '✓' : s.n}
                       </span>
                       <span
                         className={`text-[13px] font-semibold transition ${
-                          step === s.n ? 'text-[#1F3A5F]' : 'text-slate-500'
-                        } ${isJump ? 'group-hover:text-[#1F3A5F] group-hover:underline' : ''}`}
+                          step === s.n ? 'text-[var(--brand-primary)]' : 'text-slate-500'
+                        } ${isJump ? 'group-hover:text-[var(--brand-primary)] group-hover:underline' : ''}`}
                       >
                         {s.label}
                       </span>
                       {isJump && s.n > step && (
-                        <ChevronRight className="w-3.5 h-3.5 text-[#1F3A5F] opacity-0 group-hover:opacity-70 transition" />
+                        <ChevronRight className="w-3.5 h-3.5 text-[var(--brand-primary)] opacity-0 group-hover:opacity-70 transition" />
                       )}
                     </button>
                     {i < 2 && <div className="flex-1 h-px bg-slate-200" />}
@@ -1340,7 +1340,7 @@ export function OrderForm({
               {savedPoints.length > 0 && (
                 <div className="border border-slate-200 rounded-lg p-3">
                   <div className="text-[13px] font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
-                    <MapPin className="w-4 h-4 text-[#1F3A5F]" /> Twoje zapisane punkty — kliknij aby użyć
+                    <MapPin className="w-4 h-4 text-[var(--brand-primary)]" /> Twoje zapisane punkty — kliknij aby użyć
                   </div>
                   <div className="space-y-1.5">
                     {savedPoints.map((sp) => {
@@ -1352,7 +1352,7 @@ export function OrderForm({
                           className={`rounded-lg border transition overflow-hidden ${
                             used
                               ? 'border-emerald-300 opacity-80'
-                              : 'border-slate-200 hover:border-[#1F3A5F]'
+                              : 'border-slate-200 hover:border-[var(--brand-primary)]'
                           }`}
                           style={used ? { background: '#ECFDF5' } : undefined}
                         >
@@ -1361,10 +1361,10 @@ export function OrderForm({
                             onClick={() => applySavedPoint(sp)}
                             disabled={used}
                             className={`w-full text-left flex items-start gap-2 px-3 py-2 ${
-                              used ? 'cursor-default' : 'hover:bg-[#eef3f9] cursor-pointer'
+                              used ? 'cursor-default' : 'hover:bg-[#f1f5f9] cursor-pointer'
                             }`}
                           >
-                            <MapPin className="w-4 h-4 text-[#1F3A5F] mt-0.5 shrink-0" />
+                            <MapPin className="w-4 h-4 text-[var(--brand-primary)] mt-0.5 shrink-0" />
                             <span className="text-xs flex-1 min-w-0">
                               <span className="font-semibold text-slate-800">{sp.nazwa || sp.miasto || 'Punkt'}</span>
                               <span className="text-slate-500">
@@ -1393,10 +1393,10 @@ export function OrderForm({
                                     disabled={used}
                                     className={`px-2 h-7 rounded border text-[11px] font-semibold transition ${
                                       isHere
-                                        ? 'bg-[#1F3A5F] text-white border-[#1F3A5F]'
+                                        ? 'bg-[var(--brand-primary)] text-white border-[var(--brand-primary)]'
                                         : used
                                           ? 'border-slate-200 text-slate-300 cursor-not-allowed'
-                                          : 'border-[#1F3A5F] text-[#1F3A5F] hover:bg-[#1F3A5F] hover:text-white'
+                                          : 'border-[var(--brand-primary)] text-[var(--brand-primary)] hover:bg-[var(--brand-primary)] hover:text-white'
                                     }`}
                                   >
                                     → Punkt {i + 1}
@@ -1428,8 +1428,8 @@ export function OrderForm({
                       onClick={() => setMode(m)}
                       className={`flex-1 px-4 py-2.5 rounded-lg border-2 text-sm font-semibold transition ${
                         deliveryMode === m
-                          ? 'border-[#1F3A5F] bg-[#1F3A5F] text-white'
-                          : 'border-slate-300 text-slate-600 hover:border-[#1F3A5F]'
+                          ? 'border-[var(--brand-primary)] bg-[var(--brand-primary)] text-white'
+                          : 'border-slate-300 text-slate-600 hover:border-[var(--brand-primary)]'
                       }`}
                     >
                       {m === 'jeden' ? 'Jeden punkt' : 'Kilka punktów'}
@@ -1446,7 +1446,7 @@ export function OrderForm({
                       type="checkbox"
                       checked={wspolnaData}
                       onChange={(e) => setWspolnaData(e.target.checked)}
-                      className="w-4 h-4 accent-[#1F3A5F]"
+                      className="w-4 h-4 accent-[var(--brand-primary)]"
                     />
                     <span className="text-[13px] font-semibold text-slate-700">Wspólna data dostawy dla wszystkich punktów</span>
                   </label>
@@ -1459,7 +1459,7 @@ export function OrderForm({
                             type="button"
                             onClick={() => setWspolnyTerminTyp(tt)}
                             className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${
-                              wspolnyTerminTyp === tt ? 'border-[#1F3A5F] bg-[#1F3A5F] text-white' : 'border-slate-300 text-slate-600'
+                              wspolnyTerminTyp === tt ? 'border-[var(--brand-primary)] bg-[var(--brand-primary)] text-white' : 'border-slate-300 text-slate-600'
                             }`}
                           >
                             {tt === 'najblizszy' ? 'Najbliższy możliwy' : 'Konkretna data'}
@@ -1472,7 +1472,7 @@ export function OrderForm({
                             type="date"
                             value={wspolnyPreferredDate}
                             onChange={(e) => setWspolnyPreferredDate(e.target.value)}
-                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#1F3A5F]"
+                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[var(--brand-primary)]"
                           />
                           <div className="text-[10px] text-slate-400 mt-1">
                             Datę potwierdzimy mailowo — to preferencja, nie gwarancja.
@@ -1490,18 +1490,18 @@ export function OrderForm({
                   <div
                     key={p.localId}
                     className={`rounded-lg overflow-hidden ${
-                      deliveryMode === 'kilka' ? 'border-2 border-[#1F3A5F] shadow-md' : 'border border-slate-200'
+                      deliveryMode === 'kilka' ? 'border-2 border-[var(--brand-primary)] shadow-md' : 'border border-slate-200'
                     }`}
                   >
                     {/* Nagłówek punktu — pasek navy (kilka) / slate (jeden), spójnie z krokiem 3 */}
                     <div
                       className={`flex items-center justify-between ${
                         deliveryMode === 'kilka'
-                          ? 'bg-[#1F3A5F] px-4 py-2.5'
+                          ? 'bg-[var(--brand-primary)] px-4 py-2.5'
                           : 'bg-slate-50 px-3 py-2 border-b border-slate-200'
                       }`}
                     >
-                      <div className={`text-[13px] font-bold ${deliveryMode === 'kilka' ? 'text-white' : 'text-[#1F3A5F]'}`}>
+                      <div className={`text-[13px] font-bold ${deliveryMode === 'kilka' ? 'text-white' : 'text-[var(--brand-primary)]'}`}>
                         {deliveryMode === 'kilka' ? `Punkt ${idx + 1}` : 'Adres dostawy'}
                         {p.prefilled && (
                           <span
@@ -1571,7 +1571,7 @@ export function OrderForm({
                             type="button"
                             onClick={() => updatePoint(p.localId, { typ: tp })}
                             className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${
-                              p.typ === tp ? 'border-[#1F3A5F] bg-[#1F3A5F] text-white' : 'border-slate-300 text-slate-600'
+                              p.typ === tp ? 'border-[var(--brand-primary)] bg-[var(--brand-primary)] text-white' : 'border-slate-300 text-slate-600'
                             }`}
                           >
                             {tp === 'dostawa' ? 'Dostawa' : 'Odbiór własny'}
@@ -1590,7 +1590,7 @@ export function OrderForm({
                               type="button"
                               onClick={() => updatePoint(p.localId, { termin_typ: tt })}
                               className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${
-                                p.termin_typ === tt ? 'border-[#1F3A5F] bg-[#1F3A5F] text-white' : 'border-slate-300 text-slate-600'
+                                p.termin_typ === tt ? 'border-[var(--brand-primary)] bg-[var(--brand-primary)] text-white' : 'border-slate-300 text-slate-600'
                               }`}
                             >
                               {tt === 'najblizszy' ? 'Najbliższy możliwy' : 'Konkretna data'}
@@ -1603,7 +1603,7 @@ export function OrderForm({
                               type="date"
                               value={p.preferred_date}
                               onChange={(e) => updatePoint(p.localId, { preferred_date: e.target.value })}
-                              className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#1F3A5F]"
+                              className="px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[var(--brand-primary)]"
                             />
                             <div className="text-[10px] text-slate-400 mt-1">
                               Datę potwierdzimy mailowo — to preferencja, nie gwarancja.
@@ -1662,7 +1662,7 @@ export function OrderForm({
                   <button
                     type="button"
                     onClick={addPoint}
-                    className="w-full px-4 py-2.5 rounded-lg border-2 border-dashed border-[#1F3A5F] text-[#1F3A5F] text-sm font-semibold hover:bg-[#1F3A5F]/5"
+                    className="w-full px-4 py-2.5 rounded-lg border-2 border-dashed border-[var(--brand-primary)] text-[var(--brand-primary)] text-sm font-semibold hover:bg-[var(--brand-primary)]/5"
                   >
                     + Dodaj kolejny punkt
                   </button>
@@ -1682,7 +1682,7 @@ export function OrderForm({
                   type="button"
                   onClick={() => setStep(2)}
                   disabled={!canGoStep2}
-                  className="flex-1 bg-[#1F3A5F] hover:bg-[#264a76] text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex-1 bg-[var(--brand-primary)] hover:bg-[var(--brand-primary-dark)] text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Dalej — produkty <ChevronRight className="w-4 h-4" />
                 </button>
@@ -1708,7 +1708,7 @@ export function OrderForm({
                       onClick={() => setActivePointId(p.localId)}
                       className={`shrink-0 px-3 py-2 rounded-t-lg text-[13px] font-semibold border-b-2 ${
                         activePointId === p.localId
-                          ? 'bg-[#1F3A5F] text-white border-[#1F3A5F]'
+                          ? 'bg-[var(--brand-primary)] text-white border-[var(--brand-primary)]'
                           : 'bg-slate-100 text-slate-600 border-transparent hover:bg-slate-200'
                       }`}
                     >
@@ -1722,7 +1722,7 @@ export function OrderForm({
               {deliveryMode === 'kilka' && (
                 <div className="px-5 py-2 bg-slate-50 border-b border-slate-200 text-[13px] text-slate-600">
                   Towary dla:{' '}
-                  <span className="font-semibold text-[#1F3A5F]">
+                  <span className="font-semibold text-[var(--brand-primary)]">
                     {pointName(points.find((p) => p.localId === activePointId) ?? points[0], Math.max(0, points.findIndex((p) => p.localId === activePointId)))}
                   </span>
                 </div>
@@ -1740,10 +1740,10 @@ export function OrderForm({
                       onClick={() => setActivePodgrupa(pg.key)}
                       className={`px-3 py-2 rounded-lg text-[13px] font-bold transition ${
                         activePodgrupa === pg.key
-                          ? 'bg-[#1F3A5F] text-white'
-                          : 'bg-[#ccd6e3] text-[#1F3A5F] hover:bg-[#bfcbdb]'
+                          ? 'bg-[var(--brand-primary)] text-white'
+                          : 'bg-[#e2e8f0] text-[var(--brand-primary)] hover:bg-[#cbd5e1]'
                       }`}
-                      style={activePodgrupa === pg.key ? {} : { borderLeft: '3px solid #1F3A5F' }}
+                      style={activePodgrupa === pg.key ? {} : { borderLeft: '3px solid var(--brand-primary)' }}
                     >
                       {pg.label}
                       {cnt > 0 && <span className="ml-1.5 opacity-90">· {cnt}</span>}
@@ -1764,9 +1764,9 @@ export function OrderForm({
                     <div className="mx-4 mt-2">
                       <div
                         className="rounded-lg px-3 py-2.5"
-                        style={{ background: '#eef3f9', border: '1px solid #c7d5e6' }}
+                        style={{ background: '#f1f5f9', border: '1px solid #e2e8f0' }}
                       >
-                        <div className="text-[13px] font-bold text-[#1F3A5F]">
+                        <div className="text-[13px] font-bold text-[var(--brand-primary)]">
                           Rabat indywidualny: −{Math.round(activeInd * 100)}% (cena stała dla tej grupy)
                         </div>
                       </div>
@@ -1789,11 +1789,11 @@ export function OrderForm({
                       {gap ? (
                         <div className="mt-1 text-[13px] text-slate-700 leading-snug">
                           Jeszcze{' '}
-                          <span className="text-[19px] font-extrabold text-[#1F3A5F] align-middle">
+                          <span className="text-[19px] font-extrabold text-[var(--brand-primary)] align-middle">
                             {fmt(gap.gap)} zł
                           </span>{' '}
                           do rabatu{' '}
-                          <span className="font-bold text-[#1F3A5F]">
+                          <span className="font-bold text-[var(--brand-primary)]">
                             −{Math.round(gap.toPct * 100)}%
                           </span>{' '}
                           — <span className="font-bold text-emerald-700">ceny spadną</span>.
@@ -1832,14 +1832,14 @@ export function OrderForm({
                     return (
                       <div
                         key={p.id}
-                        className={`bg-white px-3 py-3 border border-[#e4e9ef] rounded-lg flex items-start gap-3 ${
+                        className={`bg-white p-3.5 border border-[#e4e9ef] rounded-xl shadow-sm flex items-start gap-3.5 ${
                           unavailable ? 'opacity-50' : ''
                         }`}
                       >
-                        <ProductThumb size="sm" />
+                        <ProductThumb size="lg" />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start gap-2 mb-1 flex-wrap">
-                            <div className="text-[15px] font-semibold text-[#15202e] leading-snug">{p.name}</div>
+                            <div className="text-[15px] font-semibold text-[var(--brand-text)] leading-snug">{p.name}</div>
                             {!p.in_stock && (
                               <span className="shrink-0 text-[11px] bg-[#f3d6d6] text-[#9a3434] px-[7px] py-[2px] rounded font-bold">
                                 niedostępny
@@ -1862,14 +1862,14 @@ export function OrderForm({
                               </span>
                             )}
                             {p.in_stock && p.dostepnosc !== 'na_zamowienie' && (
-                              <span className="shrink-0 text-[10px] bg-[#dcfce7] text-[#166534] px-1.5 py-0.5 rounded font-bold uppercase">
+                              <span className="shrink-0 text-[10px] bg-[var(--accent-fresh-bg)] text-[var(--accent-fresh)] px-1.5 py-0.5 rounded font-bold uppercase">
                                 Od ręki
                               </span>
                             )}
                           </div>
                           {p.gramatura && <div className="text-[13px] text-slate-500 mb-1">{p.gramatura}</div>}
                           {available != null && available > 0 && (
-                            <div className="text-[12px] text-[#166534] font-semibold mb-1">
+                            <div className="text-[12px] text-[var(--accent-fresh)] font-semibold mb-1">
                               Dostępne: {available} {unit}
                             </div>
                           )}
@@ -1877,7 +1877,7 @@ export function OrderForm({
                             <div className="text-[13px] text-slate-400 italic">—</div>
                           ) : (
                             <div className="flex items-baseline gap-2">
-                              <span className="text-[15px] font-bold text-[#1F3A5F]">
+                              <span className="text-[15px] font-bold text-[var(--brand-primary)]">
                                 {fmt(price)} zł/{unit}
                               </span>
                               {price < originalPrice && (
@@ -1891,8 +1891,8 @@ export function OrderForm({
                             type="button"
                             onClick={() => setQty(apId, p.id, qty - 1)}
                             disabled={qty <= 0 || unavailable}
-                            className="w-[38px] h-[38px] rounded-lg bg-white flex items-center justify-center text-[#1F3A5F] disabled:opacity-30 hover:bg-[#1F3A5F] hover:text-white transition"
-                            style={{ border: '1.5px solid #1F3A5F' }}
+                            className="w-[38px] h-[38px] rounded-lg bg-white flex items-center justify-center text-[var(--brand-primary)] disabled:opacity-30 hover:bg-[var(--brand-primary)] hover:text-white transition"
+                            style={{ border: '1.5px solid var(--brand-primary)' }}
                             aria-label="Zmniejsz"
                           >
                             <Minus className="w-4 h-4" strokeWidth={2.5} />
@@ -1916,15 +1916,15 @@ export function OrderForm({
                             onBlur={(e) => {
                               if (e.target.value === '') setQty(apId, p.id, 0)
                             }}
-                            className="w-[58px] h-[38px] text-center text-[16px] font-semibold rounded-lg outline-none focus:border-[#1F3A5F] disabled:opacity-30 disabled:bg-slate-50"
-                            style={{ border: '1.5px solid #9fb0c4' }}
+                            className="w-[58px] h-[38px] text-center text-[16px] font-semibold rounded-lg outline-none focus:border-[var(--brand-primary)] disabled:opacity-30 disabled:bg-slate-50"
+                            style={{ border: '1.5px solid #cbd5e1' }}
                           />
                           <button
                             type="button"
                             onClick={() => setQty(apId, p.id, capQty(qty + 1))}
                             disabled={unavailable}
-                            className="w-[38px] h-[38px] rounded-lg bg-white flex items-center justify-center text-[#1F3A5F] disabled:opacity-30 hover:bg-[#1F3A5F] hover:text-white transition"
-                            style={{ border: '1.5px solid #1F3A5F' }}
+                            className="w-[38px] h-[38px] rounded-lg bg-white flex items-center justify-center text-[var(--brand-primary)] disabled:opacity-30 hover:bg-[var(--brand-primary)] hover:text-white transition"
+                            style={{ border: '1.5px solid var(--brand-primary)' }}
                             aria-label="Zwiększ"
                           >
                             <Plus className="w-4 h-4" />
@@ -1938,7 +1938,7 @@ export function OrderForm({
 
               {/* Pasek dół */}
               <div
-                className="sticky bottom-0 bg-[#1F3A5F] text-white px-4 py-3 flex items-center gap-3 flex-wrap"
+                className="sticky bottom-0 bg-[var(--brand-primary)] text-white px-4 py-3 flex items-center gap-3 flex-wrap"
                 style={{ boxShadow: '0 -4px 12px rgba(0,0,0,0.12)' }}
               >
                 <button
@@ -1956,7 +1956,7 @@ export function OrderForm({
                   type="button"
                   onClick={() => setStep(3)}
                   disabled={!itemsValid}
-                  className="px-4 py-2 rounded-lg bg-white text-[#1F3A5F] font-bold text-[14px] flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#eef3f9] shrink-0"
+                  className="px-4 py-2 rounded-lg bg-white text-[var(--brand-primary)] font-bold text-[14px] flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#f1f5f9] shrink-0"
                 >
                   Dalej <ChevronRight className="w-4 h-4" />
                 </button>
@@ -1987,11 +1987,11 @@ export function OrderForm({
                   <div
                     key={p.localId}
                     className={`rounded-lg overflow-hidden ${
-                      multi ? 'border-2 border-[#1F3A5F] shadow-md' : 'border border-slate-200'
+                      multi ? 'border-2 border-[var(--brand-primary)] shadow-md' : 'border border-slate-200'
                     }`}
                   >
-                    <div className={multi ? 'bg-[#1F3A5F] px-4 py-3' : 'bg-slate-50 px-3 py-2 border-b border-slate-200'}>
-                      <div className={`text-[13px] font-bold ${multi ? 'text-white' : 'text-[#1F3A5F]'}`}>
+                    <div className={multi ? 'bg-[var(--brand-primary)] px-4 py-3' : 'bg-slate-50 px-3 py-2 border-b border-slate-200'}>
+                      <div className={`text-[13px] font-bold ${multi ? 'text-white' : 'text-[var(--brand-primary)]'}`}>
                         {multi ? `Punkt ${idx + 1} — ${pointName(p, idx)}` : 'Dostawa'}
                       </div>
                       <div className={`text-[12px] ${multi ? 'text-white/90' : 'text-slate-600'}`}>
@@ -2035,7 +2035,7 @@ export function OrderForm({
               </div>
 
               {/* Totals */}
-              <div className="bg-[#1F2B4A] text-white rounded-lg p-4 space-y-1.5">
+              <div className="bg-[#1e293b] text-white rounded-lg p-4 space-y-1.5">
                 <div className="flex justify-between text-xs opacity-80">
                   <span>{isMinimum ? 'Cennik (zablokowany)' : isWielkiHurt ? 'Cennik' : 'Poziom'}</span>
                   <span className="font-bold">{TIER_LABEL[tier]}</span>
@@ -2068,7 +2068,7 @@ export function OrderForm({
                         type="button"
                         onClick={() => setDocumentsMode(dm)}
                         className={`flex-1 px-3 py-2 rounded-lg border-2 text-xs font-semibold ${
-                          documentsMode === dm ? 'border-[#1F3A5F] bg-[#1F3A5F] text-white' : 'border-slate-300 text-slate-600'
+                          documentsMode === dm ? 'border-[var(--brand-primary)] bg-[var(--brand-primary)] text-white' : 'border-slate-300 text-slate-600'
                         }`}
                       >
                         {dm === 'wspolna' ? 'Wspólne na całość' : 'Osobne per punkt'}
@@ -2125,7 +2125,7 @@ export function OrderForm({
                     onChange={(e) => setNotes(e.target.value)}
                     rows={2}
                     placeholder="np. preferowane godziny dostawy, brama tylna..."
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[#1F3A5F] resize-none"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:border-[var(--brand-primary)] resize-none"
                   />
                 </Field>
               </div>
@@ -2136,7 +2136,7 @@ export function OrderForm({
                 podstawa: art. 6 ust. 1 lit. b RODO. Administrator: DAGOLD sp. z o.o., NIP 5214088667, ul.
                 Wyględowska 8/51, 02-654 Warszawa. Dane przechowujemy przez okres współpracy handlowej. Masz prawo dostępu,
                 sprostowania i usunięcia danych oraz wniesienia skargi do PUODO. Szczegóły:{' '}
-                <a href="/polityka-prywatnosci" className="underline text-[#1F3A5F]">
+                <a href="/polityka-prywatnosci" className="underline text-[var(--brand-primary)]">
                   Polityka prywatności
                 </a>
                 .
@@ -2155,7 +2155,7 @@ export function OrderForm({
                     checked={marketingConsent}
                     onChange={(e) => setMarketingConsent(e.target.checked)}
                     className="mt-0.5 w-5 h-5 shrink-0"
-                    style={{ accentColor: '#1F3A5F' }}
+                    style={{ accentColor: '#475569' }}
                   />
                   <span className="text-[12px] text-slate-800 leading-relaxed">
                     {MARKETING_CONSENT_TEXT}
@@ -2174,7 +2174,7 @@ export function OrderForm({
               <button
                 type="button"
                 onClick={handleSaveTemplate}
-                className="w-full px-3 py-2 rounded-lg bg-[#eef3f9] text-[#1F3A5F] text-[13px] font-semibold flex items-center justify-center gap-1 hover:bg-[#dde7f3]"
+                className="w-full px-3 py-2 rounded-lg bg-[#f1f5f9] text-[var(--brand-primary)] text-[13px] font-semibold flex items-center justify-center gap-1 hover:bg-[#e2e8f0]"
               >
                 <Star className="w-4 h-4" /> Zapisz to zamówienie jako szablon
               </button>
@@ -2193,7 +2193,7 @@ export function OrderForm({
                   type="button"
                   onClick={submitOrder}
                   disabled={!canSubmit}
-                  className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-extrabold py-4 rounded-xl shadow-md flex items-center justify-center gap-2 text-base disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex-1 bg-[var(--brand-primary)] hover:bg-[var(--brand-primary-dark)] text-white font-extrabold py-4 rounded-xl shadow-md flex items-center justify-center gap-2 text-base disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {submitting ? (
                     <>
