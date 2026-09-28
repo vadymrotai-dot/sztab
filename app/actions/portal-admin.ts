@@ -219,6 +219,11 @@ export async function createPortalAccountForClient(
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email: mail,
     email_confirm: true,
+    // KRYTYCZNE: bez tego middleware (lib/supabase/middleware.ts) nie wie, że
+    // to portal-user — traktuje jak nieznanego non-staff i zawsze przekierowuje
+    // na /staff/onboard ("poproś o dostęp pracownika"), NIGDY na /portal. Ten
+    // sam tag co w self-service (app/portal/actions.ts registerPortalAccount).
+    app_metadata: { role: 'portal' },
   })
   if (createErr || !created?.user) {
     const already = /already.*registered|already.*exists/i.test(createErr?.message || '')
