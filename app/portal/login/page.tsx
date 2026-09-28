@@ -5,7 +5,7 @@
 //   - hasło: signInWithPassword → /portal
 //   - magic link: signInWithOtp → /auth/callback?next=/portal/onboard (bez zmian)
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -17,6 +17,14 @@ export default function PortalLoginPage() {
   const [sent, setSent] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Krótki link /l/<slug> (28.09.2026) — wygasł (>3 dni) albo konto już
+  // nieaktywne. window.location zamiast useSearchParams — bez Suspense.
+  const [linkExpired, setLinkExpired] = useState(false)
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('link') === 'expired') {
+      setLinkExpired(true)
+    }
+  }, [])
 
   const loginPassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -56,6 +64,13 @@ export default function PortalLoginPage() {
         <div className="text-2xl font-bold text-[#1F3A5F]">DAGOLD</div>
         <div className="text-sm text-slate-500">Panel klienta</div>
       </div>
+
+      {linkExpired && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-center text-xs text-amber-800">
+          Ten link logowania wygasł. Poproś o nowy albo zaloguj się hasłem /
+          linkiem poniżej.
+        </div>
+      )}
 
       {sent ? (
         <div className="rounded-lg border border-green-200 bg-green-50 p-6 text-center text-sm text-green-800">

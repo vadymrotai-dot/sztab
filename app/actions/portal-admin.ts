@@ -9,32 +9,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { isPortalUser } from '@/lib/portal/session'
 import { lookupNipMF } from '@/lib/nip/mf-lookup'
 import { createClientRecord } from '@/app/actions/clients'
+import { getOrCreateShortLoginLink } from '@/lib/portal/login-link'
 
 type Result = { ok: true } | { ok: false; error: string }
 type LinkResult = { ok: true; link: string | null } | { ok: false; error: string }
-
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://sztab.vercel.app'
-
-// Generuje jednorazowy magic-link (Supabase Admin API) bez wysyłki maila —
-// zwracany do UI, żeby admin sam wysłał go klientowi (WhatsApp/mail/SMS).
-// Ważny ograniczony czas (Supabase default). redirectTo=/portal (konto już
-// approved+linked, nie potrzeba /portal/onboard).
-// UWAGA: link generowany przez Admin API NIE wspiera PKCE (brak code_verifier
-// w przeglądarce — request idzie z serwera, nie od klienta), więc Supabase
-// przekierowuje z tokenami w hash fragmencie (#access_token=...), nie ?code=.
-// Dlatego redirectTo wskazuje na /auth/token-redirect (klient czyta hash),
-// a NIE na /auth/callback (ten czeka na ?code=, używany przez self-service
-// logowanie klientów przez signInWithOtp — inny, PKCE, flow).
-async function generatePortalLoginLink(email: string): Promise<string | null> {
-  const admin = createAdminClient()
-  const { data, error } = await admin.auth.admin.generateLink({
-    type: 'magiclink',
-    email,
-    options: { redirectTo: `${SITE_URL}/auth/token-redirect?next=/portal` },
-  })
-  if (error || !data?.properties?.action_link) return null
-  return data.properties.action_link
-}
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -248,8 +226,7 @@ export async function createPortalAccountForClient(
   revalidatePath(`/clients/${cid}`)
   revalidatePath('/portal-accounts')
 
-  const link = await generatePortalLoginLink(mail)
-  return { ok: true, link }
+  return getOrCreateShortLoginLink(cid, user.id)
 }
 
 // Do już zatwierdzonego konta — np. klient zgubił pierwszy e-mail, albo
@@ -269,9 +246,7 @@ export async function getPortalLoginLink(clientId: string): Promise<LinkResult> 
     .maybeSingle()
   if (!acc?.email) return { ok: false, error: 'Brak zatwierdzonego konta dla tego klienta' }
 
-  const link = await generatePortalLoginLink(acc.email as string)
-  if (!link) return { ok: false, error: 'Nie udało się wygenerować linku' }
-  return { ok: true, link }
+  return getOrCreateShortLoginLink(cid, user.id)
 }
 
 // ── Punkty dostawy z panelu admina (Faza 2, 28.09.2026) ────────────────────

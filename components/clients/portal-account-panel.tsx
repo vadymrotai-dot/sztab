@@ -108,7 +108,7 @@ export function PortalAccountPanel({ clientId, account, defaultEmail }: Props) {
 
       {link && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
-          <span className="shrink-0 text-muted-foreground">Link do wysłania klientowi (ważny ograniczony czas):</span>
+          <span className="shrink-0 text-muted-foreground">Link do wysłania klientowi (ważny 3 dni, można wysłać wielokrotnie):</span>
           <code className="min-w-0 flex-1 break-all">{link}</code>
           <Button
             size="sm"
