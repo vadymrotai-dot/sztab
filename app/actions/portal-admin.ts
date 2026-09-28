@@ -19,12 +19,18 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://sztab.vercel.app'
 // zwracany do UI, żeby admin sam wysłał go klientowi (WhatsApp/mail/SMS).
 // Ważny ograniczony czas (Supabase default). redirectTo=/portal (konto już
 // approved+linked, nie potrzeba /portal/onboard).
+// UWAGA: link generowany przez Admin API NIE wspiera PKCE (brak code_verifier
+// w przeglądarce — request idzie z serwera, nie od klienta), więc Supabase
+// przekierowuje z tokenami w hash fragmencie (#access_token=...), nie ?code=.
+// Dlatego redirectTo wskazuje na /auth/token-redirect (klient czyta hash),
+// a NIE na /auth/callback (ten czeka na ?code=, używany przez self-service
+// logowanie klientów przez signInWithOtp — inny, PKCE, flow).
 async function generatePortalLoginLink(email: string): Promise<string | null> {
   const admin = createAdminClient()
   const { data, error } = await admin.auth.admin.generateLink({
     type: 'magiclink',
     email,
-    options: { redirectTo: `${SITE_URL}/auth/callback?next=/portal` },
+    options: { redirectTo: `${SITE_URL}/auth/token-redirect?next=/portal` },
   })
   if (error || !data?.properties?.action_link) return null
   return data.properties.action_link
