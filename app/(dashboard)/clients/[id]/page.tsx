@@ -43,6 +43,8 @@ import { PredictionsSectionAsync } from '@/components/clients/predictions-sectio
 import type { ClientType } from '@/lib/ai/business-analysis'
 import { SectionActionLink } from '@/components/clients/section-action-link'
 import { KrsRefreshButton } from '@/components/clients/krs-refresh-button'
+import { PortalAccountPanel } from '@/components/clients/portal-account-panel'
+import { DeliveryPointsEditor } from '@/components/clients/delivery-points-editor'
 
 const statusColor: Record<string, string> = {
   nowy: 'bg-blue-500',
@@ -97,6 +99,7 @@ export default async function ClientDetailPage({
   const [
     { data: client },
     { data: contacts },
+    { data: deliveryPoints },
     { data: deals },
     { data: tasks },
     { data: bzpTenders },
@@ -114,6 +117,12 @@ export default async function ClientDetailPage({
   ] = await Promise.all([
     supabase.from('clients').select('*').eq('id', id).single(),
     supabase.from('contacts').select('*').eq('client_id', id).order('created_at', { ascending: false }),
+    supabase
+      .from('client_delivery_points')
+      .select('id, nazwa, ulica, kod_pocztowy, miasto, odbiorca_imie, odbiorca_telefon, typ_punktu, is_active')
+      .eq('client_id', id)
+      .order('is_active', { ascending: false })
+      .order('created_at', { ascending: true }),
     supabase.from('deals').select('*').eq('client_id', id).order('created_at', { ascending: false }),
     supabase.from('tasks').select('*').eq('client_id', id).order('due', { ascending: true }),
     supabase
@@ -208,6 +217,7 @@ export default async function ClientDetailPage({
   const adminSupabase = createAdminClient()
   const [
     { data: cohortMember },
+    { data: portalAccountData },
     { data: clientOrdersData },
     { data: contactMethodsData },
     { data: clientNotesData },
@@ -219,6 +229,17 @@ export default async function ClientDetailPage({
       .select('cohort_id')
       .eq('subject_id', id)
       .eq('subject_type', 'client')
+      .limit(1)
+      .maybeSingle(),
+    // Faza 2 (28.09.2026) — client_portal_accounts nie ma RLS policy dla
+    // staff/admin (tylko cpa_select_self dla klienta) — service-role jak
+    // reszta app/actions/portal-admin.ts.
+    adminSupabase
+      .from('client_portal_accounts')
+      .select('email, status')
+      .eq('client_id', id)
+      .eq('status', 'approved')
+      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
     // Sprint TYDZIEN2.T2.2 — orders (admin client bypassuje RLS deny)
@@ -310,6 +331,20 @@ export default async function ClientDetailPage({
     source: string
     created_at: string
   }>
+
+  // Faza 2 (28.09.2026) — punkty dostawy + status konta portalowego dla admin-panelu.
+  const deliveryPointsList = (deliveryPoints ?? []) as Array<{
+    id: string
+    nazwa: string
+    ulica: string | null
+    kod_pocztowy: string | null
+    miasto: string | null
+    odbiorca_imie: string | null
+    odbiorca_telefon: string | null
+    typ_punktu: string | null
+    is_active: boolean
+  }>
+  const portalAccount = portalAccountData as { email: string; status: string } | null
 
   // Sprint TYDZIEN2.T2.5 (29.05.2026) — client_notes fetched у Promise.all wyżej.
   // Sorted DESC za created_at z server query. UI ClientNotesSection renderowany
@@ -966,6 +1001,28 @@ export default async function ClientDetailPage({
             recomputePath="/api/admin/matching/recompute-client"
             title=""
           />
+        </AccordionSection>
+
+        {/* Faza 2 (28.09.2026) — rejestracja portalu + punkty dostawy (admin-side
+            odpowiednik components/portal/dane-editor.tsx). */}
+        <div className="mb-1">
+          <PortalAccountPanel
+            clientId={id}
+            account={portalAccount}
+            defaultEmail={anyEmailMethod?.value ?? ''}
+          />
+        </div>
+
+        <AccordionSection
+          id="punkty-dostawy"
+          title="Punkty dostawy"
+          meta={
+            deliveryPointsList.filter((p) => p.is_active).length > 0
+              ? `${deliveryPointsList.filter((p) => p.is_active).length} aktywnych`
+              : 'brak'
+          }
+        >
+          <DeliveryPointsEditor clientId={id} points={deliveryPointsList} />
         </AccordionSection>
 
         {/* Sprint TYDZIEN2.T2.4.B (28.05.2026) — ContactSectionV3 replaces V2.

@@ -158,3 +158,168 @@ export async function rejectPortalAccount(id: string): Promise<Result> {
   revalidatePath('/portal-accounts')
   return { ok: true }
 }
+
+// ── Rejestracja portalu z inicjatywy admina (Faza 2, 28.09.2026) ───────────
+// Do tej pory jedyna ścieżka to self-service klienta (NIP form) + approve.
+// Ta akcja pozwala adminowi/staff od razu zarejestrować istniejącego klienta
+// w portalu — bez czekania aż klient sam się zgłosi. Auth user tworzony przez
+// Supabase Admin API (email_confirm:true, bez hasła) — klient loguje się
+// pierwszy raz "jednorazowym linkiem e-mail" (już istniejąca ścieżka na
+// /portal/login), hasło ustawia sam w „Moje dane" (już istniejące UI).
+export async function createPortalAccountForClient(
+  clientId: string,
+  email: string,
+): Promise<Result> {
+  const { user } = await requireAdmin()
+  if (!user) return { ok: false, error: 'Nieautoryzowany' }
+  const cid = (clientId || '').trim()
+  const mail = (email || '').trim().toLowerCase()
+  if (!cid) return { ok: false, error: 'Brak client_id' }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return { ok: false, error: 'Niepoprawny e-mail' }
+
+  const admin = createAdminClient()
+
+  const { data: cli } = await admin.from('clients').select('id').eq('id', cid).maybeSingle()
+  if (!cli) return { ok: false, error: 'Klient o tym id nie istnieje' }
+
+  const { data: existingApproved } = await admin
+    .from('client_portal_accounts')
+    .select('id, email')
+    .eq('client_id', cid)
+    .eq('status', 'approved')
+    .maybeSingle()
+  if (existingApproved) {
+    return { ok: false, error: `Klient ma już aktywne konto portalowe (${existingApproved.email})` }
+  }
+
+  const { data: created, error: createErr } = await admin.auth.admin.createUser({
+    email: mail,
+    email_confirm: true,
+  })
+  if (createErr || !created?.user) {
+    const already = /already.*registered|already.*exists/i.test(createErr?.message || '')
+    return {
+      ok: false,
+      error: already
+        ? 'Ten e-mail jest już zarejestrowany (inne konto) — sprawdź ręcznie w Supabase Auth.'
+        : `Błąd tworzenia konta: ${createErr?.message ?? 'nieznany'}`,
+    }
+  }
+
+  const { error: insertErr } = await admin.from('client_portal_accounts').insert({
+    auth_user_id: created.user.id,
+    client_id: cid,
+    email: mail,
+    status: 'approved',
+    approved_at: new Date().toISOString(),
+    approved_by: user.id,
+  })
+  if (insertErr) return { ok: false, error: insertErr.message }
+
+  revalidatePath(`/clients/${cid}`)
+  revalidatePath('/portal-accounts')
+  return { ok: true }
+}
+
+// ── Punkty dostawy z panelu admina (Faza 2, 28.09.2026) ────────────────────
+// Mirror 1:1 pól/walidacji z app/portal/data-actions.ts (portalUpsertDeliveryPoint
+// itd.) — ta sama tabela, ten sam kształt danych, żeby klient widział dokładnie
+// to co admin poprawił. RLS: staff_all_client_delivery_points (is_staff_member())
+// już pokrywa staff — insert/update idzie przez zwykły sesyjny klient (RLS jako
+// druga warstwa), nie service-role.
+async function clientOwnerId(clientId: string): Promise<string | null> {
+  const admin = createAdminClient()
+  const { data } = await admin.from('clients').select('owner_id').eq('id', clientId).maybeSingle()
+  return (data?.owner_id as string | undefined) ?? null
+}
+
+export async function adminUpsertDeliveryPoint(
+  clientId: string,
+  input: {
+    id?: string
+    nazwa: string
+    ulica?: string | null
+    kod_pocztowy?: string | null
+    miasto?: string | null
+    odbiorca_imie?: string | null
+    odbiorca_telefon?: string | null
+    typ_punktu?: string | null
+  },
+): Promise<Result> {
+  const { user } = await requireAdmin()
+  if (!user) return { ok: false, error: 'Nieautoryzowany' }
+  const cid = (clientId || '').trim()
+  if (!cid) return { ok: false, error: 'Brak client_id' }
+
+  const nazwa = (input.nazwa || '').trim()
+  if (!nazwa) return { ok: false, error: 'Nazwa punktu wymagana' }
+
+  const fields = {
+    nazwa,
+    ulica: input.ulica?.trim() || null,
+    kod_pocztowy: input.kod_pocztowy?.trim() || null,
+    miasto: input.miasto?.trim() || null,
+    odbiorca_imie: input.odbiorca_imie?.trim() || null,
+    odbiorca_telefon: input.odbiorca_telefon?.trim() || null,
+    typ_punktu: input.typ_punktu?.trim() || 'sklep',
+  }
+
+  const supabase = await createClient()
+
+  if (input.id) {
+    const { error } = await supabase
+      .from('client_delivery_points')
+      .update({ ...fields, updated_at: new Date().toISOString() })
+      .eq('id', input.id)
+    if (error) return { ok: false, error: error.message }
+    revalidatePath(`/clients/${cid}`)
+    return { ok: true }
+  }
+
+  const ownerId = await clientOwnerId(cid)
+  if (!ownerId) return { ok: false, error: 'Nie znaleziono owner_id klienta' }
+
+  const { error } = await supabase.from('client_delivery_points').insert({
+    client_id: cid,
+    owner_id: ownerId,
+    is_active: true,
+    ...fields,
+  })
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(`/clients/${cid}`)
+  return { ok: true }
+}
+
+// Soft — domyślne "Usuń" (jak w portalu). Bezpieczne, odwracalne.
+export async function adminDeactivateDeliveryPoint(
+  clientId: string,
+  id: string,
+): Promise<Result> {
+  const { user } = await requireAdmin()
+  if (!user) return { ok: false, error: 'Nieautoryzowany' }
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('client_delivery_points')
+    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(`/clients/${clientId}`)
+  return { ok: true }
+}
+
+// Trwałe — tylko admin panel (portal go nie ma, celowo). Bezpieczne mimo to:
+// order_delivery_points.client_delivery_point_id → ON DELETE SET NULL
+// (migracja 078) — nie psuje historii zamówień, tylko odpina referencję.
+// Do realnego sprzątania śmieci testowych (duplikaty, "Test", "123123" itp).
+export async function adminDeleteDeliveryPoint(
+  clientId: string,
+  id: string,
+): Promise<Result> {
+  const { user } = await requireAdmin()
+  if (!user) return { ok: false, error: 'Nieautoryzowany' }
+  const supabase = await createClient()
+  const { error } = await supabase.from('client_delivery_points').delete().eq('id', id)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(`/clients/${clientId}`)
+  return { ok: true }
+}
