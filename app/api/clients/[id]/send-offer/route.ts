@@ -24,7 +24,7 @@ export const maxDuration = 30
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://sztab.vercel.app'
 
-export async function POST(
+async function handlePostInner(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -203,4 +203,27 @@ export async function POST(
     order_link: orderLink || undefined,
     error: result.error,
   })
+}
+
+// Sieć bezpieczeństwa — bez tego niezłapany wyjątek (crash w bibliotece xlsx,
+// timeout, itp.) leci jako domyślna strona błędu Next.js (HTML), a klient
+// (fetch + res.json()) dostaje "Unexpected token '<' ... is not valid JSON"
+// zamiast czytelnego komunikatu. Cała oryginalna logika POST -> handlePostInner
+// bez zmian, to tylko cienki wrapper.
+export async function POST(
+  req: NextRequest,
+  ctx: { params: Promise<{ id: string }> },
+) {
+  try {
+    return await handlePostInner(req, ctx)
+  } catch (e: any) {
+    console.error('[send-offer] unhandled error:', e?.stack || e?.message || e)
+    return NextResponse.json(
+      {
+        ok: false,
+        error: e?.message ? `Błąd serwera: ${e.message}` : 'Nieoczekiwany błąd serwera',
+      },
+      { status: 500 },
+    )
+  }
 }
