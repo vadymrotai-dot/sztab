@@ -11,6 +11,24 @@ import { lookupNipMF } from '@/lib/nip/mf-lookup'
 import { createClientRecord } from '@/app/actions/clients'
 
 type Result = { ok: true } | { ok: false; error: string }
+type LinkResult = { ok: true; link: string | null } | { ok: false; error: string }
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://sztab.vercel.app'
+
+// Generuje jednorazowy magic-link (Supabase Admin API) bez wysyłki maila —
+// zwracany do UI, żeby admin sam wysłał go klientowi (WhatsApp/mail/SMS).
+// Ważny ograniczony czas (Supabase default). redirectTo=/portal (konto już
+// approved+linked, nie potrzeba /portal/onboard).
+async function generatePortalLoginLink(email: string): Promise<string | null> {
+  const admin = createAdminClient()
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: 'magiclink',
+    email,
+    options: { redirectTo: `${SITE_URL}/auth/callback?next=/portal` },
+  })
+  if (error || !data?.properties?.action_link) return null
+  return data.properties.action_link
+}
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -169,7 +187,7 @@ export async function rejectPortalAccount(id: string): Promise<Result> {
 export async function createPortalAccountForClient(
   clientId: string,
   email: string,
-): Promise<Result> {
+): Promise<LinkResult> {
   const { user } = await requireAdmin()
   if (!user) return { ok: false, error: 'Nieautoryzowany' }
   const cid = (clientId || '').trim()
@@ -218,7 +236,31 @@ export async function createPortalAccountForClient(
 
   revalidatePath(`/clients/${cid}`)
   revalidatePath('/portal-accounts')
-  return { ok: true }
+
+  const link = await generatePortalLoginLink(mail)
+  return { ok: true, link }
+}
+
+// Do już zatwierdzonego konta — np. klient zgubił pierwszy e-mail, albo
+// Vadym chce mu wysłać link jeszcze raz innym kanałem (WhatsApp).
+export async function getPortalLoginLink(clientId: string): Promise<LinkResult> {
+  const { user } = await requireAdmin()
+  if (!user) return { ok: false, error: 'Nieautoryzowany' }
+  const cid = (clientId || '').trim()
+  if (!cid) return { ok: false, error: 'Brak client_id' }
+
+  const admin = createAdminClient()
+  const { data: acc } = await admin
+    .from('client_portal_accounts')
+    .select('email')
+    .eq('client_id', cid)
+    .eq('status', 'approved')
+    .maybeSingle()
+  if (!acc?.email) return { ok: false, error: 'Brak zatwierdzonego konta dla tego klienta' }
+
+  const link = await generatePortalLoginLink(acc.email as string)
+  if (!link) return { ok: false, error: 'Nie udało się wygenerować linku' }
+  return { ok: true, link }
 }
 
 // ── Punkty dostawy z panelu admina (Faza 2, 28.09.2026) ────────────────────
