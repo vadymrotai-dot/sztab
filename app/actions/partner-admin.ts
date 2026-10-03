@@ -14,7 +14,7 @@ import { getOrCreateShortPartnerLoginLink } from '@/lib/partner/login-link'
 type Result = { ok: true } | { ok: false; error: string }
 type LinkResult = { ok: true; link: string | null } | { ok: false; error: string }
 
-async function requireAdmin() {
+export async function requireAdmin() {
   const supabase = await createClient()
   const {
     data: { user },
@@ -152,5 +152,39 @@ export async function assignAllUnassignedToPartner(
     .upsert(rows, { onConflict: 'partner_id,company_id', ignoreDuplicates: true })
   if (error) return { ok: false, error: error.message }
   revalidatePath('/partners')
+  return { ok: true }
+}
+
+// Admin (staff) ogląda/edytuje interakcję TAK JAK widzi ją partner — bez
+// impersonacji sesji partnera (żadnego ryzyka dla własnej sesji staff).
+// Zamiast current_portal_partner_id() z RLS, tu explicit partnerId + admin
+// client; requireAdmin() jest jedyną granicą dostępu.
+export async function adminUpdatePartnerCompanyLink(
+  partnerId: string,
+  companyId: string,
+  input: { status?: string; notes?: string },
+): Promise<Result> {
+  const { user } = await requireAdmin()
+  if (!user) return { ok: false, error: 'Nieautoryzowany' }
+
+  const STATUSES = ['new', 'in_progress', 'contacted', 'qualified', 'rejected', 'converted']
+  const fields: Record<string, string> = {}
+  if (input.status !== undefined) {
+    if (!STATUSES.includes(input.status)) return { ok: false, error: 'Niepoprawny status' }
+    fields.status = input.status
+  }
+  if (input.notes !== undefined) fields.notes = input.notes
+  if (Object.keys(fields).length === 0) return { ok: true }
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('partner_company_links')
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('partner_id', partnerId)
+    .eq('company_id', companyId)
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath(`/partners/${partnerId}`)
+  revalidatePath(`/partners/${partnerId}/${companyId}`)
   return { ok: true }
 }

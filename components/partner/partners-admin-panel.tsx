@@ -4,6 +4,7 @@
 // konta logowania, przypisanie firm z paczki BGK_TESTOWA_PACZKA_100.
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   createPartner,
@@ -129,6 +130,12 @@ function PartnerCard({ partner }: { partner: PartnerRow }) {
             /{partner.slug} · {partner.companyCount} przypisanych firm
           </div>
         </div>
+        <Link
+          href={`/partners/${partner.id}`}
+          className="rounded-md border border-[#1F3A5F] px-3 py-1 text-xs font-medium text-[#1F3A5F] hover:bg-[#1F3A5F] hover:text-white"
+        >
+          Podgląd / edycja firm →
+        </Link>
       </div>
 
       {partner.accounts.length > 0 && (
