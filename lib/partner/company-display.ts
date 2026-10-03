@@ -66,13 +66,23 @@ export function formatPln(v: unknown): string {
   return new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 0 }).format(n) + ' zł'
 }
 
+// Polska odmiana liczebników: 1 rok / 2-4 lata (nie 12-14) / w innych
+// przypadkach lat (w tym 21, 31, ... — "21 lat", NIE "21 lata").
+function yearsWord(n: number): string {
+  if (n === 1) return 'rok'
+  const lastTwo = n % 100
+  const last = n % 10
+  if (last >= 2 && last <= 4 && !(lastTwo >= 12 && lastTwo <= 14)) return 'lata'
+  return 'lat'
+}
+
 export function formatTenure(months: unknown): string {
   const m = Number(months)
   if (!m || Number.isNaN(m)) return '—'
   const years = Math.floor(m / 12)
   const rem = m % 12
   const parts: string[] = []
-  if (years > 0) parts.push(`${years} ${years === 1 ? 'rok' : 'lata'}`)
+  if (years > 0) parts.push(`${years} ${yearsWord(years)}`)
   if (rem > 0) parts.push(`${rem} mies.`)
   return parts.length > 0 ? parts.join(' ') : '0 mies.'
 }
