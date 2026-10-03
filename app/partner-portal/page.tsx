@@ -29,6 +29,16 @@ const STATUS_COLORS: Record<string, string> = {
   converted: 'bg-purple-50 text-purple-700',
 }
 
+const TIER_COLORS: Record<string, string> = {
+  'Tier 1 - najcieplejszy': 'bg-orange-50 text-orange-700',
+  'Tier 2': 'bg-slate-100 text-slate-600',
+}
+
+function formatPln(v: number | null) {
+  if (v === null || v === undefined) return '—'
+  return new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 0 }).format(v) + ' zł'
+}
+
 export default async function PartnerPortalIndex() {
   const user = await getPartnerUser()
   if (!user) redirect('/partner-portal/login')
@@ -39,7 +49,7 @@ export default async function PartnerPortalIndex() {
   const { data: links } = await supabase
     .from('partner_company_links')
     .select(
-      'status, notes, shared_at, company:bgk_companies(id, nip, name, krs, legal_form, address, pkd_main)',
+      'status, notes, shared_at, company:bgk_companies(id, nip, name, legal_form, tier, amount_gross_pln, phone, decision_person)',
     )
     .order('shared_at', { ascending: false })
 
@@ -51,16 +61,17 @@ export default async function PartnerPortalIndex() {
       id: string
       nip: string
       name: string
-      krs: string | null
       legal_form: string | null
-      address: string | null
-      pkd_main: string | null
+      tier: string | null
+      amount_gross_pln: number | null
+      phone: string | null
+      decision_person: string | null
     } | null
   }
   const rows = (links ?? []) as unknown as Row[]
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
+    <div className="mx-auto max-w-6xl p-6">
       <div className="mb-4">
         <h1 className="text-xl font-bold text-slate-800">Firmy przekazane do weryfikacji</h1>
         <p className="text-sm text-slate-500">
@@ -73,7 +84,9 @@ export default async function PartnerPortalIndex() {
             <tr>
               <th className="px-4 py-2">Firma</th>
               <th className="px-4 py-2">NIP</th>
-              <th className="px-4 py-2">Forma prawna</th>
+              <th className="px-4 py-2">Tier</th>
+              <th className="px-4 py-2">Kwota poręczenia</th>
+              <th className="px-4 py-2">Kontakt</th>
               <th className="px-4 py-2">Status</th>
               <th className="px-4 py-2" />
             </tr>
@@ -84,7 +97,23 @@ export default async function PartnerPortalIndex() {
                 <tr key={r.company.id} className="border-b border-[#F0EDE4] last:border-0">
                   <td className="px-4 py-2 font-medium text-slate-800">{r.company.name}</td>
                   <td className="px-4 py-2 text-slate-600">{r.company.nip}</td>
-                  <td className="px-4 py-2 text-slate-600">{r.company.legal_form ?? '—'}</td>
+                  <td className="px-4 py-2">
+                    {r.company.tier && (
+                      <span
+                        className={`rounded px-2 py-0.5 text-xs font-medium ${TIER_COLORS[r.company.tier] ?? 'bg-slate-100 text-slate-600'}`}
+                      >
+                        {r.company.tier}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-slate-700">{formatPln(r.company.amount_gross_pln)}</td>
+                  <td className="px-4 py-2 text-slate-600">
+                    {r.company.decision_person && (
+                      <div className="text-xs">{r.company.decision_person}</div>
+                    )}
+                    {r.company.phone && <div className="text-xs text-slate-400">{r.company.phone}</div>}
+                    {!r.company.decision_person && !r.company.phone && '—'}
+                  </td>
                   <td className="px-4 py-2">
                     <span
                       className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[r.status] ?? 'bg-slate-100 text-slate-700'}`}
@@ -105,7 +134,7 @@ export default async function PartnerPortalIndex() {
             )}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-400">
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-400">
                   Brak przekazanych firm.
                 </td>
               </tr>
