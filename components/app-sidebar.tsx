@@ -292,6 +292,7 @@ export function AppSidebar({ user, prospectHotCount = 0, counts = {} }: AppSideb
       items: [
         { name: 'Konfiguracja', href: '/settings' },
         { name: 'Admin Health', href: '/admin/health' },
+        { name: 'Partnerzy (portal)', href: '/partners' },
       ],
     },
   ]

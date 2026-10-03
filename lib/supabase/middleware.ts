@@ -49,6 +49,7 @@ export async function updateSession(request: NextRequest) {
   const path = request.nextUrl.pathname
   const role = (user?.app_metadata as { role?: string } | undefined)?.role
   const isPortalPath = path.startsWith('/portal')
+  const isPartnerPath = path.startsWith('/partner-portal')
   const isAuthPath = path.startsWith('/auth')
   const isPublicOrder = path.startsWith('/zamowienie')
   // KRYTYCZNE: NIGDY nie przekierowuj żądań /api na /portal — fetch dostałby
@@ -70,6 +71,23 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // ── Portal partnera (Credipass, FBA, ...) — role-gating ────────────────
+  // Analog bloku portal-klienta powyżej. Partner-user (app_metadata.role=
+  // 'partner') ma dostęp WYŁĄCZNIE do /partner-portal i /auth. Izolacja
+  // MIĘDZY partnerami jest po stronie RLS (current_portal_partner_id()),
+  // nie middleware — ten blok tylko trzyma partnera poza resztą appki.
+  if (
+    user &&
+    role === 'partner' &&
+    !isPartnerPath &&
+    !isAuthPath &&
+    !isApi
+  ) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/partner-portal'
+    return NextResponse.redirect(url)
+  }
+
   // ── Staff-registration gate (RDZEŃ BEZPIECZEŃSTWA) ─────────────────────────
   // Każdy authenticated, kto NIE jest: portalem, ZATWIERDZONYM staffem
   // (role==='staff'), ani właścicielem (Vadym po uid) → trzymany na
@@ -84,6 +102,7 @@ export async function updateSession(request: NextRequest) {
     user &&
     role !== 'portal' &&
     role !== 'staff' &&
+    role !== 'partner' &&
     user.id !== WORKSPACE_OWNER_ID &&
     !isStaffPath &&
     !isAuthPath &&
@@ -97,6 +116,12 @@ export async function updateSession(request: NextRequest) {
   if (!user && isPortalPath && !path.startsWith('/portal/login')) {
     const url = request.nextUrl.clone()
     url.pathname = '/portal/login'
+    return NextResponse.redirect(url)
+  }
+
+  if (!user && isPartnerPath && !path.startsWith('/partner-portal/login')) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/partner-portal/login'
     return NextResponse.redirect(url)
   }
 
