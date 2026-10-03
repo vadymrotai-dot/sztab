@@ -21,6 +21,8 @@ import {
   CheckIcon,
   ShieldCheckIcon,
   MapPinIcon,
+  FileTextIcon,
+  ExternalLinkIcon,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -311,6 +313,32 @@ export function CompanyProfileView({
                 <CardContent>
                   <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
+                      <dt className="text-[11px] uppercase text-muted-foreground">Numer KRS</dt>
+                      <dd className="flex items-center gap-1.5 text-sm text-slate-800">
+                        {c.krs ? (
+                          <>
+                            <span className="font-mono">{String(c.krs)}</span>
+                            <CopyButton value={String(c.krs)} />
+                          </>
+                        ) : (
+                          '— (brak wpisu / JDG)'
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] uppercase text-muted-foreground">REGON</dt>
+                      <dd className="flex items-center gap-1.5 text-sm text-slate-800">
+                        {c.regon ? (
+                          <>
+                            <span className="font-mono">{String(c.regon)}</span>
+                            <CopyButton value={String(c.regon)} />
+                          </>
+                        ) : (
+                          '—'
+                        )}
+                      </dd>
+                    </div>
+                    <div>
                       <dt className="text-[11px] uppercase text-muted-foreground">PKD główne</dt>
                       <dd className="text-sm text-slate-800">{String(c.pkd_main ?? '—')}</dd>
                     </div>
@@ -320,6 +348,12 @@ export function CompanyProfileView({
                       </dt>
                       <dd className="text-sm text-slate-800">{String(c.region_teryt ?? '—')}</dd>
                     </div>
+                    {Boolean(c.address) && (
+                      <div className="sm:col-span-2">
+                        <dt className="text-[11px] uppercase text-muted-foreground">Adres (KRS/CEIDG)</dt>
+                        <dd className="text-sm text-slate-800">{String(c.address)}</dd>
+                      </div>
+                    )}
                     <div>
                       <dt className="text-[11px] uppercase text-muted-foreground">Data rejestracji</dt>
                       <dd className="text-sm text-slate-800">{String(c.registered_at ?? '—')}</dd>
@@ -339,6 +373,33 @@ export function CompanyProfileView({
                   </dl>
                 </CardContent>
               </Card>
+
+              {c.krs != null && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <FileTextIcon className="size-4 text-slate-500" />
+                      Dokumenty finansowe (eKRS)
+                    </CardTitle>
+                    <CardDescription>
+                      {Number(c.ekrs_doc_count) > 0
+                        ? `Złożono ${c.ekrs_doc_count} dokument(ów) finansowych w repozytorium KRS.`
+                        : 'Liczba złożonych sprawozdań nieznana lub brak wpisów.'}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button asChild size="sm" variant="outline">
+                      <a
+                        href="https://ekrs.ms.gov.pl/rdf/pd/search_df"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLinkIcon /> Otwórz wyszukiwarkę eKRS (wpisz KRS: {String(c.krs)})
+                      </a>
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
           </Tabs>
         </div>
